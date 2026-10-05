@@ -15,6 +15,8 @@ import { cancelProposal, createProposals, recordHandoff } from "./proposal-servi
 import { submitReply, viewReply } from "./reply-service.js";
 import { suggestForJourney } from "./assist-service.js";
 import { arrangeRecordImages } from "./record-media-service.js";
+import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
+import { convertInboxMessage } from "./inbox-service.js";
 import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
@@ -55,7 +57,13 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/session/links": (ctx, b, actor) => sessionLinks(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), replace: text(b.replace) }),
   "/os/session/handoff": (ctx, b, actor) => recordSessionHandoff(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), role: text(b.role) }),
   "/os/session/message": (ctx, b, actor) => sendBrokerMessage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), audience: text(b.audience), text: b.text, requestKey: text(b.requestKey) }),
-  "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) })
+  "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
+  // Channels: every member sees the state; linking and unlinking are the manager's (checked in the service).
+  "/os/channels/status": (ctx) => channelsStatus(ctx, { officeId: ctx.officeId }),
+  "/os/channels/telegram/link": (ctx, b, actor) => startTelegramLink(ctx, { actor, officeId: ctx.officeId }),
+  "/os/channels/telegram/unlink": (ctx, b, actor) => unlinkTelegram(ctx, { actor, officeId: ctx.officeId }),
+  "/os/channels/whatsapp/disconnect": (ctx, b, actor) => disconnectWhatsapp(ctx, { actor, officeId: ctx.officeId }),
+  "/os/inbox/convert": (ctx, b, actor) => convertInboxMessage(ctx, { actor, officeId: ctx.officeId, inboxId: text(b.inboxId) })
 });
 
 function text(value) {
@@ -91,6 +99,8 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
       deps: boundDeps,
       store: createStore(boundDeps, { projectId, accessToken }),
       officeId,
+      // Server-side configuration only (which integrations are set up); never returned to a client as is.
+      env,
       appOrigin: deps.resolveAppOrigin(env),
       now: () => new Date()
     };

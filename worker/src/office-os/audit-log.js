@@ -16,7 +16,8 @@ export const AUDIT_ACTIONS = Object.freeze({
   DEAL_DOCUMENT_UPDATED: "DEAL_DOCUMENT_UPDATED",
   DEAL_CLOSED: "DEAL_CLOSED",
   CHANNEL_LINK_STARTED: "CHANNEL_LINK_STARTED",
-  CHANNEL_UNLINKED: "CHANNEL_UNLINKED"
+  CHANNEL_UNLINKED: "CHANNEL_UNLINKED",
+  INBOX_CONVERTED: "INBOX_CONVERTED"
 });
 
 export async function writeAudit(ctx, { officeId, action, actorUid = "", entityType = "", entityId = "", details = {}, key = "" }) {

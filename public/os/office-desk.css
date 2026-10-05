@@ -360,3 +360,29 @@ a.os-service-row { text-decoration: none; color: inherit; }
 .os-market-gaps li, .os-market-districts li { align-items: start; }
 .os-market-gaps li span, .os-market-districts li span { display: grid; min-width: 0; }
 .os-market-gaps li small, .os-market-districts li small { color: var(--muted); font-size: .8rem; }
+
+/* مركز التواصل · البحث الشامل · سجل النشاط */
+.os-center-chips { margin: 4px 0 12px; }
+.os-center-chips .os-chip { min-height: 40px; padding: 4px 14px; font-size: .86rem; }
+.os-center-list { display: grid; gap: 10px; }
+.os-center-group { margin: 0 0 18px; }
+.os-center-group .os-h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.os-center-count { font-size: .78rem; font-weight: 800; padding: 2px 9px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #4d6a72; }
+.os-center-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; width: 100%; text-align: start; border: 1px solid var(--brand-line, #DCE8EB); font: inherit; color: inherit; min-height: 56px; }
+div.os-center-row { grid-template-columns: minmax(0, 1fr); }
+.os-center-row .os-set-text b, .os-center-row .os-set-text small { overflow-wrap: anywhere; }
+.os-center-row > svg { width: 18px; height: 18px; color: #7c979e; }
+.os-center-tag { font-size: .74rem; font-weight: 800; padding: 3px 9px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #2f5d68; white-space: nowrap; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
+.os-app[data-view="tool"] .os-search { margin: 0 0 12px; }
+.os-inbox-card { display: grid; gap: 8px; }
+.os-inbox-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.os-inbox-head small { margin-inline-start: auto; }
+.os-inbox-class { font-size: .76rem; font-weight: 800; padding: 3px 10px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #2f5d68; }
+.os-inbox-class.is-offer { background: #e4f6ec; color: #17653a; }
+.os-inbox-class.is-request { background: #e6effc; color: #1d4f91; }
+.os-inbox-class.is-inquiry { background: #fff4de; color: #7a5200; }
+.os-inbox-class.is-deal { background: #efe9fb; color: #4b2f8f; }
+.os-inbox-meta { display: inline-flex; align-items: center; gap: 4px; font-size: .8rem; color: #4d6a72; }
+.os-inbox-meta svg { width: 16px; height: 16px; }
+.os-inbox-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.os-inbox-foot { display: grid; gap: 2px; }

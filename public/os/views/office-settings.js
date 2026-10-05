@@ -11,11 +11,12 @@
 import { h, ic, clear, append } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
-import { runAction, toast } from "../core/ui.js";
+import { confirmDialog, runAction, toast } from "../core/ui.js";
 import { COOPERATION_OPTIONS, loadCooperationMode, photoToDataUrl, saveBrokerPhoto, officeNameIsFree, saveCooperationMode, saveOfficeProfile, savePublicSlug } from "../core/office-profile.js";
 import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
-import { loadChannelStatus } from "../core/channels.js";
-import { automationLabel, channelViews } from "../domain/channels-domain.js";
+import { connectWhatsapp, disconnectWhatsapp, loadChannels, startTelegramLink, unlinkTelegram } from "../core/channels.js";
+import { automationLabel } from "../domain/channels-domain.js";
+import { CHANNEL_REGISTRY } from "../domain/channel-link-domain.js";
 import { OFFICE_NAME_MESSAGES, SPECIALTIES, buildOfficeProfile, checkPublicSlug } from "../domain/office-profile-domain.js";
 import { officePermanentUrl, officeShareUrl } from "../domain/share-card-domain.js";
 import { ensureShareCard } from "../core/share-card.js";
@@ -284,26 +285,133 @@ export function renderCooperationSettings(container) {
   return null;
 }
 
+function fact(label, value, attrs = {}) {
+  return h("div", { class: "os-chan-fact", ...attrs }, h("dt", { text: label }), h("dd", { text: value, dir: "auto" }));
+}
+
+function channelHead(meta, view) {
+  return h("header", { class: "os-chan-head" },
+    h("span", { class: "os-set-icon" }, ic(meta.icon)),
+    h("div", { class: "os-set-text" }, h("b", { text: meta.name }), h("small", { text: meta.hint })),
+    h("span", { class: `os-chan-status is-${view.state.toLowerCase()}`, "data-channel-status": view.state, text: view.stateLabel }));
+}
+
+function channelAction(id, label, { kind = "secondary", icon = "link", run }) {
+  const button = h("button", { type: "button", class: `os-btn ${kind}`, "data-channel-action": id }, ic(icon), label);
+  button.addEventListener("click", () => run(button));
+  return button;
+}
+
+function whatsappCard(view, reload) {
+  const meta = CHANNEL_REGISTRY.whatsapp;
+  const coexistence = view.onboardingMode !== "standard";
+  const link = async (button) => {
+    const yes = await confirmDialog({
+      title: "ربط واتساب للأعمال",
+      text: coexistence
+        ? "ستفتح نافذة Meta الرسمية. سجّل الدخول هناك واختر ربط «تطبيق واتساب للأعمال» الحالي، ثم امسح الرمز من جوالك. يبقى رقمك وتطبيقك كما هما — لا يُنقل الرقم ولا يُحذف التطبيق."
+        : "ستفتح نافذة Meta الرسمية لإكمال الربط. سجّل الدخول ووافق هناك.",
+      confirmLabel: "فتح نافذة Meta"
+    });
+    if (!yes) return;
+    await runAction(button, async () => { await connectWhatsapp(session.officeId); await reload(); }, { success: "تم ربط واتساب للأعمال بالمكتب" });
+  };
+  const unlink = async (button) => {
+    const yes = await confirmDialog({
+      title: "فصل واتساب عن المكتب؟",
+      text: "يتوقف وصول رسائل هذا الرقم إلى مكتبك في النظام. رقمك وتطبيق واتساب للأعمال لا يتأثران، ويمكنك إعادة الربط في أي وقت.",
+      confirmLabel: "فصل", danger: true
+    });
+    if (!yes) return;
+    await runAction(button, async () => { await disconnectWhatsapp(session.officeId); await reload(); }, { success: "تم فصل واتساب عن المكتب" });
+  };
+  const actions = view.actions.map((action) => action === "disconnect"
+    ? channelAction("disconnect", "فصل", { kind: "danger", icon: "x", run: unlink })
+    : channelAction(action, action === "connect" ? "ربط واتساب للأعمال" : "إعادة الربط", { kind: action === "connect" ? "primary" : "secondary", icon: "link", run: link }));
+  return h("article", { class: "os-card os-chan", "data-channel": "whatsapp" },
+    channelHead(meta, view),
+    h("dl", { class: "os-chan-facts" },
+      fact("الرقم", view.number || "—", { "data-channel-number": "" }),
+      fact("استقبال الرسائل (Webhook)", view.webhookLabel, { "data-webhook-status": view.webhookReady ? "ready" : "off" }),
+      view.state === "CONNECTED" ? fact("رسائل اليوم", String(view.inboundToday)) : null,
+      fact("طريقة الربط", coexistence ? "Cloud API مع بقاء الرقم على تطبيق واتساب للأعمال" : "Cloud API", { "data-onboarding": view.onboardingMode })),
+    view.detail ? h("div", { class: "os-alert bad", "data-channel-error": "", text: view.detail }) : null,
+    view.note ? h("p", { class: "os-sub", "data-channel-note": "", text: view.note }) : null,
+    actions.length ? h("div", { class: "os-btn-row" }, ...actions) : null);
+}
+
+function telegramCard(view, reload, pending) {
+  const meta = CHANNEL_REGISTRY.telegram;
+  const link = (button) => runAction(button, async () => {
+    const result = await startTelegramLink(session.officeId);
+    if (result.state === "NOT_CONFIGURED" || !result.deepLink) throw new Error(result.message || "بوت المنصة غير مفعّل على هذه البيئة بعد");
+    pending.link = result.deepLink;
+    pending.expiresAt = result.expiresAt;
+    await reload();
+  });
+  const unlink = async (button) => {
+    const yes = await confirmDialog({
+      title: view.state === "CONNECTED" ? "فصل تيليجرام عن المكتب؟" : "إلغاء رابط الربط؟",
+      text: view.state === "CONNECTED" ? "يتوقف وصول رسائل هذه المحادثة إلى مكتبك. يمكنك إعادة الربط في أي وقت." : "يتوقف رابط الربط الحالي عن العمل.",
+      confirmLabel: view.state === "CONNECTED" ? "فصل" : "إلغاء الرابط", danger: true
+    });
+    if (!yes) return;
+    pending.link = "";
+    await runAction(button, async () => { await unlinkTelegram(session.officeId); await reload(); }, { success: view.state === "CONNECTED" ? "تم فصل تيليجرام" : "أُلغي رابط الربط" });
+  };
+  const actions = view.actions.map((action) => action === "disconnect"
+    ? channelAction("disconnect", view.state === "CONNECTED" ? "فصل" : "إلغاء الرابط", { kind: "danger", icon: "x", run: unlink })
+    : channelAction(action, action === "connect" ? "ربط تيليجرام" : view.state === "PENDING" ? "رابط جديد" : "إعادة الربط", { kind: action === "connect" ? "primary" : "secondary", icon: "link", run: link }));
+  const showLink = view.state === "PENDING" && pending.link;
+  const copy = h("button", { type: "button", class: "os-btn secondary", "data-telegram-copy": "" }, ic("clipboard"), "نسخ الرابط");
+  copy.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(pending.link); toast("تم نسخ رابط الربط"); } catch (_) { toast("تعذر النسخ — افتح الرابط مباشرة", "bad"); }
+  });
+  return h("article", { class: "os-card os-chan", "data-channel": "telegram" },
+    channelHead(meta, view),
+    h("dl", { class: "os-chan-facts" },
+      fact("البوت", view.botUsername ? `@${view.botUsername}` : "—"),
+      view.detail ? fact(view.state === "CONNECTED" ? "المحادثة المرتبطة" : "ملاحظة", view.detail, { "data-channel-detail": "" }) : null),
+    showLink ? h("div", { class: "os-chan-link", "data-telegram-pending": "" },
+      h("p", { class: "os-sub", text: "افتح الرابط من حساب تيليجرام الذي تستقبل عليه رسائل المكتب ثم اضغط «ابدأ». الرابط صالح 15 دقيقة ولمرة واحدة." }),
+      h("div", { class: "os-btn-row" },
+        h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-telegram-open": "" }, ic("send"), "فتح تيليجرام"),
+        copy)) : null,
+    view.state === "PENDING" && !pending.link ? h("p", { class: "os-sub", "data-telegram-pending": "", text: "رابط ربط سابق ما زال بانتظار الإتمام. أنشئ رابطًا جديدًا إن لم يعد لديك." }) : null,
+    view.note ? h("p", { class: "os-sub", "data-channel-note": "", text: view.note }) : null,
+    actions.length ? h("div", { class: "os-btn-row" }, ...actions) : null);
+}
+
 export function renderChannelSettings(container) {
   if (managerOnly(container, "قنوات المكتب")) return null;
-  const body = h("div", {}, h("div", { class: "os-skeleton" }));
+  const body = h("div", { "data-channels": "" }, h("div", { class: "os-skeleton" }));
   append(container, body);
-  loadChannelStatus(session.officeId).then((payload) => {
+  // The one-time Telegram link lives only in this screen's memory; the server keeps its hash.
+  const pending = { link: "", expiresAt: "" };
+  let timer = 0;
+  let closed = false;
+  const draw = (payload) => {
+    const byId = Object.fromEntries((payload.channels || []).map((view) => [view.id, view]));
     clear(body);
-    const cards = channelViews(payload).map((view) => h("article", { class: "os-card os-chan-card", "data-channel": view.id },
-      h("span", { class: "os-set-icon" }, ic(view.icon)),
-      h("div", { class: "os-set-text" },
-        h("b", { text: view.name }),
-        h("small", { text: view.hint }),
-        view.detail ? h("small", { text: view.detail, dir: "auto" }) : null),
-      h("span", { class: `os-chan-status is-${view.status}`, "data-channel-status": view.status, text: view.statusLabel })));
     append(body,
-      h("p", { class: "os-sub", text: "القنوات وسيلة نقل فقط: تصل الرسائل إلى صندوق المكتب ثم تُعالج كأي عميل أو عرض أو طلب." }),
-      ...cards,
+      h("p", { class: "os-sub", text: "كل مكتب يربط قنواته بنفسه، والرسائل الواردة تصل إلى مكتبك فقط. القنوات وسيلة نقل: تصل الرسائل إلى مركز التواصل ثم تُعالج كأي عميل أو عرض أو طلب." }),
+      byId.whatsapp ? whatsappCard(byId.whatsapp, reload) : null,
+      byId.telegram ? telegramCard(byId.telegram, reload, pending) : null,
+      h("button", { type: "button", class: "os-set-row os-card", "data-open-inbox": "", onClick: () => go("inbox") },
+        h("span", { class: "os-set-icon" }, ic("inbox-in")),
+        h("span", { class: "os-set-text" }, h("b", { text: "مركز التواصل" }), h("small", { text: "كل ما وصل من القنوات، مصنّفًا: اجتماعية، استفسار، عرض، طلب، متعلقة بصفقة" })),
+        ic("chev-left")),
       h("section", { class: "os-card os-set-legacy" },
         h("h2", { class: "os-h2" }, ic("shield"), "الأتمتة"),
-        h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` }),
-        h("p", { class: "os-sub", "data-channels-setup": "", text: "ربط واتساب وتيليجرام يتم حاليًا بإعداد من إدارة المنصة. بعد الربط تظهر الحالة هنا." })));
-  }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل حالة القنوات." })); });
-  return null;
+        h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` })));
+    clearTimeout(timer);
+    // While a Telegram link waits for «ابدأ», check the state again so the screen turns «مرتبط» by itself.
+    if (!closed && byId.telegram?.state === "PENDING" && pending.link) timer = setTimeout(() => { if (body.isConnected) reload(); }, 4000);
+  };
+  async function reload() {
+    const payload = await loadChannels(session.officeId);
+    if (!closed && body.isConnected) draw(payload);
+  }
+  reload().catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل حالة القنوات." })); });
+  return () => { closed = true; clearTimeout(timer); };
 }

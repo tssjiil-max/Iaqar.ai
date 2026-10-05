@@ -338,6 +338,105 @@ try {
   await go(page, "tasks?step=5", "[data-closed-deal]");
   check("the closed deal appears under «إغلاق»", (await page.locator('[data-closed-deal="jr_seed_docs"]').count()) === 1);
 
+  // — channels: each office links its own WhatsApp / Telegram
+  step = "channels";
+  const tg = async (chatId, text) => {
+    const response = await fetch(`${h.origin}/worker/telegram/webhook`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": "e2e-secret" }, body: JSON.stringify({ update_id: Math.floor(Math.random() * 1e9), message: { message_id: Math.floor(Math.random() * 1e6), date: Math.floor(Date.now() / 1000), chat: { id: chatId, type: "private", first_name: "سلطان" }, from: { id: chatId, first_name: "سلطان" }, text } }) });
+    return response.json();
+  };
+  const chanState = (id) => page.locator(`[data-channel="${id}"] [data-channel-status]`).getAttribute("data-channel-status");
+  await go(page, "settings/channels", '[data-channel="telegram"]');
+  check("before setup both channels say «غير مرتبط» and offer no button that cannot work", (await chanState("whatsapp")) === "DISCONNECTED" && (await chanState("telegram")) === "DISCONNECTED" && (await page.locator("[data-channel-action]").count()) === 0 && (await page.locator("[data-channel-note]").count()) === 2);
+  check("WhatsApp card shows number, webhook status and the coexistence method", (await page.locator('[data-channel="whatsapp"] [data-webhook-status]').getAttribute("data-webhook-status")) === "off" && (await page.locator('[data-channel="whatsapp"] [data-onboarding]').getAttribute("data-onboarding")) === "coexistence" && (await page.locator('[data-channel="whatsapp"] [data-channel-number]').count()) === 1);
+  await shot(page, "30-channels-not-configured");
+
+  Object.assign(h.env, { TELEGRAM_BOT_TOKEN: "1:e2e-token", TELEGRAM_WEBHOOK_SECRET: "e2e-secret", TELEGRAM_BOT_USERNAME: "iaqar_e2e_bot", META_APP_ID: "app-e2e", META_CONFIG_ID: "cfg-e2e", META_APP_SECRET: "meta-e2e-secret", META_WEBHOOK_VERIFY_TOKEN: "verify-e2e" });
+  await go(page, "settings/channels", '[data-channel="telegram"] [data-channel-action="connect"]');
+  await page.locator('[data-channel="telegram"] [data-channel-action="connect"]').click();
+  await page.locator("[data-telegram-open]").waitFor();
+  const deepLink = await page.locator("[data-telegram-open]").getAttribute("href");
+  check("Telegram link: a one-time deep link to the central bot, state «بانتظار إتمام الربط»", /^https:\/\/t\.me\/iaqar_e2e_bot\?start=[A-Za-z0-9_-]{43}$/.test(deepLink) && (await chanState("telegram")) === "PENDING");
+  await shot(page, "31-telegram-pending");
+  const linked = await tg(880011, `/start ${new URL(deepLink).searchParams.get("start")}`);
+  await until(async () => (await chanState("telegram")) === "CONNECTED", "telegram connected on screen");
+  check("after «ابدأ» in Telegram the screen turns «مرتبط» by itself, with reconnect and disconnect", linked.linked === true && (await page.locator('[data-channel="telegram"] [data-channel-action="reconnect"]').count()) === 1 && (await page.locator('[data-channel="telegram"] [data-channel-action="disconnect"]').count()) === 1 && (await page.locator("[data-telegram-open]").count()) === 0);
+  const greeting = await tg(880011, "السلام عليكم ورحمة الله وبركاته");
+  const offerMsg = await tg(880011, "للبيع فيلا في حي الندى بالرياض مساحة 375 متر السعر 2750000 ريال");
+  const strangerMsg = await tg(770077, "للبيع شقة في الملقا 900000");
+  check("messages follow the linked chat: greeting kept, offer processed, unknown chat ignored", greeting.kept === true && offerMsg.routedBy === "chat_link" && strangerMsg.reason === "chat_not_linked" && h.store.list(`offices/${OFFICE_B}/inbox`).length === 0);
+
+  check("WhatsApp can be linked once Meta is configured: a «ربط» button and a ready webhook", (await page.locator('[data-channel="whatsapp"] [data-channel-action="connect"]').count()) === 1 && (await page.locator('[data-channel="whatsapp"] [data-webhook-status]').getAttribute("data-webhook-status")) === "ready");
+  await page.locator('[data-channel="whatsapp"] [data-channel-action="connect"]').click();
+  await page.locator(".os-dialog").waitFor();
+  const waText = await page.locator(".os-dialog").innerText();
+  check("before opening Meta the manager is told the number and the app stay as they are", waText.includes("لا يُنقل الرقم") && waText.includes("ولا يُحذف التطبيق"));
+  await page.locator(".os-dialog").getByRole("button", { name: "إلغاء" }).click();
+  h.store.seed("whatsapp_accounts/pn_e2e", { officeId: OFFICE_A, wabaId: "waba_e2e", phoneNumberId: "pn_e2e", displayPhoneNumber: "+966 55 987 6543", status: "connected" });
+  h.store.seed(`offices/${OFFICE_A}/integrations/whatsapp`, { officeId: OFFICE_A, phoneNumberId: "pn_e2e", displayPhoneNumber: "+966 55 987 6543", status: "connected" });
+  await go(page, "settings/channels", '[data-channel="whatsapp"] [data-channel-action="disconnect"]');
+  const waCard = await page.locator('[data-channel="whatsapp"]').innerText();
+  check("a linked WhatsApp shows «مرتبط», the masked number, reconnect and disconnect", (await chanState("whatsapp")) === "CONNECTED" && waCard.includes("6543") && !waCard.includes("987") && (await page.locator('[data-channel="whatsapp"] [data-channel-action="reconnect"]').count()) === 1);
+  const channelsText = await page.locator("[data-channels]").innerText();
+  check("the channels screen never shows a token, a secret or a full number", !/(e2e-token|e2e-secret|meta-e2e-secret|verify-e2e|waba_e2e|pn_e2e|880011|\d{9,})/.test(channelsText));
+  await shot(page, "32-channels-linked");
+  await page.locator('[data-channel="whatsapp"] [data-channel-action="disconnect"]').click();
+  await page.locator(".os-dialog .os-btn.danger").click();
+  await until(async () => (await chanState("whatsapp")) === "DISCONNECTED", "whatsapp disconnected on screen");
+  check("disconnect switches off routing on the server without deleting the account record", h.store.get("whatsapp_accounts/pn_e2e").status === "disconnected" && h.store.get("whatsapp_accounts/pn_e2e").wabaId === "waba_e2e");
+
+  // — communication center
+  step = "inbox";
+  await page.locator("[data-open-inbox]").click();
+  await page.locator("[data-inbox-item]").first().waitFor();
+  check("«مركز التواصل» lists the office's messages with their class", (await page.locator("[data-inbox-item]").count()) === 2 && (await page.locator('[data-inbox-item][data-message-class="SOCIAL"]').count()) === 1 && (await page.locator('[data-inbox-item][data-message-class="OFFER"]').count()) === 1);
+  check("a kept greeting says why it was not converted and can be converted by hand; a processed offer cannot", (await page.locator('[data-message-class="SOCIAL"] [data-inbox-convert]').count()) === 1 && (await page.locator('[data-message-class="SOCIAL"] [data-inbox-reason]').count()) === 1 && (await page.locator('[data-message-class="OFFER"] [data-inbox-convert]').count()) === 0);
+  await page.locator('[data-inbox-filter="SOCIAL"]').click();
+  check("class chips filter the list", (await page.locator("[data-inbox-item]").count()) === 1);
+  await page.locator('[data-inbox-filter="ALL"]').click();
+  await shot(page, "33-inbox");
+
+  // — unified search
+  step = "search";
+  await go(page, "search", "[data-search-input]");
+  check("search asks for at least two letters before searching", (await page.locator("[data-search-hint]").count()) === 1);
+  await page.locator("[data-search-input]").fill("الملقا");
+  await page.locator('[data-search-group="records"]').waitFor();
+  check("search finds the office's records by district", (await page.locator('[data-search-group="records"] [data-search-item="opp_seed_offer"]').count()) === 1);
+  await page.locator("[data-search-input]").fill("العارض");
+  await page.locator('[data-search-group="closed"] [data-search-item="jr_seed_won"]').waitFor();
+  check("search finds closed deals, and never another office's", (await page.locator('[data-search-group="closed"] [data-search-item="jr_seed_won"]').count()) === 1 && (await page.locator('[data-search-item="jr_other_office"]').count()) === 0);
+  await page.locator("[data-search-input]").fill("السلام عليكم");
+  await page.locator('[data-search-group="messages"]').waitFor();
+  check("search finds channel messages", (await page.locator('[data-search-group="messages"] [data-search-item]').count()) >= 1);
+  await page.locator("[data-search-input]").fill("0555556666");
+  await page.locator('[data-search-group="records"]').waitFor();
+  check("search finds a record by phone number", (await page.locator('[data-search-item="opp_seed_offer"]').count()) === 1);
+  await shot(page, "34-search");
+  await page.locator('[data-search-item="opp_seed_offer"]').click();
+  await page.locator("[data-record-actions]").waitFor();
+  check("a search result opens its record", page.url().includes("#/record/opp_seed_offer"));
+  await page.goto(`${h.origin}/#/search`);
+  await page.locator("[data-search-input]").fill("زززز لا يوجد");
+  await page.locator(".os-empty").waitFor();
+  check("search says clearly when nothing matches", (await page.locator(".os-empty").innerText()).includes("لا توجد نتائج"));
+
+  // — audit trail
+  step = "audit";
+  await go(page, "audit", "[data-audit-item]");
+  const auditActions = await page.locator("[data-audit-item]").evaluateAll((els) => els.map((el) => el.getAttribute("data-audit-action")));
+  check("«سجل النشاط» lists who did what: records, deals and channels", ["RECORD_PAUSED", "RECORD_DELETED", "DEAL_CLOSED", "CHANNEL_LINK_STARTED", "CHANNEL_UNLINKED"].every((action) => auditActions.includes(action)), [...new Set(auditActions)].join(","));
+  check("audit lines are plain Arabic (no internal codes on screen)", !/[A-Z]{3,}_[A-Z]{3,}/.test(await page.locator("[data-audit]").innerText()));
+  await page.locator('[data-audit-filter="channel"]').click();
+  check("audit filter narrows to channel actions", (await page.locator("[data-audit-item]").evaluateAll((els) => els.every((el) => /^(CHANNEL_|INBOX_)/.test(el.getAttribute("data-audit-action"))))));
+  await shot(page, "35-audit");
+  await go(page, "office", ".ref-menu");
+  await page.locator(".ref-menu").click();
+  await page.locator(".os-menu").waitFor();
+  check("the menu opens search, the communication center and the audit trail", (await page.locator('.os-menu [data-menu="search"]').count()) === 1 && (await page.locator('.os-menu [data-menu="inbox"]').count()) === 1 && (await page.locator('.os-menu [data-menu="audit"]').count()) === 1);
+  await page.locator('.os-menu [data-menu="inbox"]').click();
+  await page.locator("[data-inbox]").waitFor();
+  check("menu → «مركز التواصل» opens the page", page.url().includes("#/inbox"));
+
   check("no browser console errors", errors.length === 0, errors.slice(0, 4).join(" | "));
 } catch (error) {
   check(`completed without exception (step ${step})`, false, error.message.split("\n")[0]);

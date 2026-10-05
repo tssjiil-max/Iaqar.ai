@@ -39,7 +39,7 @@ export function stepStrip({ active = null, counts = [], onSelect = null } = {}) 
   });
   return h("section", { class: "ref-path os-card" },
     h("div", { class: "ref-path-heading" }, h("h2", { text: "مسار الصفقة" }), h("span", { text: "اضغط أي مرحلة لعرض ما فيها" })),
-    h("div", { class: "ref-steps", role: "group", "aria-label": "مراحل الصفقة" }, steps));
+    h("div", { class: "ref-steps ref-steps-live", role: "group", "aria-label": "مراحل الصفقة" }, steps));
 }
 function homeRow(task){const r=taskRecord(task)||{},v=recordView(r),m=taskCardModel(task),s=taskStep(task);return h("button",{class:"ref-home-row",type:"button",onClick:()=>go("task/"+task.id)},photo(r),h("div",{class:"ref-row-copy"},h("b",{text:s===0?"مراجعة تطابق":m.button}),h("small",{text:v.location||m.title||task.titleText||"مهمة"})),h("span",{class:"ref-status step-"+s,text:STEPS[s][0]}),timeChip(task)||h("span"),ic("chev-left"));}
 /** Card time from real data: an appointment shows its day/time (late when passed); otherwise how long ago the task last moved. */

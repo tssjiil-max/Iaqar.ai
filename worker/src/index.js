@@ -169,8 +169,12 @@ import {
 } from "./messaging-domain.js";
 import {
   handleTelegramCanonicalWebhook,
-  telegramWebhookRuntimeContract
+  telegramWebhookRuntimeContract,
+  verifyTelegramWebhookSecret
 } from "./telegram-intake-service.js";
+import { handleCentralTelegramWebhook } from "./office-os/channels-service.js";
+import { classifyInboundMessage } from "../../public/os/domain/message-class-domain.js";
+import { createStore as createOfficeOsStore } from "./office-os/store.js";
 import { channelCleanupBoundaryGuarantees } from "./channel-boundary-domain.js";
 import {
   PUBLIC_RATE_LIMITS,
@@ -517,6 +521,8 @@ export default {
           appId: enabled ? env.META_APP_ID : "",
           configId: enabled ? env.META_CONFIG_ID : "",
           graphVersion: env.META_GRAPH_VERSION || GRAPH_VERSION,
+          // «coexistence» = the number stays on the WhatsApp Business app; the default, so a link never migrates a number.
+          onboardingMode: String(env.META_ONBOARDING_MODE || "").trim().toLowerCase() === "standard" ? "standard" : "coexistence",
           trialAllowed: Boolean(officeId),
           multiOffice: true,
           inboundOnly: true,
@@ -535,6 +541,11 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/meta/webhook") {
         return receiveMetaWebhook(request, env, requestId);
+      }
+
+      // Central platform bot: one address for every office; the linked chat decides the office.
+      if (request.method === "POST" && url.pathname === "/telegram/webhook") {
+        return await handleCentralTelegramRoute(request, env, requestId);
       }
 
       if (request.method === "POST" && /^\/telegram\/webhook\/[^/]+$/.test(url.pathname)) {
@@ -1793,6 +1804,32 @@ async function handleTelegramWebhookRoute(request, env, requestId) {
   return jsonResponse({ ...result, requestId }, Number(result.status || 200));
 }
 
+async function handleCentralTelegramRoute(request, env, requestId) {
+  // The secret is checked before anything is read or any credential is used.
+  const secret = verifyTelegramWebhookSecret(request, env.TELEGRAM_WEBHOOK_SECRET);
+  if (!secret.ok) return jsonResponse({ ...secret, requestId }, Number(secret.status || 401));
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const deps = partySessionHelpers();
+  const result = await handleCentralTelegramWebhook({
+    request, env, deps,
+    store: createOfficeOsStore(deps, { projectId, accessToken }),
+    verifySecret: verifyTelegramWebhookSecret,
+    // The routed update goes through the same inbound pipeline as the per-office address.
+    forward: async (officeId, update) => {
+      const inner = new Request(new URL(`/telegram/webhook/${encodeURIComponent(officeId)}`, request.url).toString(), {
+        method: "POST", headers: request.headers, body: JSON.stringify(update)
+      });
+      const response = await handleTelegramWebhookRoute(inner, env, requestId);
+      const payload = await response.json().catch(() => ({}));
+      return { ...payload, status: response.status };
+    }
+  });
+  const { status = 200, ...payload } = result || {};
+  return jsonResponse({ ...payload, requestId }, Number(status) || 200);
+}
+
 async function handleSharedIntake(request, env, requestId) {
   assertFirebaseSecrets(env);
   const body = await request.json().catch(() => ({}));
@@ -2725,6 +2762,27 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
       reason: "channel_media_requires_adapter"
     };
   }
+
+  // Not every message is a property: a greeting, a short question or a deal follow-up stays
+  // in the office inbox with its class and waits for the broker instead of becoming a record.
+  const messageKind = classifyInboundMessage(messageText);
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", officeId, "inbox", documentId],
+    accessToken,
+    fields: {
+      messageClass: firestoreString(messageKind.messageClass),
+      messageClassReason: firestoreString(messageKind.reason),
+      ...(messageKind.autoConvert ? {} : {
+        processingState: firestoreString("kept"),
+        status: firestoreString("kept"),
+        isProcessed: firestoreBoolean(true),
+        sourceChannel: firestoreString("whatsapp"),
+        updatedAt: firestoreTimestamp(new Date())
+      })
+    }
+  });
+  if (!messageKind.autoConvert) return { duplicate: false, documentId, kept: true, messageClass: messageKind.messageClass };
 
   try {
     await processInboundMessage({
@@ -7150,6 +7208,9 @@ function officeOsDeps() {
       sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
       // Media bucket for record photos (delete on removal); absent when storage is not configured.
       mediaBucket: env.IAQAR_MEDIA || null,
+      // Turn one kept inbox message into a record through the same inbound pipeline as the channels.
+      processInbound: ({ officeId, inboxId, messageText, senderName = "", senderPhone = "", receivedAt = new Date(), source = "whatsapp_cloud_api" }) =>
+        processInboundMessage({ projectId, officeId, inboxDocumentId: inboxId, messageText, senderName, senderPhone, receivedAt, source, accessToken, env }),
       callGemini: (args) => callGeminiGenerateContent({
         env,
         model: String(env.GEMINI_MODEL || "gemini-3.1-flash-lite"),

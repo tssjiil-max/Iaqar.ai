@@ -43,6 +43,8 @@ function openMenu() {
   const filters = document.querySelector(".os-app[data-view=tasks] .ref-filters");
   const items = [
     filters ? h("button", { type: "button", onClick: () => { sheet.close(); filters.open = true; } }, ic("search"), "تصفية المهام") : null,
+    h("button", { type: "button", "data-menu": "search", onClick: () => { sheet.close(); go("search"); } }, ic("search"), "البحث الشامل"),
+    h("button", { type: "button", "data-menu": "inbox", onClick: () => { sheet.close(); go("inbox"); } }, ic("inbox-in"), "مركز التواصل"),
     h("button", { type: "button", onClick: () => { sheet.close(); shareOfficeLink(); } }, ic("link"), "مشاركة رابط المكتب"),
     h("button", { type: "button", onClick: async () => {
       const result = await enableNotifications();
@@ -51,6 +53,7 @@ function openMenu() {
     h("button", { type: "button", onClick: () => { sheet.close(); go("library"); } }, ic("archive"), "مكتبة المكتب"),
     h("button", { type: "button", onClick: () => { sheet.close(); go("settings/notifications"); } }, ic("bell"), "إعدادات الإشعارات"),
     h("button", { type: "button", onClick: () => { sheet.close(); go("community"); } }, ic("handshake"), "التعاون بين الوسطاء"),
+    session.isManager ? h("button", { type: "button", "data-menu": "audit", onClick: () => { sheet.close(); go("audit"); } }, ic("clipboard"), "سجل النشاط") : null,
     session.isManager ? h("button", { type: "button", onClick: () => { sheet.close(); go("settings"); } }, ic("gear"), "إعدادات المكتب") : null,
     h("button", { type: "button", onClick: async () => { sheet.close(); await signOutOffice(); location.replace("/"); } }, ic("logout"), "تسجيل الخروج")
   ];
