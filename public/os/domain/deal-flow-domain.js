@@ -87,6 +87,8 @@ export function journeyPhase(journey = {}, now = new Date()) {
     return now.getTime() >= end ? PHASE.VIEWING_RESULT : PHASE.VIEWING;
   }
   if (state === "PROPOSED" || state === "ACCEPTED") return PHASE.VIEWING_SCHEDULING;
+  // «معاينة أخرى» / «لم يحضر»: a new time is needed, whatever the price state.
+  if (viewing.rescheduleRequested === true) return PHASE.VIEWING_SCHEDULING;
   if (agreed) return PHASE.VIEWING_SCHEDULING;
   return priceStatusOf(journey) === PRICE_STATUS.FIXED ? PHASE.PRICE_DECISION : PHASE.PRICE_NEGOTIATION;
 }

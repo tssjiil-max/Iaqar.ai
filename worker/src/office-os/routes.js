@@ -9,7 +9,7 @@ import { resolveActor } from "./permissions.js";
 import { findCandidates, holdRecord, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
 import {
   acknowledgeReply, addBrokerNote, closeJourney, completeFollowUp, confirmViewing, decideMatchReview,
-  moveStage, pauseJourney, reconcileOffice, recordViewingResult, resumeJourney
+  moveStage, pauseJourney, reconcileOffice, recordViewingResult, resumeJourney, updateDealDocument
 } from "./journey-service.js";
 import { cancelProposal, createProposals, recordHandoff } from "./proposal-service.js";
 import { submitReply, viewReply } from "./reply-service.js";
@@ -44,6 +44,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/journeys/ack-reply": (ctx, b, actor) => acknowledgeReply(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), proposalId: text(b.proposalId) }),
   "/os/journeys/viewing/confirm": (ctx, b, actor) => confirmViewing(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
   "/os/journeys/viewing/result": (ctx, b, actor) => recordViewingResult(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), result: text(b.result), note: b.note }),
+  "/os/journeys/documents": (ctx, b, actor) => updateDealDocument(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), documentId: text(b.documentId), status: text(b.status), note: b.note, label: b.label, remove: b.remove === true }),
   "/os/journeys/stage": (ctx, b, actor) => moveStage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), stage: text(b.stage) }),
   "/os/journeys/pause": (ctx, b, actor) => pauseJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), resumeInDays: b.resumeInDays, reason: b.reason }),
   "/os/journeys/resume": (ctx, b, actor) => resumeJourney(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),

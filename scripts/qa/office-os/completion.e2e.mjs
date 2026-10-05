@@ -170,6 +170,7 @@ try {
   check("«عرض كل المهام» clears the stage", (await page.locator("[data-task]").count()) === 2 && !page.url().includes("step="));
   await page.goto(`${h.origin}/#/tasks?step=5`); await page.reload();
   await page.locator('.ref-step[data-step="5"][aria-pressed="true"]').waitFor();
+  await page.locator("[data-closed-deal]").first().waitFor();
   check("a stage survives reload (deep link ?step=5)", (await page.locator("[data-closed-deal]").count()) === 1);
 
   // 6 — one list for offers and requests
@@ -276,6 +277,66 @@ try {
   check("delete asks first and is a soft delete (the document and its data stay)", Boolean(gone.deletedAt) && gone.contactName === "فهد العميل");
   const audit = h.store.list(`offices/${OFFICE_A}/auditLogs`).map((e) => e.action);
   check("the audit trail has pause, restore, archive, delete and photo changes", ["RECORD_PAUSED", "RECORD_RESTORED", "RECORD_ARCHIVED", "RECORD_DELETED", "RECORD_MEDIA_UPDATED", "RECORD_CREATED"].every((a) => audit.includes(a)), [...new Set(audit)].join(","));
+
+  // 14 — viewing outcomes
+  step = "14: viewing outcomes";
+  const summaryOf = (purpose, district, price) => ({ propertyType: "شقة", purpose, city: "الرياض", district, price, priceStatus: "NEGOTIABLE" });
+  const seedJourney = (id, data) => h.store.seed(`offices/${OFFICE_A}/journeys/${id}`, {
+    officeId: OFFICE_A, journeyId: id, matchId: `m_${id}`, offerId: "opp_seed_offer", requestId: "opp_seed_request", assignedBrokerId: OWNER_A, status: "ACTIVE",
+    offerSummary: summaryOf("RENT", "الملقا", 65000), requestSummary: summaryOf("LEASE_REQUEST", "الملقا", 70000), openTasks: {}, activeProposals: {}, createdAt: iso(900), updatedAt: iso(30), ...data
+  });
+  const viewedAt = iso(180);
+  seedJourney("jr_seed_viewed", { stage: "VIEWING", viewing: { state: "CONFIRMED", at: viewedAt, confirmedAt: iso(600) }, currentAction: { type: "VIEWING_RESULT", taskId: "seed_vr", label: "نتيجة المعاينة" }, openTasks: { seed_vr: { type: "VIEWING_RESULT", ref: `viewing:${viewedAt}`, status: "OPEN" } } });
+  await go(page, "journey/jr_seed_viewed", "#now [data-result]");
+  const answers = await page.locator("#now [data-result]").evaluateAll((els) => els.map((el) => el.textContent.trim()));
+  check("six viewing answers, none preselected", answers.join("|") === "مناسب|يحتاج تفاوض|معاينة أخرى|لم يحضر|لا يوجد رد|غير مناسب" && (await page.locator('#now [data-result][aria-pressed="true"]').count()) === 0, answers.join("|"));
+  await shot(page, "13-viewing-answers");
+  await page.locator('#now [data-result="no_show"]').click();
+  check("choosing «لم يحضر» shows the next step before saving", (await page.locator("#now .os-meta-row").last().innerText()).includes("تحديد موعد معاينة جديد"));
+  await page.locator("#now").getByRole("button", { name: "حفظ النتيجة ومتابعة الصفقة" }).click();
+  const rescheduled = await until(() => { const j = h.store.get(`offices/${OFFICE_A}/journeys/jr_seed_viewed`); return j.viewing?.rescheduleRequested ? j : null; }, "reschedule saved");
+  check("«لم يحضر» keeps the deal open in the viewing stage and asks for a new time", rescheduled.status === "ACTIVE" && rescheduled.stage === "VIEWING" && rescheduled.viewing.state === "NONE" && rescheduled.viewing.previous.result === "no_show" && rescheduled.phase === "VIEWING_SCHEDULING");
+  await page.locator("#now").getByRole("button", { name: "تحديد معاينة" }).waitFor();
+  check("the workspace now asks for a new viewing time", (await page.locator("#now").innerText()).includes("لم يحضر أحد الطرفين"));
+
+  // 15 — deal documents
+  step = "15: deal documents";
+  seedJourney("jr_seed_docs", { stage: "AGREEMENT", viewing: { state: "DONE", result: "interested", at: iso(600), doneAt: iso(500) } });
+  await go(page, "journey/jr_seed_docs", "[data-docs]");
+  check("the documents checklist is open in the agreement stage with the rent template", (await page.locator("[data-panel='documents']").getAttribute("open")) !== null && (await page.locator("[data-doc]").count()) === 6 && (await page.locator('[data-doc="lease_contract"]').count()) === 1);
+  check("summary: المطلوب · الموجود · الناقص · المراجعة", (await page.locator("[data-docs-summary]").innerText()) === "المطلوب 5 · الموجود 0 · الناقص 5 · تمت مراجعته 0");
+  await page.selectOption('[data-doc-status="title_deed"]', "RECEIVED");
+  await page.locator('[data-doc="title_deed"][data-doc-state="RECEIVED"]').waitFor();
+  await page.selectOption('[data-doc-status="owner_id"]', "REVIEWED");
+  await page.locator('[data-doc="owner_id"][data-doc-state="REVIEWED"]').waitFor();
+  await page.selectOption('[data-doc-status="tenant_id"]', "NOT_REQUIRED");
+  await page.locator('[data-doc="tenant_id"][data-doc-state="NOT_REQUIRED"]').waitFor();
+  check("statuses are saved by the Worker and the summary follows", (await page.locator("[data-docs-summary]").innerText()) === "المطلوب 4 · الموجود 2 · الناقص 2 · تمت مراجعته 1" && h.store.get(`offices/${OFFICE_A}/journeys/jr_seed_docs`).documents.owner_id.status === "REVIEWED");
+  await page.fill('input[name="documentLabel"]', "وكالة شرعية");
+  await page.locator("[data-doc-add]").click();
+  await page.locator("[data-doc-remove]").waitFor();
+  check("an own document can be added (it counts as required)", (await page.locator("[data-doc]").count()) === 7 && (await page.locator("[data-docs-summary]").innerText()).startsWith("المطلوب 5"));
+  await shot(page, "14-deal-documents");
+  await page.reload(); await page.locator("[data-docs]").waitFor();
+  check("the checklist survives reload", (await page.locator('[data-doc="title_deed"]').getAttribute("data-doc-state")) === "RECEIVED" && (await page.locator("[data-doc]").count()) === 7);
+  await page.locator("[data-doc-remove]").click();
+  await until(async () => (await page.locator("[data-doc]").count()) === 6, "own document removed");
+  check("the deal card moved to «مستندات» in Daily Tasks", h.store.list(`offices/${OFFICE_A}/operations`).some((op) => op.journeyId === "jr_seed_docs" && op.type === "DEAL_JOURNEY" && op.journeyStep === 4 && op.status === "OPEN"));
+  const docEvents = h.store.list(`offices/${OFFICE_A}/journeys/jr_seed_docs/events`).filter((e) => e.type === "DOCUMENT_UPDATED");
+  check("every document change is on the deal timeline", docEvents.length === 5, String(docEvents.length));
+  await page.locator(".os-icon-btn[aria-label='إجراءات الفرصة']").click();
+  await page.locator(".os-menu").getByRole("button", { name: "إتمام الصفقة" }).click();
+  await page.locator(".os-sheet").getByRole("button", { name: "تأكيد إتمام الصفقة" }).click();
+  await page.locator(".os-dialog").waitFor();
+  const closeText = await page.locator(".os-dialog").innerText();
+  check("closing names the missing documents before the final confirmation", closeText.includes("مستندات ناقصة (2)") && closeText.includes("عقد الوساطة") && closeText.includes("عقد الإيجار الموثق"), closeText.replace(/\n/g, " ").slice(0, 120));
+  await page.locator(".os-dialog .os-btn.primary").click();
+  const closedDeal = await until(() => { const j = h.store.get(`offices/${OFFICE_A}/journeys/jr_seed_docs`); return j.status === "CLOSED_WON" ? j : null; }, "deal closed");
+  check("the deal closes with its full history and the documents state kept", closedDeal.outcome.documents.missing === 2 && closedDeal.documents.title_deed.status === "RECEIVED");
+  await page.locator("[data-doc-status][disabled]").first().waitFor();
+  check("a closed deal shows its documents read-only", (await page.locator("[data-doc-status]:not([disabled])").count()) === 0 && (await page.locator("[data-doc-add]").count()) === 0);
+  await go(page, "tasks?step=5", "[data-closed-deal]");
+  check("the closed deal appears under «إغلاق»", (await page.locator('[data-closed-deal="jr_seed_docs"]').count()) === 1);
 
   check("no browser console errors", errors.length === 0, errors.slice(0, 4).join(" | "));
 } catch (error) {

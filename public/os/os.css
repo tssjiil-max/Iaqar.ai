@@ -691,3 +691,28 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-gallery-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .os-photo-full img { width: 100%; height: auto; max-height: 76vh; object-fit: contain; border-radius: 12px; display: block; background: var(--brand-tint-2); }
 @media (max-width: 340px) { .os-photo-btn { width: 26px; height: 26px; } .os-photo-controls { gap: 2px; padding: 3px; } }
+
+/* ---------- Deal documents (المطلوب · الموجود · الناقص · المراجعة) ---------- */
+.os-documents > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+.os-documents > summary::-webkit-details-marker { display: none; }
+.os-documents > summary .os-badge { margin-inline-start: auto; }
+.os-documents > summary > svg:last-child { width: 18px; height: 18px; }
+.os-docs-summary { margin: 8px 0 6px; font-size: .86rem; }
+.os-docs { list-style: none; margin: 0; padding: 0; display: grid; }
+.os-doc { display: grid; grid-template-columns: 30px minmax(0, 1fr) minmax(104px, 34%) auto; gap: 8px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--brand-tint); }
+.os-doc:last-child { border-bottom: 0; }
+.os-doc-mark { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--warn-tint); color: var(--warn); }
+.os-doc-mark svg { width: 17px; height: 17px; }
+.os-doc.is-received .os-doc-mark { background: var(--brand-tint); color: var(--brand-primary); }
+.os-doc.is-reviewed .os-doc-mark { background: var(--ok-tint); color: var(--ok); }
+.os-doc.is-not_required .os-doc-mark { background: var(--brand-tint-2); color: var(--faint); }
+.os-doc.is-not_required .os-doc-copy b { color: var(--faint); text-decoration: line-through; }
+.os-doc-copy { min-width: 0; display: grid; }
+.os-doc-copy b { color: var(--brand-dark); font-size: .92rem; overflow-wrap: anywhere; }
+.os-doc-copy small { color: var(--muted); font-size: .76rem; overflow-wrap: anywhere; }
+.os-doc-status { min-height: 38px; padding: 4px 8px; font-size: .84rem; }
+.os-doc .os-icon-btn { width: 34px; height: 34px; min-width: 34px; min-height: 34px; color: var(--bad); }
+.os-doc-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 10px; }
+.os-doc-add .os-btn { min-height: var(--tap); }
+.os-docs-link { width: 100%; border: 0; background: var(--brand-tint-2); border-radius: 12px; padding: 8px 10px; margin-top: 8px; color: var(--brand-dark); font: inherit; font-size: .86rem; text-align: start; cursor: pointer; }
+@media (max-width: 360px) { .os-doc { grid-template-columns: 26px minmax(0, 1fr) minmax(92px, 36%) auto; gap: 6px; } .os-doc-mark { width: 26px; height: 26px; } }

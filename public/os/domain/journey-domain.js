@@ -81,12 +81,22 @@ export const VIEWING_STATE_LABEL = Object.freeze({
   CANCELLED: "أُلغي الموعد"
 });
 
-/** «ما نتيجة المعاينة؟» — three answers only. */
+/**
+ * «ما نتيجة المعاينة؟» — six answers. Each one moves the deal by a fixed rule:
+ *   مناسب → المستندات والإغلاق · يحتاج تفاوض → التفاوض (السعر فقط) · غير مناسب → إغلاق هذه المطابقة
+ *   معاينة أخرى / لم يحضر → تحديد موعد جديد · لا يوجد رد → متابعة ثم تسجيل النتيجة
+ */
 export const VIEWING_RESULTS = Object.freeze([
   { id: "interested", label: "مناسب", icon: "check-circle", next: "AGREEMENT" },
   { id: "needs_negotiation", label: "يحتاج تفاوض", icon: "handshake", next: "NEGOTIATION" },
+  { id: "another_viewing", label: "معاينة أخرى", icon: "calendar", next: "RESCHEDULE" },
+  { id: "no_show", label: "لم يحضر", icon: "clock", next: "RESCHEDULE" },
+  { id: "no_response", label: "لا يوجد رد", icon: "hourglass", next: "FOLLOW_UP" },
   { id: "not_suitable", label: "غير مناسب", icon: "x-circle", next: "CLOSE_MATCH" }
 ]);
+
+/** Days until the broker is reminded again after «لا يوجد رد». */
+export const VIEWING_NO_RESPONSE_DAYS = 2;
 
 export function viewingResultOf(id) {
   return VIEWING_RESULTS.find((item) => item.id === id) || null;
@@ -152,6 +162,10 @@ export function effectOfViewingResult(resultId) {
   if (result.next === "AGREEMENT") return { stage: STAGE.AGREEMENT, next: "AGREEMENT_FOLLOW_UP" };
   // Only the price opens again; the viewing stays done and the path is not restarted.
   if (result.next === "NEGOTIATION") return { stage: STAGE.NEGOTIATION, next: "REOPEN_PRICE" };
+  // The deal stays in the viewing stage: a new time is needed (another viewing, or a party did not come).
+  if (result.next === "RESCHEDULE") return { stage: STAGE.VIEWING, next: "RESCHEDULE_VIEWING" };
+  // Nothing is decided yet: the result task stays open and comes back after a follow-up.
+  if (result.next === "FOLLOW_UP") return { stage: STAGE.VIEWING, next: "FOLLOW_UP_RESULT", followUpInDays: VIEWING_NO_RESPONSE_DAYS };
   // Close this match only; the offer and the request stay available.
   return { stage: STAGE.CLOSED, next: "CLOSE_MATCH" };
 }
@@ -211,7 +225,8 @@ export const EVENT_TEXT = Object.freeze({
   CLOSED_WON: "تم إتمام الصفقة",
   CLOSED_LOST: "أغلقت الفرصة دون صفقة",
   PROPOSAL_SUPERSEDED: "تم استبدال مقترح سابق",
-  FOLLOW_UP_DONE: "تمت المتابعة"
+  FOLLOW_UP_DONE: "تمت المتابعة",
+  DOCUMENT_UPDATED: "تحديث مستندات الصفقة"
 });
 
 export const EVENT_SOURCE = Object.freeze({

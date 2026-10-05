@@ -19,6 +19,8 @@ import {
 import { lifecycleOf, priceOf, LIFECYCLE } from "../../../public/os/domain/records-domain.js";
 import { PHASE, VIEWING_MINUTES, brokerBusy, checkBrokerAvailability, journeyPhase, phaseInfo } from "../../../public/os/domain/deal-flow-domain.js";
 import { cleanText, formatDateTime, toDate } from "../../../public/os/domain/format-domain.js";
+import { documentChecklist, documentSummary, prepareDocumentChange, sameDocumentEntry } from "../../../public/os/domain/deal-documents-domain.js";
+import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
 import { appendJourneyEvent } from "./event-log.js";
 import { finishTasks, journeyTaskId, journeyTitle, notifyBroker, upsertJourneyTask } from "./task-service.js";
 import { assertCanActOn, canCloseDeal, forbidden } from "./permissions.js";
@@ -344,6 +346,47 @@ export async function recordViewingResult(ctx, { actor, officeId, journeyId, res
   const closing = effect.next === "CLOSE_MATCH";
   const add = [];
   if (effect.next === "AGREEMENT_FOLLOW_UP") add.push({ type: "DEAL_ACTION", ref: `agreement:${viewingKey}`, reason: "المعاينة مناسبة — أنهِ الصفقة", actionLabel: "إنهاء الصفقة" });
+
+  // «لا يوجد رد»: nothing is decided. The result task stays open and returns after the follow-up
+  // period; the viewing itself is not marked done, so the real result can still be recorded.
+  if (effect.next === "FOLLOW_UP_RESULT") {
+    const openResult = Object.values(journey.openTasks || {}).find((task) => task.type === "VIEWING_RESULT");
+    const due = new Date(now.getTime() + Number(effect.followUpInDays || 2) * 24 * 60 * 60 * 1000);
+    return applyJourneyChange(ctx, {
+      officeId, journeyId, actor,
+      mutate: (j) => {
+        const last = j.viewing?.followUp || {};
+        if (last.result === result && last.note === cleanNote && toDate(last.at) && now.getTime() - toDate(last.at).getTime() < 60 * 1000) return null;
+        return { viewing: { ...(j.viewing || {}), followUp: { result, label: option.label, note: cleanNote, at: now.toISOString(), by: actor.uid, count: Number(last.count || 0) + 1 } } };
+      },
+      add: [{ type: "VIEWING_RESULT", ref: openResult?.ref || `viewing:${viewingKey}`, dueAt: due, reason: "لا يوجد رد بعد المعاينة — تابع الطرف ثم سجّل النتيجة", actionLabel: "نتيجة المعاينة" }],
+      event: { type: "VIEWING_RESULT", key: [viewingKey, result, cleanNote, now.toISOString().slice(0, 16)], text: `بعد المعاينة: ${option.label} — متابعة ${formatDateTime(due, now)}${cleanNote ? ` — ${cleanNote}` : ""}` }
+    });
+  }
+
+  // «معاينة أخرى» / «لم يحضر»: the deal stays in the viewing stage and needs a new time.
+  if (effect.next === "RESCHEDULE_VIEWING") {
+    const reason = result === "no_show" ? "لم يحضر أحد الطرفين — حدّد موعد معاينة جديدًا" : "مطلوب معاينة أخرى — حدّد موعدًا جديدًا";
+    return applyJourneyChange(ctx, {
+      officeId, journeyId, actor,
+      finish: (task) => task.type === "VIEWING_RESULT" || task.type === "VIEWING_CONFIRM" || task.type === "SEND_PROPOSAL",
+      mutate: (j) => {
+        const v = j.viewing || {};
+        // Already waiting for a new time with this same answer: a repeated press changes nothing.
+        if (v.rescheduleRequested === true && String(v.state || "") === VIEWING_STATE.NONE && v.previous?.result === result && String(v.previous?.note || "") === cleanNote) return null;
+        return {
+          stage: STAGE.VIEWING,
+          viewing: {
+            state: VIEWING_STATE.NONE, rescheduleRequested: true, attempts: Number(v.attempts || 1) + 1,
+            previous: { at: v.at || null, result, resultLabel: option.label, note: cleanNote, recordedAt: now.toISOString(), recordedBy: actor.uid }
+          }
+        };
+      },
+      add: [{ type: "SEND_PROPOSAL", ref: `reviewing:${viewingKey}:${result}`, reason, actionLabel: "تحديد موعد" }],
+      event: { type: "VIEWING_RESULT", key: [viewingKey, result, cleanNote], text: `نتيجة المعاينة: ${option.label}${cleanNote ? ` — ${cleanNote}` : ""} — مطلوب موعد جديد` }
+    });
+  }
+
   const res = await applyJourneyChange(ctx, {
     officeId, journeyId, actor,
     finishStatus: closing ? "DISMISSED" : "COMPLETED",
@@ -432,6 +475,49 @@ export async function completeFollowUp(ctx, { actor, officeId, journeyId, taskId
   });
 }
 
+/**
+ * «مستندات الصفقة»: mark one document ناقص / موجود / تمت المراجعة / غير مطلوب, add an own item,
+ * or remove an own item. Each change is a timeline event of the deal and an audit entry.
+ */
+export async function updateDealDocument(ctx, { actor, officeId, journeyId, documentId = "", status = "", note, label = "", remove = false }) {
+  const journey = await loadJourney(ctx, officeId, journeyId);
+  assertCanActOn(ctx.deps, actor, journey);
+  if (!isJourneyOpen(journey)) throw ctx.deps.appError("journey_closed", 409, "الصفقة مغلقة — مستنداتها للعرض فقط");
+  const now = ctx.now();
+  const newId = documentId ? "" : `custom_${(await ctx.deps.sha256Hex(`doc|${officeId}|${journeyId}|${cleanText(label, 80)}`)).slice(0, 16)}`;
+  const change = prepareDocumentChange(journey, { documentId, status, note, label, remove }, { now, actorUid: actor.uid, newId });
+  if (!change.ok) throw ctx.deps.appError("document_invalid", 400, change.error);
+  const result = await applyJourneyChange(ctx, {
+    officeId, journeyId, actor,
+    mutate: (j) => {
+      const documents = { ...(j.documents || {}) };
+      if (change.remove) {
+        if (!documents[change.id]) return null;
+        delete documents[change.id];
+        return { documents };
+      }
+      // Re-validate against the live document so two brokers never overwrite each other's item.
+      const live = prepareDocumentChange(j, { documentId, status, note, label, remove }, { now, actorUid: actor.uid, newId });
+      if (!live.ok || sameDocumentEntry(documents[live.id], live.entry)) return null;
+      documents[live.id] = live.entry;
+      return { documents };
+    },
+    event: {
+      type: "DOCUMENT_UPDATED", key: [change.id, change.remove ? "remove" : change.entry.status, change.remove ? "" : change.entry.note, now.toISOString().slice(0, 16)],
+      text: `مستند «${change.label}»: ${change.statusLabel}${!change.remove && change.entry.note ? ` — ${change.entry.note}` : ""}`
+    }
+  });
+  if (result.changed) {
+    await writeAudit(ctx, {
+      officeId, action: AUDIT_ACTIONS.DEAL_DOCUMENT_UPDATED, actorUid: actor.uid, entityType: "deal", entityId: journeyId,
+      key: `${change.id}:${change.remove ? "remove" : change.entry.status}:${now.toISOString()}`,
+      details: { documentId: change.id, label: change.label, status: change.remove ? "REMOVED" : change.entry.status }
+    });
+  }
+  const summary = documentSummary(documentChecklist(result.journey));
+  return { ...result, documentId: change.id, summary: { required: summary.required, present: summary.present, missing: summary.missing, reviewed: summary.reviewed, complete: summary.complete } };
+}
+
 /** Explicit completion: WON needs the permission holder; LOST closes without a deal. */
 export async function closeJourney(ctx, { actor, officeId, journeyId, outcome, reason = "", finalPrice = 0 }) {
   const journey = await loadJourney(ctx, officeId, journeyId);
@@ -446,6 +532,9 @@ export async function closeJourney(ctx, { actor, officeId, journeyId, outcome, r
   const now = ctx.now();
   const cleanReason = cleanText(reason, 200);
   const price = Math.max(0, Math.round(Number(finalPrice) || 0));
+  // The state of the documents at closing is kept with the outcome (the broker decides; nothing is hidden).
+  const docs = documentSummary(documentChecklist(journey));
+  const documentsAtClose = { required: docs.required, present: docs.present, missing: docs.missing, reviewed: docs.reviewed, missingLabels: docs.missingLabels.slice(0, 12) };
   const res = await applyJourneyChange(ctx, {
     officeId, journeyId, actor,
     finish: () => true,
@@ -457,15 +546,23 @@ export async function closeJourney(ctx, { actor, officeId, journeyId, outcome, r
         closedAt: now,
         archivedAt: now,
         activeProposals: {},
-        outcome: { result: won ? "WON" : "LOST", reason: cleanReason, finalPrice: price || null, closedAt: now.toISOString(), closedBy: actor.uid }
+        outcome: { result: won ? "WON" : "LOST", reason: cleanReason, finalPrice: price || null, closedAt: now.toISOString(), closedBy: actor.uid, ...(won ? { documents: documentsAtClose } : {}) }
       }
       : null),
     event: {
       type: won ? "CLOSED_WON" : "CLOSED_LOST", key: ["close"],
-      text: won ? `تم إتمام الصفقة${price ? ` بسعر ${price.toLocaleString("en-US")} ريال` : ""}` : `أغلقت الفرصة دون صفقة${cleanReason ? ` — ${cleanReason}` : ""}`
+      text: won
+        ? `تم إتمام الصفقة${price ? ` بسعر ${price.toLocaleString("en-US")} ريال` : ""}${docs.missing ? ` — مستندات ناقصة عند الإتمام: ${docs.missing}` : ""}`
+        : `أغلقت الفرصة دون صفقة${cleanReason ? ` — ${cleanReason}` : ""}`
     }
   });
   await afterJourneyClosed(ctx, officeId, journey, { won });
+  if (res.changed) {
+    await writeAudit(ctx, {
+      officeId, action: AUDIT_ACTIONS.DEAL_CLOSED, actorUid: actor.uid, entityType: "deal", entityId: journeyId, key: "close",
+      details: { result: won ? "WON" : "LOST", finalPrice: price || null, reason: cleanReason, documentsMissing: won ? docs.missing : undefined }
+    });
+  }
   return res;
 }
 
