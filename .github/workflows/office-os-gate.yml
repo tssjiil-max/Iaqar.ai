@@ -94,6 +94,9 @@ jobs:
       - name: Office library (folders, upload, download, edit, delete, member rights)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/library" node scripts/qa/office-os/library.e2e.mjs
+      - name: Negotiation room (three parts, terms per property, requests to the broker, live between the sides)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/session" node scripts/qa/office-os/session.e2e.mjs
       - name: Office completion (header, tools, deal path, records, photos, documents, channels, inbox, search, audit)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/completion" node scripts/qa/office-os/completion.e2e.mjs

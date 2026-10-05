@@ -17,13 +17,16 @@ import { suggestForJourney } from "./assist-service.js";
 import { arrangeRecordImages } from "./record-media-service.js";
 import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
 import { convertInboxMessage } from "./inbox-service.js";
-import { recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
+import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),
   "/os/reply/submit": (ctx, body, meta) => submitReply(ctx, { token: body.token, optionId: body.optionId, text: body.text, submissionId: body.submissionId, ip: meta.ip }),
   "/os/session/view": (ctx, body, meta) => viewSession(ctx, { token: body.token, ip: meta.ip }),
-  "/os/session/act": (ctx, body, meta) => submitSessionAction(ctx, { token: body.token, action: body.action, price: body.price, viewingAt: body.viewingAt, submissionId: body.submissionId, ip: meta.ip })
+  "/os/session/act": (ctx, body, meta) => submitSessionAction(ctx, {
+    token: body.token, action: body.action, price: body.price, viewingAt: body.viewingAt, termId: body.termId, optionId: body.optionId,
+    topicId: body.topicId, message: body.message, submissionId: body.submissionId, ip: meta.ip
+  })
 });
 
 const OFFICE_ROUTES = Object.freeze({
@@ -58,6 +61,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/session/handoff": (ctx, b, actor) => recordSessionHandoff(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), role: text(b.role) }),
   "/os/session/message": (ctx, b, actor) => sendBrokerMessage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), audience: text(b.audience), text: b.text, requestKey: text(b.requestKey) }),
   "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
+  "/os/session/request": (ctx, b, actor) => handleSessionRequest(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), requestId: text(b.requestId), decision: text(b.decision), text: b.text, requestKey: text(b.requestKey) }),
   // Channels: every member sees the state; linking and unlinking are the manager's (checked in the service).
   "/os/channels/status": (ctx) => channelsStatus(ctx, { officeId: ctx.officeId }),
   "/os/channels/telegram/link": (ctx, b, actor) => startTelegramLink(ctx, { actor, officeId: ctx.officeId }),
@@ -106,6 +110,17 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
     };
   };
   try {
+    // The room's main photo, by the party's own link (bytes, not JSON).
+    if (url.pathname === "/os/session/image") {
+      const picture = await sessionImage(await makeCtx(""), { token: body.token, ip: meta.ip });
+      if (!picture) return deps.jsonResponse({ ok: false, error: "not_found", requestId }, 404);
+      const response = deps.jsonResponse({}, 200);
+      const headers = new Headers(response.headers);
+      headers.set("content-type", picture.contentType);
+      headers.set("cache-control", "private, max-age=300");
+      headers.set("x-content-type-options", "nosniff");
+      return new Response(picture.body, { status: 200, headers });
+    }
     const publicHandler = PUBLIC_ROUTES[url.pathname];
     if (publicHandler) {
       const ctx = await makeCtx("");

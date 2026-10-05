@@ -24,6 +24,11 @@ const negLinks = (await callWorker(h, "/os/session/links", { officeId: OFFICE_A,
 const viewLinks = (await callWorker(h, "/os/session/links", { officeId: OFFICE_A, journeyId: s.viewingConfirm.journeyId })).links;
 await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), action: "minus5", submissionId: "widths-client-minus5" }, "");
 await callWorker(h, "/os/session/message", { officeId: OFFICE_A, journeyId: s.negotiation.journeyId, audience: "both", text: "يمكنكما الرد على الأسعار مباشرة من هنا.", requestKey: "widths-m1" });
+// The room: a term waiting for the client's answer, one agreed term, and a request waiting for the broker.
+await callWorker(h, "/os/session/act", { token: linkToken(negLinks.owner.url), action: "term_propose", termId: "payment_method", optionId: "mixed", submissionId: "widths-term-1" }, "");
+await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), action: "term_propose", termId: "transfer_time", optionId: "two_weeks", submissionId: "widths-term-2" }, "");
+await callWorker(h, "/os/session/act", { token: linkToken(negLinks.owner.url), action: "term_accept", termId: "transfer_time", optionId: "two_weeks", submissionId: "widths-term-3" }, "");
+await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), action: "intervention", message: "أحتاج مهلة قصيرة لترتيب التمويل قبل الرد على السعر النهائي، هل يمكن ذلك؟", submissionId: "widths-request-1" }, "");
 
 const SCREENS = [
   { name: "public-office", url: "/o/sultan", wait: "text=لدي عقار", auth: false },
@@ -64,7 +69,11 @@ const SCREENS = [
   { name: "session-owner-typed", url: `/s#${linkToken(negLinks.owner.url)}`, wait: ".os-session-actions", auth: false, act: async (p) => { await p.locator('[data-session-action="adjust"]').click(); await p.locator('[data-session-action="manual"]').click(); await p.locator('input[name="price"]').waitFor(); } },
   { name: "session-client-waiting", url: `/s#${linkToken(negLinks.client.url)}`, wait: ".os-session-actions", auth: false },
   { name: "session-owner-viewing", url: `/s#${linkToken(viewLinks.owner.url)}`, wait: "text=بانتظار تأكيد الوسيط", auth: false },
-  { name: "session-broker", url: `/#/session/${s.negotiation.journeyId}`, wait: ".os-session-summary" }
+  { name: "room-client-term-options", url: `/s#${linkToken(negLinks.client.url)}`, wait: '[data-term="payment_method"] [data-term-action="propose"]', auth: false, act: async (p) => { await p.locator('[data-term="payment_method"] [data-term-action="propose"]').click(); await p.locator("[data-term-option]").first().waitFor(); } },
+  { name: "room-owner-info-topics", url: `/s#${linkToken(negLinks.owner.url)}`, wait: '[data-room-extra="info"]', auth: false, act: async (p) => { await p.locator('[data-room-extra="info"]').click(); await p.locator("[data-info-topic]").first().waitFor(); } },
+  { name: "room-owner-note-to-broker", url: `/s#${linkToken(negLinks.owner.url)}`, wait: '[data-room-extra="broker"]', auth: false, act: async (p) => { await p.locator('[data-room-extra="broker"]').click(); await p.locator('textarea[name="brokerNote"]').waitFor(); } },
+  { name: "session-broker", url: `/#/session/${s.negotiation.journeyId}`, wait: ".os-session-summary" },
+  { name: "room-broker-rephrase", url: `/#/session/${s.negotiation.journeyId}`, wait: "[data-request]", act: async (p) => { await p.locator('[data-request-action="rephrase"]').click(); await p.locator('textarea[name="requestText"]').waitFor(); } }
 ];
 
 function layoutIssues() {

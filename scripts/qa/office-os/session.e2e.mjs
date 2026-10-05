@@ -1,5 +1,6 @@
-// جلسة التفاوض — browser check on the local harness (real Worker, in-memory store):
-// owner and client pages side by side, broker view, live updates without reload.
+// غرفة التفاوض — browser check on the local harness (real Worker, in-memory store):
+// owner and client pages side by side, broker view, live updates without reload; the three
+// parts of the room, the terms of the property, and requests that reach the broker only.
 //   node scripts/qa/office-os/session.e2e.mjs   (OUT_DIR for screenshots)
 import path from "node:path";
 import fs from "node:fs";
@@ -19,6 +20,13 @@ const s = await seedStates(h);
 const jid = s.negotiation.journeyId;
 const token = (url) => String(url).split("#")[1];
 const links = (await callWorker(h, "/os/session/links", { officeId: OFFICE_A, journeyId: jid })).links;
+
+// A main photo on the offer of this deal (a real 1×1 JPEG through the Worker's upload route).
+const { idTokenFor } = await import(path.join(ROOT, "scripts/qa/office-os/server.mjs"));
+const offerId = h.store.get(`offices/${OFFICE_A}/journeys/${jid}`).offerId;
+const jpeg = Buffer.from("/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/yQALCAABAAEBAREA/8wABgAQEAX/2gAIAQEAAD8A0s8g/9k=", "base64");
+const uploaded = await fetch(`${h.origin}/worker/media/record-image`, { method: "POST", headers: { authorization: `Bearer ${idTokenFor(OWNER_A)}`, "x-office-id": OFFICE_A, "x-record-id": offerId, "content-type": "image/jpeg" }, body: jpeg });
+if (uploaded.status !== 201) throw new Error(`photo upload failed: ${uploaded.status}`);
 
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 const device = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "ar-SA", hasTouch: true, isMobile: true };
@@ -87,14 +95,77 @@ await step("typed price takes digits only", async () => {
   await logEvent(owner, "اقترح سعرًا").waitFor({ state: "attached", timeout: 9000 });
 });
 
-await step("intervention → broker view flags it live and resolves it", async () => {
-  await owner.locator('[data-session-action="intervention"]').click();
-  await broker.getByText("طلب المالك تدخل الوسيط").waitFor({ timeout: 9000 });
+await step("the room has three parts and the terms of this kind of property (a villa sale)", async () => {
+  for (const page of [owner, client]) {
+    for (const part of ["property", "agreed", "versus"]) if ((await page.locator(`[data-room-part="${part}"]`).count()) !== 1) throw new Error(`part ${part} missing`);
+  }
+  const order = await owner.locator("[data-room-part]").evaluateAll((els) => els.map((el) => el.getAttribute("data-room-part")).join(","));
+  if (order !== "property,agreed,versus") throw new Error(`order: ${order}`);
+  if ((await owner.locator(".os-room").getAttribute("data-room-family")) !== "VILLA" || (await owner.locator(".os-room").getAttribute("data-room-deal")) !== "sale") throw new Error("wrong room rules");
+  const terms = await owner.locator("[data-term]").evaluateAll((els) => els.map((el) => el.getAttribute("data-term")));
+  if (!terms.includes("payment_method") || !terms.includes("furniture") || terms.includes("rent_payments") || terms.includes("land_pricing")) throw new Error(`terms: ${terms.join(",")}`);
+  if ((await owner.locator("[data-room-versus] [data-side]").count()) !== 2) throw new Error("the two sides are not facing each other");
+  await client.locator("[data-room-image]").waitFor({ timeout: 9000 });
+  const src = await client.locator("[data-room-image]").getAttribute("src");
+  if (!src.startsWith("blob:")) throw new Error(`the photo must come through the side's link, got ${src.slice(0, 40)}`);
+  const html = await client.content();
+  if (html.includes("record-media") || html.includes(offerId) || html.includes(OFFICE_A)) throw new Error("a storage path or an internal id reached the side's page");
+  if (!(await client.locator("[data-room-image]").evaluate((img) => img.complete && img.naturalWidth > 0))) throw new Error("the photo did not render");
+  if (await owner.locator("[data-room-part] textarea, [data-room-part] input[type=text]").count()) throw new Error("free typing is offered to a side before it asks for the broker");
+});
+
+await step("a term: the owner proposes, the client sees it live and accepts → «ما تم الاتفاق عليه»", async () => {
+  await owner.locator('[data-term="payment_method"] [data-term-action="propose"]').click();
+  await owner.locator('[data-term="payment_method"] [data-term-option="bank"]').click();
+  await owner.locator('[data-term="payment_method"][data-term-state="PENDING"]').waitFor();
+  if (!(await owner.locator('[data-term="payment_method"] [data-term-chip]').innerText()).includes("بانتظار رد العميل")) throw new Error("owner is not told he is waiting");
+  await client.locator('[data-term="payment_method"] [data-term-action="accept"]').waitFor({ timeout: 9000 });
+  if (await client.locator('[data-agreed="term:payment_method"]').count()) throw new Error("a proposal was shown as an agreement");
+  if ((await client.locator('[data-side="client"]').getAttribute("data-side-turn")) !== "ACT") throw new Error("the client is not told an answer is expected");
+  await client.screenshot({ path: path.join(OUT, "client-term-pending.png"), fullPage: true });
+  await client.locator('[data-term="payment_method"] [data-term-action="accept"]').click();
+  await client.locator('[data-agreed="term:payment_method"]').waitFor();
+  await owner.locator('[data-agreed="term:payment_method"]').waitFor({ timeout: 9000 });
+  const meta = await owner.locator('[data-agreed="term:payment_method"]').innerText();
+  if (!meta.includes("تمويل بنكي") || !meta.includes("وافق العميل")) throw new Error(`agreed row: ${meta}`);
+  await logEvent(owner, "تم الاتفاق").waitFor({ state: "attached" });
+});
+
+await step("«طلب تدخل الوسيط»: the note reaches the broker only; he passes it on as passed on by the broker", async () => {
+  await owner.locator('[data-room-extra="broker"]').click();
+  await owner.locator('textarea[name="brokerNote"]').fill("أريد إتمام البيع قبل نهاية الشهر 0559998877");
+  await owner.locator('[data-room-send="broker"]').click();
+  await owner.locator('[data-room-request][data-request-open="true"]').waitFor();
+  await broker.locator('[data-request][data-request-role="owner"]').waitFor({ timeout: 9000 });
+  const text = await broker.locator('[data-request] [data-request-text]').innerText();
+  if (!text.includes("قبل نهاية الشهر")) throw new Error(`broker did not get the note: ${text}`);
   const task = h.store.list(`offices/${OFFICE_A}/operations`).find((op) => op.type === "SESSION_INTERVENTION" && op.status === "OPEN");
   if (!task) throw new Error("no SESSION_INTERVENTION task");
-  await broker.screenshot({ path: path.join(OUT, "broker-intervention.png") });
-  await broker.getByRole("button", { name: "تم التدخل" }).click();
-  await broker.getByText("طلب المالك تدخل الوسيط").waitFor({ state: "detached" });
+  await broker.screenshot({ path: path.join(OUT, "broker-request.png"), fullPage: true });
+  await client.waitForTimeout(5500);
+  if ((await client.locator("body").innerText()).includes("نهاية الشهر")) throw new Error("the client saw the owner's note before the broker decided");
+  await broker.locator('[data-request-action="forward"]').click();
+  const dialog = await broker.locator(".os-dialog").innerText();
+  if (dialog.includes("0559998877") || !dialog.includes("منقولة عن طريق الوسيط")) throw new Error(`forward dialog: ${dialog}`);
+  await broker.locator(".os-dialog .os-btn.primary").click();
+  await broker.locator("[data-request]").waitFor({ state: "detached" });
+  await logEvent(client, "نقل الوسيط عن المالك").waitFor({ state: "attached", timeout: 9000 });
+  const passed = await logEvent(client, "نقل الوسيط عن المالك").textContent();
+  if (passed.includes("0559998877") || !passed.includes("قبل نهاية الشهر")) throw new Error(`passed text: ${passed}`);
+  if (!(await broker.locator("[data-broker-log]").count())) throw new Error("the broker's intervention log is missing");
+  await owner.locator('[data-room-request][data-request-open="false"]').waitFor({ timeout: 9000 });
+});
+
+await step("the broker rewrites a request for the other side, in his own name", async () => {
+  await client.locator('[data-room-extra="info"]').click();
+  await client.locator('[data-info-topic="age"]').click();
+  await broker.locator('[data-request][data-request-kind="info"]').waitFor({ timeout: 9000 });
+  await broker.locator('[data-request-action="rephrase"]').click();
+  await broker.locator('textarea[name="requestText"]').fill("العميل يسأل عن عمر الفيلا، هل تزودنا به؟");
+  await broker.locator('[data-request-send="rephrase"]').click();
+  await broker.locator("[data-request]").waitFor({ state: "detached" });
+  await logEvent(owner, "العميل يسأل عن عمر الفيلا").waitFor({ state: "attached", timeout: 9000 });
+  if ((await logEvent(owner, "العميل يسأل عن عمر الفيلا").textContent()).includes("نقل الوسيط عن")) throw new Error("the broker's own wording was shown as the client's words");
 });
 
 await step("broker message to the owner only", async () => {
@@ -113,6 +184,8 @@ await step("task and deep link open the same session", async () => {
   const page = await pageFor(`/?openOperation=${encodeURIComponent(task.id)}`, true);
   await page.waitForURL(new RegExp(`#/session/${jid}`), { timeout: 12000 });
   await page.locator(".os-session-summary").waitFor();
+  await page.locator('[data-request][data-request-role="client"]').waitFor();
+  await callWorker(h, "/os/session/resolve", { officeId: OFFICE_A, journeyId: jid });
 });
 
 
@@ -133,6 +206,14 @@ await step("price accepted → both pages show the slot picker; picking a free s
   // both sides agreed on a free slot → booked on the broker's calendar
   await owner.locator(".os-session-note", { hasText: "موعد المعاينة" }).waitFor({ timeout: 9000 });
   await client.locator(".os-session-note", { hasText: "موعد المعاينة" }).waitFor({ timeout: 9000 });
+});
+
+await step("screens of the room (sides and broker) without horizontal scroll", async () => {
+  for (const [name, page] of [["room-owner", owner], ["room-client", client], ["room-broker", broker]]) {
+    const overflow = await page.evaluate(() => document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth);
+    if (overflow > 1) throw new Error(`${name}: horizontal scroll ${overflow}px`);
+    await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
+  }
 });
 
 await step("deal stays one card in Daily Tasks while the deal is open", async () => {
