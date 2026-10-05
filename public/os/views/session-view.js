@@ -19,6 +19,8 @@ import { PRICE_STATUS_LABEL, normalizePriceStatus } from "../domain/deal-flow-do
 import { REQUEST_DECISIONS, awaitingParties, openRequests, partyStatus, propertyFacts, readiness, relaySafeText, roomAgreedItems, roomSchema, termRows } from "../domain/negotiation-room-domain.js";
 import { recordById } from "../core/state.js";
 import { confirmDialog } from "../core/ui.js";
+import { dealFollowBar } from "./deal-follow-bar.js";
+import { rememberDeal } from "../core/deal-return.js";
 
 function isSessionEvent(event) {
   const type = String(event.type || "");
@@ -190,9 +192,10 @@ export function renderSession(container, { journeyId }) {
     const y = window.scrollY;
     clear(container);
     append(container, h("div", { class: "os-page-head" },
-      h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "رجوع"),
+      h("button", { type: "button", class: "os-back", onClick: () => { rememberDeal(journeyId); back("tasks"); } }, ic("chev-right"), "رجوع"),
       h("h1", { class: "os-page-title", text: "غرفة التفاوض" }),
       h("button", { type: "button", class: "os-ref", onClick: () => go(`journey/${journeyId}`), text: "الفرصة" })));
+    if (journey) append(container, dealFollowBar({ ...journey, journeyId }, { page: "session" }));
     if (journey === undefined) { append(container, h("div", { class: "os-skeleton" })); return; }
     if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
     const prices = sessionPrices(journey);

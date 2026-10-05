@@ -11,7 +11,9 @@ import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
 import { runAction, openSheet } from "../core/ui.js";
 import { getDoc, listClosedJourneys } from "../core/live.js";
-import { CLOSED_STEP, TASK_FILTERS, closedDealModel, closedDealsFor, countTasksByStep, filterTasks, filterTasksByStep, parseMeta, parsePathStep, sortClosedDeals, sortTasks, taskCardModel, visibleToActor, dealRoute } from "../domain/task-domain.js";
+import { CLOSED_STEP, TASK_FILTERS, closedDealModel, closedDealsFor, filterTasks, isActiveTask, parseMeta, parsePathStep, sortClosedDeals, taskCardModel, taskTypeOf, visibleToActor, dealRoute } from "../domain/task-domain.js";
+import { cardCountLabel, countGroupsByStep, filterGroupsByStep, groupDealTasks, subtaskCountLabel, taskStateLabel, urgencyOf } from "../domain/deal-card-domain.js";
+import { dealToReturnTo, forgetDeal, rememberDeal } from "../core/deal-return.js";
 import { compatibilityLevel } from "../domain/match-review-domain.js";
 import { formatDateTime, formatPrice, relativeAgo } from "../domain/format-domain.js";
 import { photo, taskRecord, taskStep, timeChip, stepStrip, STEPS } from "./reference-layout.js";
@@ -82,32 +84,111 @@ function primaryAction(task, model) {
   return () => openGeneralTask(task);
 }
 
-function taskCard(task, now) {
-  const model = modelFor(task, now);
-  const button = h("button", { type: "button", class: "os-btn primary block", "data-action": model.type },
-    h("span", { text: model.button }), ic("chev-left"));
-  button.lastChild.classList.add("chev");
+function taskTypeLabel(type) {
+  return taskTypeOf({ type }).badge || "";
+}
 
-  if (model.inline === "CONFIRM_VIEWING" && model.journeyId) {
-    button.addEventListener("click", () => runAction(button, () => api("/os/journeys/viewing/confirm", { officeId: session.officeId, journeyId: model.journeyId }), { success: "تم تأكيد موعد المعاينة" }));
+/** The button of one task, wired to what that task does today (confirm, remind, or open its screen). */
+function taskButton(task, model) {
+  const button = h("button", { type: "button", class: "os-btn primary", "data-action": model.type }, h("span", { text: model.button }), ic(model.icon));
+  const journeyId = model.journeyId;
+  if (model.inline === "CONFIRM_VIEWING" && journeyId) {
+    button.addEventListener("click", () => runAction(button, () => api("/os/journeys/viewing/confirm", { officeId: session.officeId, journeyId }), { success: "تم تأكيد موعد المعاينة" }));
   } else if (model.type === "AWAITING_REPLY" && model.proposalId) {
     let proposal;
     getDoc(session.officeId, "proposals", model.proposalId).then((p) => { proposal = p; }).catch(() => {});
     button.addEventListener("click", () => {
-      if (!proposal) { go(`journey/${model.journeyId}?focus=AWAITING_REPLY`); return; }
+      if (!proposal) { rememberDeal(journeyId); go(`journey/${journeyId}?focus=AWAITING_REPLY`); return; }
       openSheet("إرسال تذكير", proposalPreparedPanel({ ...proposal, proposalId: model.proposalId }));
     });
   } else {
-    button.addEventListener("click", primaryAction(task, model));
+    const open = primaryAction(task, model);
+    button.addEventListener("click", () => { rememberDeal(journeyId); open(); });
   }
+  return button;
+}
 
+function actionTitleOf(model) {
+  // For tasks whose button only names the page it opens, the heading says what is needed instead.
+  if (String(model.type).startsWith("SESSION_")) return taskTypeLabel(model.type) || model.button;
+  return model.type === "MATCH_REVIEW" ? "تطابق جديد" : model.type === "VIEWING_CONFIRM" ? "تأكيد موعد المعاينة" : model.type === "SEND_PROPOSAL" ? "متابعة عرض سعر" : model.button;
+}
+
+function taskCard(task, now) {
+  const model = modelFor(task, now);
+  const button = taskButton(task, model);
   const record=taskRecord(task)||{},view=recordView(record),step=taskStep(task);
   const meta=parseMeta(task),client=recordById(task.requestId||meta.clientRequestId),contactName=client?.contactName||view.contactName;
-  const actionTitle=model.type==="MATCH_REVIEW"?"تطابق جديد":model.type==="VIEWING_CONFIRM"?"تأكيد موعد المعاينة":model.type==="SEND_PROPOSAL"?"متابعة عرض سعر":model.button;
-  button.classList.remove("block");button.lastChild.remove();button.append(ic(model.icon));
   // One main button per card; tapping the card itself opens «تفاصيل المهمة» (no second arrow).
-  const card=h("article",{class:"os-card ref-task-card","data-task":task.id,"data-type":model.type,onClick:(e)=>{if(!e.target.closest("button,a"))go("task/"+task.id);}},photo(record),h("div",{class:"ref-task-copy"},h("h3",{text:actionTitle}),contactName?h("b",{class:"ref-contact"},ic("user"),contactName):null,h("p",{text:[view.propertyType,view.location].filter(Boolean).join(" · ")||model.title})),h("div",{class:"ref-task-actions"},h("div",{class:"ref-task-meta"},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}),timeChip(task)),h("div",{},button)));
+  const card=h("article",{class:"os-card ref-task-card","data-task":task.id,"data-type":model.type,onClick:(e)=>{if(!e.target.closest("button,a"))go("task/"+task.id);}},photo(record),h("div",{class:"ref-task-copy"},h("h3",{text:actionTitleOf(model)}),contactName?h("b",{class:"ref-contact"},ic("user"),contactName):null,h("p",{text:[view.propertyType,view.location].filter(Boolean).join(" · ")||model.title})),h("div",{class:"ref-task-actions"},h("div",{class:"ref-task-meta"},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}),timeChip(task)),h("div",{},button)));
   return card;
+}
+
+/** The deal's tasks as rows, each with its own button (the same action it has as a card). */
+export function dealTaskRows(tasks, primary, now = new Date()) {
+  return tasks.map((task) => {
+    const sub = modelFor(task, now);
+    const act = taskButton(task, sub);
+    act.classList.remove("primary"); act.classList.add("secondary");
+    const urgency = urgencyOf(task, now);
+    return h("li", { class: "ref-deal-sub" + (task === primary ? " is-primary" : ""), "data-subtask": task.id, "data-subtask-type": sub.type },
+      h("div", { class: "ref-deal-sub-copy" },
+        h("b", { text: taskTypeOf(task).badge }),
+        sub.reason ? h("span", { text: sub.reason }) : null,
+        h("small", { "data-subtask-state": "", class: urgency.level ? `is-${urgency.level}` : "", text: [taskStateLabel(task, now), urgency.level && urgency.level !== "late" ? urgency.label : ""].filter(Boolean).join(" · ") })),
+      act);
+  });
+}
+
+/** Main button + title of a deal's most pressing task (shared with «متابعة الصفقة»). */
+export function dealPrimaryControl(primary, now = new Date()) {
+  const model = modelFor(primary, now);
+  const button = taskButton(primary, model);
+  button.setAttribute("data-deal-primary", "");
+  return { model, button, title: actionTitleOf(model) };
+}
+
+/**
+ * One card for a whole deal: who, what property, which stage, what is needed now, and ONE main
+ * button (the most pressing task). Its other tasks stay inside the card, each with its own button.
+ */
+function dealCard(group, now) {
+  const primary = group.primary;
+  const model = modelFor(primary, now);
+  const button = taskButton(primary, model);
+  button.setAttribute("data-deal-primary", "");
+  const source = group.card || primary;
+  const meta = parseMeta(source);
+  const offer = recordById(source.offerId || meta.ownerOfferId) || recordById(primary.offerId) || taskRecord(primary) || {};
+  const request = recordById(source.requestId || meta.clientRequestId) || recordById(primary.requestId) || null;
+  const view = recordView(offer);
+  const owner = String(offer.contactName || "").trim();
+  const client = String(request?.contactName || "").trim();
+  const parties = [owner ? `المالك: ${owner}` : "", client ? `العميل: ${client}` : ""].filter(Boolean).join(" · ");
+  const open = () => { rememberDeal(group.id); go(`deal/${group.id}`); };
+  const now_ = [actionTitleOf(model), model.reason && model.reason !== actionTitleOf(model) ? model.reason : ""].filter(Boolean).join(" — ");
+  const follow = h("button", { type: "button", class: "ref-deal-follow", "data-deal-follow": group.id }, ic("flag"), h("span", { text: "متابعة الصفقة" }), ic("chev-left"));
+  follow.addEventListener("click", open);
+  // Every open task of the deal (its own deal task included) is listed whenever there is more than the one on the main button.
+  const rows = dealTaskRows(group.tasks, primary, now);
+  const more = group.tasks.length > 1
+    ? h("details", { class: "ref-deal-more", "data-deal-subtasks": String(group.tasks.length) },
+      h("summary", {}, ic("clipboard"), h("span", { text: `مهام الصفقة: ${subtaskCountLabel(group.tasks.length)}` }), ic("chev-down")),
+      h("ul", { class: "ref-deal-subs" }, rows))
+    : null;
+  return h("article", { class: "os-card ref-task-card ref-deal-card", "data-task": primary.id, "data-deal": group.id, "data-type": model.type, "data-deal-tasks": String(group.tasks.length), onClick: (e) => { if (!e.target.closest("button,a,summary,details")) open(); } },
+    photo(offer),
+    h("div", { class: "ref-task-copy" },
+      h("h3", { text: [view.propertyType, view.location].filter(Boolean).join(" · ") || model.title || "صفقة" })),
+    h("div", { class: "ref-task-actions" },
+      h("div", { class: "ref-task-meta" }, h("span", { class: "ref-status step-" + group.step, "data-deal-stage": "", text: STEPS[group.step][0] }), timeChip(group.dueTask || primary)),
+      h("div", {}, button)),
+    h("div", { class: "ref-deal-foot" },
+      parties ? h("p", { class: "ref-deal-parties", "data-deal-parties": "" }, ic("users"), h("span", { text: parties })) : null,
+      h("p", { class: "ref-deal-now", "data-deal-now": "" },
+        group.urgency.label ? h("span", { class: `ref-urgency is-${group.urgency.level}`, "data-deal-urgency": group.urgency.level, text: group.urgency.label }) : null,
+        h("b", { text: "المطلوب الآن: " }), h("span", { text: now_ })),
+      h("div", { class: "ref-deal-links" }, more, follow)));
 }
 
 /** One closed deal in the «إغلاق» stage: what closed, how, when — opens the deal with its full history. */
@@ -132,6 +213,7 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
   let activeStep = parsePathStep(step);
   let closed = null;        // null = not loaded yet, [] = none
   let closedError = "";
+  let returned = null;      // the deal card the broker just came back to (briefly marked)
   const countPill = h("span", { class: "os-count" });
   const chipsRow = h("div", { class: "os-chips", role: "group", "aria-label": "تصفية المهام" });
   const list = h("div", { class: "os-task-list", "aria-live": "polite" });
@@ -155,14 +237,20 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
   const draw = () => {
     const now = new Date();
     const mine = state.tasks.filter((task) => visibleToActor(task, { uid: session.user?.uid, isManager: session.isManager, officeId: session.officeId }));
-    const inFilter = filterTasks(mine, active, now);
-    const counts = [...countTasksByStep(inFilter), closed ? closed.length : 0];
+    // One card per deal: a deal is listed when any of its tasks passes the filter, and its card always carries all of its open tasks.
+    const allGroups = groupDealTasks(mine.filter(isActiveTask), now);
+    const groupsFor = (filterId) => {
+      const pass = new Set(filterTasks(mine, filterId, now).map((task) => task.id));
+      return allGroups.filter((group) => (group.kind === "deal" ? group.tasks.some((task) => pass.has(task.id)) : pass.has(group.task.id)));
+    };
+    const inFilter = groupsFor(active);
+    const counts = [...countGroupsByStep(inFilter), closed ? closed.length : 0];
     clear(strip);
     strip.append(stepStrip({ active: activeStep, counts, onSelect: selectStep }));
 
     clear(chipsRow);
     for (const f of TASK_FILTERS) {
-      const n = filterTasks(mine, f.id, now).length;
+      const n = groupsFor(f.id).length;
       chipsRow.append(h("button", {
         type: "button", class: "os-chip", "aria-pressed": String(active === f.id),
         onClick: () => { active = f.id; writeRoute(); draw(); }
@@ -188,10 +276,10 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
       return;
     }
 
-    const shown = sortTasks(filterTasksByStep(inFilter, activeStep), now);
-    countPill.textContent = countLabel(shown.length);
+    const shown = filterGroupsByStep(inFilter, activeStep);
+    countPill.textContent = cardCountLabel(shown.length);
     if (activeStep !== null) {
-      append(stageHead, h("b", { text: `مرحلة «${STEPS[activeStep][0]}» — ${countLabel(shown.length)}` }),
+      append(stageHead, h("b", { text: `مرحلة «${STEPS[activeStep][0]}» — ${cardCountLabel(shown.length)}` }),
         h("button", { type: "button", class: "ref-stage-all", "data-stage-all": "", onClick: () => selectStep(null) }, "عرض كل المهام"));
     }
     if (!state.tasksReady) {
@@ -209,7 +297,20 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
         h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus"), "إضافة عرض أو طلب"))));
       return;
     }
-    for (const task of shown) append(list, taskCard(task, now));
+    for (const group of shown) append(list, group.kind === "deal" ? dealCard(group, now) : taskCard(group.task, now));
+    // Coming back from a deal: land on its card, not at the top of the list.
+    const returning = dealToReturnTo();
+    if (returning) {
+      const card = [...list.querySelectorAll("[data-deal]")].find((el) => el.dataset.deal === returning);
+      if (card) {
+        forgetDeal();
+        returned = { id: returning, until: Date.now() + 2400 };
+        requestAnimationFrame(() => card.scrollIntoView({ block: "center" }));
+        setTimeout(() => list.querySelectorAll(".is-returned").forEach((el) => el.classList.remove("is-returned")), 2400);
+      } else if (state.tasksReady) forgetDeal(); // the deal has no open card any more
+    }
+    // The mark survives a live redraw of the list during those moments.
+    if (returned && Date.now() < returned.until) [...list.querySelectorAll("[data-deal]")].find((el) => el.dataset.deal === returned.id)?.classList.add("is-returned");
   };
 
   append(container, strip, h("details",{class:"ref-filters"},h("summary",{},"تصفية المهام",countPill),chipsRow), stageHead, list);

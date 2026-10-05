@@ -4,7 +4,7 @@
  *   everything else                                → «دخول المكتب» + office app
  * Office app routes (hash): #/office (default) · #/tasks · #/task/<id> · #/repo · #/record/<id> · #/record/new ·
  *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/session/<journeyId> · #/community · #/library ·
- *   #/inbox · #/search · #/audit · #/tools/<forms|guide|services|calculator|market> · #/settings[/profile|link|cooperation|channels|notifications|brokers]
+ *   #/deal/<journeyId> (متابعة الصفقة) · #/inbox · #/search · #/audit · #/tools/<forms|guide|services|calculator|market> · #/settings[/profile|link|cooperation|channels|notifications|brokers]
  */
 
 import { h, clear, append } from "./core/dom.js";
@@ -29,8 +29,10 @@ import { renderChannelSettings, renderCooperationSettings, renderLinkSettings, r
 import { renderCommunity } from "./views/community.js";
 import { renderOfficeTool } from "./views/office-tools.js";
 import { renderAudit, renderInbox, renderSearch } from "./views/office-center.js";
+import { renderDealHub } from "./views/deal-hub.js";
 import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js";
 import { go, noteNavigation, setRenderer } from "./core/nav.js";
+import { forgetDeal } from "./core/deal-return.js";
 import { operationIdFromParams } from "./core/deep-link.js";
 
 const root = document.getElementById("app");
@@ -47,14 +49,15 @@ function view() {
   const { parts, query } = parseHash();
   const [section = "office", id = "", sub = ""] = parts;
   if (section === "office") return { name: "office", main: true, run: renderOffice };
-  if (section === "task" && id) return { name: "task", run: (el) => renderTaskDetail(el, { taskId: id }) };
+  if (section === "task" && id) return { name: "task", deal: true, run: (el) => renderTaskDetail(el, { taskId: id }) };
   if (section === "repo") return { name: "repo", main: true, run: (el) => renderRepository(el, { query }) };
   if (section === "record" && id === "new") return { name: "form", run: (el) => renderRecordForm(el, { kind: query.get("kind") || "OFFER" }) };
   if (section === "record" && sub === "edit") return { name: "form", run: (el) => renderRecordForm(el, { recordId: id }) };
   if (section === "record" && id) return { name: "record", run: (el) => renderRecordDetail(el, { recordId: id }) };
   if (section === "review" && id) return { name: "review", run: (el) => renderReview(el, { matchId: id }) };
-  if (section === "journey" && id) return { name: "journey", run: (el) => renderWorkspace(el, { journeyId: id, focus: query.get("focus") || "" }) };
-  if (section === "session" && id) return { name: "session", run: (el) => renderSession(el, { journeyId: id }) };
+  if (section === "journey" && id) return { name: "journey", deal: true, run: (el) => renderWorkspace(el, { journeyId: id, focus: query.get("focus") || "" }) };
+  if (section === "session" && id) return { name: "session", deal: true, run: (el) => renderSession(el, { journeyId: id }) };
+  if (section === "deal" && id) return { name: "tool", deal: true, run: (el) => renderDealHub(el, { journeyId: id }) };
   if (section === "community") return { name: "community", run: renderCommunity };
   if (section === "library") return { name: "library", run: renderLibrary };
   if (section === "tools") return { name: "tool", run: (el) => renderOfficeTool(el, { tool: id }) };
@@ -65,7 +68,7 @@ function view() {
     const page = { profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, channels: renderChannelSettings, notifications: renderNotificationSettings, brokers: renderSettings }[id] || renderSettingsHub;
     return { name: "settings", run: (el) => page(el) };
   }
-  return { name: "tasks", main: true, run: (el) => renderTasks(el, { filter: query.get("filter") || "all", step: query.get("step") }) };
+  return { name: "tasks", main: true, deal: true, run: (el) => renderTasks(el, { filter: query.get("filter") || "all", step: query.get("step") }) };
 }
 
 function render() {
@@ -73,6 +76,8 @@ function render() {
   cleanup = null;
   clear(root);
   const current = view();
+  // «الرجوع إلى بطاقة الصفقة» is kept only while the broker stays within a deal's pages and the tasks list.
+  if (!current.deal) forgetDeal();
   const page = h("main", { class: "os-app", "data-view": current.name });
   append(root, page);
   if (current.main) append(page, renderShellHeader({ active: current.name }));

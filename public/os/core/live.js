@@ -71,6 +71,12 @@ export function watchInbox(officeId, cb, onError, limit = 100) {
     (snap) => cb(snap.docs.map(docData)), onError);
 }
 
+/** Latest in-app notifications of this office (member read by rules; Worker-only writes). */
+export async function listNotifications(officeId, limit = 40) {
+  const snap = await office(officeId).collection("notifications").orderBy("createdAt", "desc").limit(limit).get();
+  return snap.docs.map(docData);
+}
+
 /** Latest audit entries of this office (member read by rules; Worker-only writes). */
 export async function listAuditLog(officeId, limit = 150) {
   const snap = await office(officeId).collection("auditLogs").orderBy("createdAt", "desc").limit(limit).get();

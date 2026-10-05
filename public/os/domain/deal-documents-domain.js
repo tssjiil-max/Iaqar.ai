@@ -60,6 +60,14 @@ export function documentTemplate(journey = {}) {
   return dealKindOf(journey) === "rent" ? RENT : SALE;
 }
 
+const LIBRARY_ID = /^[A-Za-z0-9_-]{6,160}$/;
+
+/** { libraryId, title } of a linked library file, or null. */
+export function linkedFile(file) {
+  if (!file || typeof file !== "object" || !LIBRARY_ID.test(String(file.libraryId || ""))) return null;
+  return { libraryId: String(file.libraryId), title: cleanText(file.title, 120) || "ملف من المكتبة" };
+}
+
 export function isDocStatus(value) {
   return Object.prototype.hasOwnProperty.call(DOC_STATUS, String(value || ""));
 }
@@ -86,6 +94,8 @@ export function documentChecklist(journey = {}) {
       status,
       statusLabel: DOC_STATUS_LABEL[status],
       note: cleanText(entry.note, 200),
+      // A file of the office library linked to this item (a reference only — the file stays in the library).
+      file: linkedFile(entry.file),
       updatedAt: toDate(entry.updatedAt),
       updatedBy: String(entry.updatedBy || "")
     };
@@ -150,6 +160,18 @@ export function prepareDocumentChange(journey = {}, input = {}, { now = new Date
   const customEntry = !templateItem && CUSTOM_ID.test(id) ? saved[id] : null;
   if (!templateItem && !customEntry) return { ok: false, error: "المستند غير موجود في هذه الصفقة" };
   const label = templateItem ? templateItem.label : cleanText(customEntry.label, 80);
+  // Linking / unlinking a library file changes only the link: status and note stay as they are.
+  if (input.file !== undefined || input.unlinkFile === true) {
+    const previous = saved[id] || {};
+    const file = input.unlinkFile === true ? null : linkedFile(input.file);
+    if (input.unlinkFile !== true && !file) return { ok: false, error: "اختر ملفًا من مكتبة المكتب" };
+    if (input.unlinkFile === true && !linkedFile(previous.file)) return { ok: false, error: "لا يوجد ملف مرتبط بهذا المستند" };
+    const entry = {
+      ...(customEntry ? { label, custom: true, createdAt: customEntry.createdAt || now.toISOString() } : {}),
+      status: isDocStatus(previous.status) ? previous.status : DOC_STATUS.MISSING, note: cleanText(previous.note, 200), file, ...stamp
+    };
+    return { ok: true, id, remove: false, label, statusLabel: file ? `أُرفق من المكتبة: ${file.title}` : "أُزيل ربط الملف", entry, fileChange: file ? "linked" : "unlinked" };
+  }
   if (input.remove === true) {
     if (templateItem) return { ok: false, error: "لا يمكن حذف مستند أساسي — اجعله «غير مطلوب» إن لم تحتجه" };
     return { ok: true, id, remove: true, label, statusLabel: "حُذف", entry: null };
@@ -157,12 +179,13 @@ export function prepareDocumentChange(journey = {}, input = {}, { now = new Date
   const status = String(input.status || "").toUpperCase();
   if (!isDocStatus(status)) return { ok: false, error: "اختر حالة المستند" };
   const previous = saved[id] || {};
-  const entry = { ...(customEntry ? { label, custom: true, createdAt: customEntry.createdAt || now.toISOString() } : {}), status, note: input.note === undefined ? cleanText(previous.note, 200) : note, ...stamp };
+  const entry = { ...(customEntry ? { label, custom: true, createdAt: customEntry.createdAt || now.toISOString() } : {}), status, note: input.note === undefined ? cleanText(previous.note, 200) : note, ...(linkedFile(previous.file) ? { file: linkedFile(previous.file) } : {}), ...stamp };
   return { ok: true, id, remove: false, label, statusLabel: DOC_STATUS_LABEL[status], entry };
 }
 
 /** True when the saved entry already says the same thing (replays change nothing). */
 export function sameDocumentEntry(a, b) {
   if (!a || !b) return false;
-  return String(a.status || "") === String(b.status || "") && cleanText(a.note, 200) === cleanText(b.note, 200) && cleanText(a.label, 80) === cleanText(b.label, 80);
+  return String(a.status || "") === String(b.status || "") && cleanText(a.note, 200) === cleanText(b.note, 200) && cleanText(a.label, 80) === cleanText(b.label, 80)
+    && String(linkedFile(a.file)?.libraryId || "") === String(linkedFile(b.file)?.libraryId || "");
 }
