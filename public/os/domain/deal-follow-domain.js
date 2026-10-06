@@ -154,6 +154,9 @@ const CONTACT_STATE = Object.freeze({
   SESSION_OPENED: { state: "seen", label: "فتح الطرف الرابط", certain: true },
   PARTY_REPLY: { state: "reply", label: "وصل رد", certain: true },
   SESSION_MOVE: { state: "reply", label: "رد داخل الغرفة", certain: true },
+  // Telegram accepted the bot's message for that person's chat (Telegram does not report reading).
+  BOT_MESSAGE: { state: "sent", label: "أرسله البوت", certain: true, note: "قبله تيليجرام — لا يُعرف هل قُرئ" },
+  BOT_HANDOVER: { state: "created", label: "البوت", certain: true },
   CALL_OUTCOME: { state: "reply", label: "رد بعد اتصال", certain: false, note: "سجّله الوسيط" }
 });
 const SIDES = new Set(["owner", "client"]);
@@ -177,4 +180,21 @@ export function communicationLog(events = [], { limit = 12 } = {}) {
         note: kind.note || "", text: String(event.text || ""), role: String(payload.role || ""), at: event.at || event.createdAt || null
       };
     });
+}
+
+/**
+ * The bot on this deal, for «متابعة الصفقة»: nothing when the bot never wrote about it.
+ *   { managed, paused, label, action: "pause" | "resume" }
+ */
+export function dealBotView(journey = {}) {
+  const bot = journey.bot || {};
+  if (bot.managed !== true && bot.paused !== true) return null;
+  const open = isOpenJourney(journey);
+  const paused = bot.paused === true;
+  return {
+    managed: bot.managed === true, paused,
+    label: paused ? "استلمت التواصل في هذه الصفقة — البوت متوقف عنها" : "البوت يمرّر ردود الطرفين في هذه الصفقة ويخبرك عند الحاجة",
+    action: !open ? "" : paused ? "resume" : "pause",
+    actionLabel: paused ? "إعادة التواصل للبوت" : "استلام التواصل من البوت"
+  };
 }

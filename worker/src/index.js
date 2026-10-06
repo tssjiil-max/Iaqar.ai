@@ -173,6 +173,8 @@ import {
   verifyTelegramWebhookSecret
 } from "./telegram-intake-service.js";
 import { handleCentralTelegramWebhook } from "./office-os/channels-service.js";
+import { askPartiesAboutMatch } from "./office-os/bot-service.js";
+import { botOutboundConfig, callTelegram } from "./office-os/bot-notify.js";
 import { classifyInboundMessage } from "../../public/os/domain/message-class-domain.js";
 import { createStore as createOfficeOsStore } from "./office-os/store.js";
 import { channelCleanupBoundaryGuarantees } from "./channel-boundary-domain.js";
@@ -499,7 +501,10 @@ export default {
           ok: true,
           service: "iaqar-whatsapp-official-intake",
           mode: "inbound-only",
+          // WhatsApp stays inbound-only. The Telegram bot is separate: it writes only where sending is
+          // allowed on this environment AND the office switched its bot on AND the person pressed Start.
           outboundMessaging: false,
+          telegramBot: botOutboundConfig(env).available ? "per_office_switch" : "off",
           deploymentEnvironment,
           firebaseConfigured,
           backendReady,
@@ -1812,8 +1817,13 @@ async function handleCentralTelegramRoute(request, env, requestId) {
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
   const deps = partySessionHelpers();
+  // «بوت المكتب» gets the same request context the office routes use (answers, links, opening a deal).
+  const botDeps = officeOsDeps().bind({ env, projectId, accessToken });
+  const bot = botOutboundConfig(env).available
+    ? { deps: botDeps, store: createOfficeOsStore(botDeps, { projectId, accessToken }), env, officeId: "", appOrigin: resolveAppOrigin(env), now: () => new Date() }
+    : null;
   const result = await handleCentralTelegramWebhook({
-    request, env, deps,
+    request, env, deps, bot,
     store: createOfficeOsStore(deps, { projectId, accessToken }),
     verifySecret: verifyTelegramWebhookSecret,
     // The routed update goes through the same inbound pipeline as the per-office address.
@@ -4230,6 +4240,24 @@ function canonicalMatchFields(linkage) {
   };
 }
 
+/**
+ * «بوت المكتب» — only when sending is allowed on this environment; the office's own switch and
+ * the client's link are checked inside. A side effect of matching, kept apart from it: whatever
+ * happens here, the Match and its MATCH_REVIEW task are already saved and stay as they are.
+ */
+async function askMatchSidesThroughBot({ projectId, officeId, matchId, accessToken, env }) {
+  if (!matchId || !botOutboundConfig(env || {}).available) return;
+  try {
+    const botDeps = officeOsDeps().bind({ env, projectId, accessToken });
+    await askPartiesAboutMatch(
+      { deps: botDeps, store: createOfficeOsStore(botDeps, { projectId, accessToken }), env, officeId, appOrigin: resolveAppOrigin(env), now: () => new Date() },
+      { officeId, matchId }
+    );
+  } catch (error) {
+    console.warn("[office-os] bot ask skipped", error?.code || error?.message);
+  }
+}
+
 async function ensurePersistedMatchReviewOperation({
   projectId, officeId, match, assignedBrokerId = "", accessToken, env = null,
   notifyOperation = false
@@ -4246,6 +4274,8 @@ async function ensurePersistedMatchReviewOperation({
   });
   const operationId = String(bundle?.operation?.id || "").trim();
   if (!operationId) throw new Error("match_review_operation_missing");
+  // «بوت المكتب»: a match that just became a review task is also put to the client by the bot.
+  if (bundle?.created) await askMatchSidesThroughBot({ projectId, officeId, matchId: String(match?.matchId || match?.id || ""), accessToken, env });
   return { bundle, operationId };
 }
 
@@ -7220,6 +7250,9 @@ function officeOsDeps() {
         }
       }),
       sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
+      // «بوت المكتب»: the one door to Telegram (returns «skipped» unless sending is allowed on this environment).
+      telegram: (method, payload) => callTelegram(env, method, payload),
+      appOrigin: resolveAppOrigin(env),
       // Media bucket for record photos (delete on removal); absent when storage is not configured.
       mediaBucket: env.IAQAR_MEDIA || null,
       // Turn one kept inbox message into a record through the same inbound pipeline as the channels.

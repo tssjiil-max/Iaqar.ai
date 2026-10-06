@@ -13,7 +13,7 @@ Inbound text is routed through Canonical Intake. Channel adapters must not creat
 - `TELEGRAM_OFFICE_ID` may lock the runtime to one office scope.
 - Text and supported downloaded media feed Canonical Intake with an idempotency key based on Telegram update ID.
 - Media requires `TELEGRAM_BOT_TOKEN` and the private media bucket.
-- Outbound Bot API sending is disabled in this phase.
+- Outbound Bot API sending was disabled in this phase. It now exists only as «بوت المكتب» (see `docs/OFFICE_BOT.md`): Staging only, behind each office's own switch, and only to people who linked themselves.
 
 ## WhatsApp
 
@@ -33,7 +33,7 @@ No production credentials or secrets are stored in this repository. Live Telegra
 
 ## Office-linked channels (Office OS — «قنوات المكتب»)
 
-Each office links its own channels from `#/settings/channels`; the server stores the link against the office id and uses it to route inbound messages. Nothing here sends a message.
+Each office links its own channels from `#/settings/channels`; the server stores the link against the office id and uses it to route inbound messages. Linking a channel sends nothing; the office bot that writes to the two sides of a match is a separate switch (`docs/OFFICE_BOT.md`).
 
 ### Telegram — one platform bot, many offices
 

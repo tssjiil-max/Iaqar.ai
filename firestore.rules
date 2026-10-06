@@ -41,7 +41,9 @@ service cloud.firestore {
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
         'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
         'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys', 'coordinationSessions', 'officeRatings',
-        'journeys', 'proposals', 'osFailures'
+        'journeys', 'proposals', 'osFailures',
+        // بوت المكتب: مفتاح التشغيل وأسئلة المطابقة — للـ Worker فقط (المدير يغيّر المفتاح عبر الـ Worker).
+        'botSettings', 'matchAsks'
       ];
     }
     function validOfficeProfile() {
@@ -571,6 +573,28 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /telegramOfficeLinks/{officeId} {
+      allow read, write: if false;
+    }
+    // بوت المكتب: الأطراف والوسطاء المرتبطون بالبوت وأسئلة المطابقة — للـ Worker فقط.
+    match /telegramParties/{partyKey} {
+      allow read, write: if false;
+    }
+    match /telegramBrokers/{brokerKey} {
+      allow read, write: if false;
+    }
+    match /telegramBotChats/{chatId} {
+      allow read, write: if false;
+    }
+    match /telegramAsks/{token} {
+      allow read, write: if false;
+    }
+    match /offices/{officeId}/matchAsks/{askId} {
+      allow read, write: if false;
+    }
+    match /offices/{officeId}/botSettings/{settingId} {
+      allow read, write: if false;
+    }
+    match /telegramPartyPending/{chatId} {
       allow read, write: if false;
     }
     match /partySessionTokens/{tokenHash} {

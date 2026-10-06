@@ -1,5 +1,6 @@
 /** «الإشعارات» — which kinds of notifications this office / this account receives. */
 
+import { brokerAlertsCard } from "./bot-settings.js";
 import { h, ic, clear, append } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
@@ -34,7 +35,8 @@ export function renderNotificationSettings(container) {
       h("div", { class: "os-card" },
         h("p", { class: "os-sub", text: "تُحفظ لهذا المكتب ولحسابك، ولا تصل إشعارات هذا المكتب إلى أي مكتب آخر. إيقاف نوع هنا يمنع إرساله من الخادم أيضًا." }),
         h("div", { class: "os-pref-list" }, rows)),
-      status, save);
+      status, save,
+      brokerAlertsCard());
   }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر قراءة تفضيلات الإشعارات لهذا المكتب" })); });
   return null;
 }

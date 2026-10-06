@@ -17,6 +17,7 @@ import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 import { connectWhatsapp, disconnectWhatsapp, loadChannels, startTelegramLink, unlinkTelegram } from "../core/channels.js";
 import { automationLabel } from "../domain/channels-domain.js";
 import { CHANNEL_REGISTRY } from "../domain/channel-link-domain.js";
+import { botCard, brokerAlertsCard } from "./bot-settings.js";
 import { OFFICE_NAME_MESSAGES, SPECIALTIES, buildOfficeProfile, checkPublicSlug } from "../domain/office-profile-domain.js";
 import { officePermanentUrl, officeShareUrl } from "../domain/share-card-domain.js";
 import { ensureShareCard } from "../core/share-card.js";
@@ -391,6 +392,7 @@ export function renderChannelSettings(container) {
   const pending = { link: "", expiresAt: "" };
   let timer = 0;
   let closed = false;
+  let alertsCard = null;
   const draw = (payload) => {
     const byId = Object.fromEntries((payload.channels || []).map((view) => [view.id, view]));
     if (byId.telegram && !byId.telegram.linkWaiting) pending.link = "";
@@ -399,13 +401,18 @@ export function renderChannelSettings(container) {
       h("p", { class: "os-sub", text: "كل مكتب يربط قنواته بنفسه، والرسائل الواردة تصل إلى مكتبك فقط. القنوات وسيلة نقل: تصل الرسائل إلى مركز التواصل ثم تُعالج كأي عميل أو عرض أو طلب." }),
       byId.whatsapp ? whatsappCard(byId.whatsapp, reload) : null,
       byId.telegram ? telegramCard(byId.telegram, reload, pending) : null,
+      payload.bot ? botCard(payload.bot, reload) : null,
+      // Built once: a redraw of this screen must not drop a link the manager just made.
+      payload.bot?.available ? (alertsCard = alertsCard || brokerAlertsCard()) : null,
       h("button", { type: "button", class: "os-set-row os-card", "data-open-inbox": "", onClick: () => go("inbox") },
         h("span", { class: "os-set-icon" }, ic("inbox-in")),
         h("span", { class: "os-set-text" }, h("b", { text: "مركز التواصل" }), h("small", { text: "كل ما وصل من القنوات، مصنّفًا: اجتماعية، استفسار، عرض، طلب، متعلقة بصفقة" })),
         ic("chev-left")),
       h("section", { class: "os-card os-set-legacy" },
         h("h2", { class: "os-h2" }, ic("shield"), "الأتمتة"),
-        h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` })));
+        h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: payload.bot?.enabled
+          ? `الوضع الحالي: ${automationLabel(payload)}. لا يُرسل شيء عبر واتساب تلقائيًا.`
+          : `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` })));
     clearTimeout(timer);
     // While a Telegram link waits for «ابدأ», check the state again so the screen turns «مرتبط» by itself.
     if (!closed && byId.telegram?.linkWaiting && pending.link) timer = setTimeout(() => { if (body.isConnected) reload().catch(() => { /* the next press or visit reloads */ }); }, 4000);

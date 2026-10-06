@@ -18,6 +18,8 @@ import {
   LINK_STATE, TELEGRAM_LINK_MINUTES, isLinkCode, parseStartCommand, telegramDeepLink, telegramLinkView, whatsappLinkView
 } from "../../../public/os/domain/channel-link-domain.js";
 
+import { botStatus, completeBotLink, handleBotCallback, handleBotChatMessage } from "./bot-service.js";
+
 const text = (value) => String(value ?? "").trim();
 
 export function telegramConfig(env = {}) {
@@ -65,18 +67,21 @@ async function whatsappState(ctx, officeId) {
   };
 }
 
-export async function channelsStatus(ctx, { officeId }) {
+export async function channelsStatus(ctx, { officeId, actor = null }) {
   const now = ctx.now();
   const [wa, tg, usage] = await Promise.all([
     whatsappState(ctx, officeId),
     ctx.store.get(["telegramOfficeLinks", officeId]),
     ctx.store.get(["offices", officeId, "usage", `whatsapp_${utcDayId(now)}`])
   ]);
+  const bot = await botStatus(ctx, { actor, officeId });
   return {
     ok: true,
-    // The safe default stays «assisted»: the system prepares, a human decides. Nothing is sent automatically.
-    automationMode: "ASSISTED",
-    outboundEnabled: false,
+    // «assisted»: the system prepares, a human decides. With the office's bot switched on, the
+    // bot asks the two sides about a match and passes room moves between them — nothing else is sent.
+    automationMode: bot.enabled ? "BOT_PARTIES" : "ASSISTED",
+    outboundEnabled: bot.enabled,
+    bot,
     channels: [
       whatsappLinkView(wa, whatsappConfig(ctx.env), usage || {}),
       telegramLinkView(tg || {}, telegramConfig(ctx.env), now)
@@ -140,7 +145,8 @@ export async function completeTelegramLink({ store, deps, now = new Date() }, { 
   if (!isLinkCode(code)) return { ok: false, reason: "code_invalid" };
   const hash = await deps.sha256Hex(`telegram-link|${code}`);
   const record = await store.get(["telegramLinkCodes", hash]);
-  if (!record || record.status !== "PENDING") return { ok: false, reason: "code_unknown" };
+  // A side's or a broker's bot link is never an office link (those are completed by the bot service).
+  if (!record || record.status !== "PENDING" || (record.kind && record.kind !== "office")) return { ok: false, reason: "code_unknown" };
   const officeId = deps.firestoreOfficeId(record.officeId);
   if (!officeId) return { ok: false, reason: "code_unknown" };
   const chatId = text(chat.id);
@@ -202,21 +208,53 @@ export async function officeForTelegramChat({ store, deps }, chatId) {
  *      `forward(officeId, update)` — the existing inbound pipeline; an unlinked chat is ignored.
  * Always answers 200 for a well-formed, authorised update so Telegram does not retry forever.
  */
-export async function handleCentralTelegramWebhook({ request, env, store, deps, verifySecret, forward, now = new Date() }) {
+export async function handleCentralTelegramWebhook({ request, env, store, deps, verifySecret, forward, now = new Date(), bot = null }) {
   const secret = verifySecret(request, env.TELEGRAM_WEBHOOK_SECRET);
   if (!secret.ok) return secret;
   const update = await request.json().catch(() => null);
   if (!update || typeof update !== "object" || update.update_id === undefined) return { ok: false, status: 400, error: "telegram_update_invalid" };
+  // «بوت المكتب»: a side pressed «مناسب / غير مناسب». A failure is logged, never sent back to Telegram as an error (it would retry forever).
+  if (update.callback_query) {
+    if (!bot) return { ok: true, status: 200, ignored: true, reason: "bot_off" };
+    try { return await handleBotCallback(bot, update.callback_query); } catch (error) {
+      console.error("[office-os] bot callback failed", error?.code || error?.message);
+      return { ok: true, status: 200, ignored: true, reason: "bot_error" };
+    }
+  }
   const message = update.message || update.channel_post || update.edited_message || {};
   const chat = message.chat || {};
   const code = parseStartCommand(message.text);
   if (code) {
+    if (bot) {
+      try {
+        const botLink = await completeBotLink(bot, { code, chat, from: message.from || {} });
+        if (botLink.handled) return { ok: true, status: 200, linked: botLink.ok === true, kind: botLink.kind || "", awaiting: botLink.awaiting || "", reason: botLink.ok ? "" : botLink.reason };
+      } catch (error) {
+        console.error("[office-os] bot link failed", error?.code || error?.message);
+        return { ok: true, status: 200, linked: false, reason: "bot_error" };
+      }
+    }
     const linked = await completeTelegramLink({ store, deps, now }, { code, chat, from: message.from || {} });
     return { ok: true, status: 200, linked: linked.ok, reason: linked.ok ? "" : linked.reason };
   }
-  if (/^\/start\b/.test(text(message.text))) return { ok: true, status: 200, ignored: true, reason: "start_without_code" };
+  if (/^\/start\b/.test(text(message.text))) {
+    // «/start» alone from a side that had stopped the bot: it is its way back.
+    if (bot && update.message && text(message.text) === "/start") {
+      try { const resumed = await handleBotChatMessage(bot, { update, message }); if (resumed) return resumed; } catch (error) { console.error("[office-os] bot resume failed", error?.code || error?.message); }
+    }
+    return { ok: true, status: 200, ignored: true, reason: "start_without_code" };
+  }
   const officeId = await officeForTelegramChat({ store, deps }, chat.id);
-  if (!officeId) return { ok: true, status: 200, ignored: true, reason: "chat_not_linked" };
+  if (!officeId) {
+    // Not an office's intake chat: it may be a side's own chat with the bot.
+    if (bot && update.message) {
+      try {
+        const handled = await handleBotChatMessage(bot, { update, message });
+        if (handled) return handled;
+      } catch (error) { console.error("[office-os] bot message failed", error?.code || error?.message); }
+    }
+    return { ok: true, status: 200, ignored: true, reason: "chat_not_linked" };
+  }
   const result = await forward(officeId, update);
   // «آخر رسالة» is stamped only when the message was really accepted for this office.
   if (result?.ok !== false && Number(result?.status || 200) < 400) {

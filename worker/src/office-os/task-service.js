@@ -9,6 +9,7 @@
 
 import { operationDocumentId } from "../operations-domain.js";
 import { recordTitle } from "../../../public/os/domain/records-domain.js";
+import { alertBrokerOnTelegram } from "./bot-notify.js";
 
 const TERMINAL = new Set(["COMPLETED", "DISMISSED", "EXPIRED"]);
 
@@ -122,7 +123,7 @@ export async function finishTasks(store, { officeId, taskIds = [], status = "COM
  * effect and must not undo the saved action.
  */
 export async function notifyBroker(store, deps, {
-  officeId, journey, taskId, dedupKey, title, body, pushType = "message", openSession = false, now = new Date()
+  officeId, journey, taskId, dedupKey, title, body, pushType = "message", openSession = false, urgent = false, now = new Date()
 }) {
   // Session notifications open the negotiation session itself (#/session/<journeyId>),
   // not the home page or the deal's current task.
@@ -155,6 +156,13 @@ export async function notifyBroker(store, deps, {
     sensitivePreview: false,
     createdBySystem: true
   });
+  // What needs the broker himself also reaches his own Telegram chat, when he linked one (never a duplicate).
+  if (created && urgent) {
+    await alertBrokerOnTelegram(store, deps, {
+      officeId, brokerId: journey.assignedBrokerId || "", title, body,
+      route: openSession ? `session/${journey.journeyId}` : `deal/${journey.journeyId}`, now
+    }).catch((error) => console.warn("[office-os] telegram alert failed", error?.message));
+  }
   if (!created || typeof deps.sendOfficePush !== "function") return { id, created, push: "skipped" };
   let push = "FAILED";
   let detail = "";

@@ -17,7 +17,9 @@ import { relativeAgo } from "../domain/format-domain.js";
 import { recordView } from "../domain/records-domain.js";
 import { isActiveTask, visibleToActor } from "../domain/task-domain.js";
 import { dealIdOf, groupDealTasks, subtaskCountLabel } from "../domain/deal-card-domain.js";
-import { communicationLog, communicationOptions, followSections, followSummary } from "../domain/deal-follow-domain.js";
+import { communicationLog, communicationOptions, dealBotView, followSections, followSummary } from "../domain/deal-follow-domain.js";
+import { runAction } from "../core/ui.js";
+import { setDealBotPaused } from "../core/bot.js";
 import { dealPrimaryControl, dealTaskRows } from "./tasks.js";
 
 export function renderDealHub(container, { journeyId }) {
@@ -82,9 +84,15 @@ export function renderDealHub(container, { journeyId }) {
 
     // 4 — the two existing ways to reach the sides, and what is known about each contact.
     const log = communicationLog(events);
+    const bot = dealBotView(journey);
+    const botToggle = bot?.action ? h("button", { type: "button", class: `os-btn ${bot.paused ? "secondary" : "danger"}`, "data-deal-bot-action": bot.action }, ic(bot.paused ? "send" : "user"), bot.actionLabel) : null;
+    if (botToggle) botToggle.addEventListener("click", () => runAction(botToggle, () => setDealBotPaused(session.officeId, journeyId, bot.action === "pause"), { success: bot.action === "pause" ? "استلمت التواصل — توقف البوت عن هذه الصفقة" : "عاد التواصل إلى البوت" }));
     append(container, h("section", { class: "os-card os-follow-contact", "data-follow-contact": "" },
       h("h2", { class: "os-h2", style: { marginBottom: "4px" } }, ic("send"), "التواصل مع الطرفين"),
       h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: "طريقتان قائمتان، تختار المناسب لكل حالة. لا يُرسل شيء إلا بضغطك على زر الإرسال في صفحته." }),
+      bot ? h("div", { class: "os-follow-option os-follow-bot", "data-deal-bot": bot.paused ? "PAUSED" : "ACTIVE" },
+        h("div", { class: "os-set-text" }, h("b", { text: "بوت المكتب" }), h("small", { text: bot.label })),
+        botToggle) : null,
       communicationOptions(journey).map((option) => {
         const open = h("button", { type: "button", class: "os-btn secondary", "data-contact-open": option.id, disabled: summary.open ? null : true }, ic(option.icon), option.button);
         open.addEventListener("click", () => go(option.route));

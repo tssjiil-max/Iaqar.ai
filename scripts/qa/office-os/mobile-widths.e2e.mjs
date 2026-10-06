@@ -17,6 +17,9 @@ const { seedStates } = await import(path.join(ROOT, "scripts/qa/office-os/seed.m
 
 const WIDTHS = [320, 360, 375, 390, 412, 430];
 const h = await startOfficeOsHarness();
+// «بوت المكتب» is available here so its cards and the side's link row are measured too. Nothing is sent:
+// the office's switch stays off and Telegram is never called.
+Object.assign(h.env, { TELEGRAM_BOT_TOKEN: "123456789:WIDTHS-TOKEN-never-used-to-send-00000000", TELEGRAM_WEBHOOK_SECRET: "widths-secret", TELEGRAM_BOT_USERNAME: "iaqar_widths_bot", TELEGRAM_OUTBOUND: "enabled" }); // pragma: allowlist secret
 const s = await seedStates(h);
 const { callWorker } = await import(path.join(ROOT, "scripts/qa/office-os/seed.mjs"));
 const linkToken = (url) => String(url).split("#")[1];
@@ -82,7 +85,11 @@ const SCREENS = [
   { name: "deal-follow-contact-log", url: `/#/deal/${s.negotiation.journeyId}`, wait: "[data-follow-contact]", act: async (p) => { await p.locator("[data-contact-log] > summary").click(); await p.locator("[data-contact-log][open]").waitFor(); } },
   { name: "deal-follow-closed", url: `/#/deal/${s.closed.journeyId}`, wait: "[data-follow-summary]" },
   { name: "journey-documents-library-picker", url: `/#/journey/${s.negotiation.journeyId}?focus=documents`, wait: 'details[data-panel="documents"][open]', act: async (p) => { await p.locator("[data-doc-attach]").first().click(); await p.locator("[data-library-pick]").waitFor(); } },
-  { name: "notifications-sheet", url: "/#/tasks", wait: "[data-task]", act: async (p) => { await p.locator("[data-header-bell]").click(); await p.locator("[data-notifications]").waitFor(); } }
+  { name: "notifications-sheet", url: "/#/tasks", wait: "[data-task]", act: async (p) => { await p.locator("[data-header-bell]").click(); await p.locator("[data-notifications]").waitFor(); } },
+  { name: "bot-cards", url: "/#/settings/channels", wait: "[data-bot]", act: async (p) => { await p.locator("[data-bot-alerts-state]").waitFor(); } },
+  { name: "bot-switch-confirm", url: "/#/settings/channels", wait: "[data-bot-toggle]", act: async (p) => { await p.locator("[data-bot-toggle]").click(); await p.locator(".os-dialog").waitFor(); } },
+  { name: "bot-alerts-link", url: "/#/settings/notifications", wait: "[data-bot-alerts-link]", act: async (p) => { await p.locator("[data-bot-alerts-link]").click(); await p.locator("[data-bot-alerts-open]").waitFor(); } },
+  { name: "record-bot-link", url: `/#/record/${s.review.requestId}`, wait: "[data-bot-party-link]", act: async (p) => { await p.locator("[data-bot-party-link]").click(); await p.locator("[data-bot-party-url]").waitFor(); } }
 ];
 
 function layoutIssues() {

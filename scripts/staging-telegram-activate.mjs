@@ -19,7 +19,8 @@ import { pathToFileURL } from "node:url";
 
 export const STAGING_WORKER_NAME = "iaqar-intake-staging";
 export const WEBHOOK_PATH = "/telegram/webhook";
-export const ALLOWED_UPDATES = Object.freeze(["message", "edited_message", "channel_post"]);
+// «callback_query» = a side pressing the bot's «مناسب / غير مناسب» buttons.
+export const ALLOWED_UPDATES = Object.freeze(["message", "edited_message", "channel_post", "callback_query"]);
 const TOKEN_SHAPE = /^\d{5,20}:[A-Za-z0-9_-]{30,80}$/;
 const SECRET_SHAPE = /^[A-Za-z0-9_-]{16,256}$/;
 const USERNAME_SHAPE = /^[A-Za-z][A-Za-z0-9_]{3,31}$/;
