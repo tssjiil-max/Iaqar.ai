@@ -100,3 +100,28 @@ test("assignment and deal-permission settings: managers only", async () => {
   await assertFails(setDoc(doc(as("owner-b"), "offices/office-a/officeSettings/assignment"), { officeId: "office-a", defaultBrokerId: "x" }, { merge: true }));
   assert.ok(true);
 });
+
+test("the office bot: its switch, its questions and its routing are closed to every client (Worker only)", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, "offices/office-a/botSettings/telegram"), { officeId: "office-a", enabled: false });
+    await setDoc(doc(db, "offices/office-a/matchAsks/ask_1"), { officeId: "office-a", state: "CLIENT_ASKED", client: { token: "secret-token" } });
+    await setDoc(doc(db, "telegramParties/tp_1"), { officeId: "office-a", chatId: "1", status: "ACTIVE" });
+    await setDoc(doc(db, "telegramBrokers/office-a__owner-a"), { officeId: "office-a", chatId: "2", status: "ACTIVE" });
+    await setDoc(doc(db, "telegramBotChats/1"), { chatId: "1", parties: { "office-a": "tp_1" } });
+    await setDoc(doc(db, "telegramAsks/tok_1"), { officeId: "office-a", matchId: "m1", role: "client" });
+    await setDoc(doc(db, "telegramPartyPending/1"), { officeId: "office-a", partyKey: "tp_1" });
+  });
+  for (const db of [as("owner-a"), as("broker-a"), as("owner-b"), anon()]) {
+    // Not even the office's manager switches the bot from the browser: the Worker checks his role and logs it.
+    await assertFails(setDoc(doc(db, "offices/office-a/botSettings/telegram"), { officeId: "office-a", enabled: true, minScore: 1 }));
+    await assertFails(updateDoc(doc(db, "offices/office-a/botSettings/telegram"), { enabled: true }));
+    await assertFails(getDoc(doc(db, "offices/office-a/botSettings/telegram")));
+    await assertFails(getDoc(doc(db, "offices/office-a/matchAsks/ask_1")));
+    await assertFails(setDoc(doc(db, "offices/office-a/matchAsks/ask_2"), { officeId: "office-a", state: "OPENED" }));
+    for (const path of ["telegramParties/tp_1", "telegramBrokers/office-a__owner-a", "telegramBotChats/1", "telegramAsks/tok_1", "telegramPartyPending/1"]) {
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), { officeId: "office-a", status: "ACTIVE" }));
+    }
+  }
+});

@@ -964,3 +964,14 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-lib-pick { appearance: none; border: 0; background: var(--surface-2); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; min-height: 54px; padding: 8px 12px; border-radius: 12px; text-align: start; font: inherit; color: inherit; cursor: pointer; }
 .os-lib-pick .os-set-text small { display: block; overflow-wrap: anywhere; }
 .os-lib-pick > svg { width: 18px; height: 18px; color: var(--faint); }
+
+/* «بوت المكتب» — the office's switch, a broker's alerts, a side's link */
+.os-bot-rules { margin: 4px 0 0; padding-inline-start: 18px; display: grid; gap: 4px; color: var(--muted); font-size: .86rem; }
+.os-bot-party { margin-top: 10px; display: grid; gap: 8px; }
+.os-bot-party[hidden] { display: none; }
+.os-bot-party-head { display: flex; align-items: center; gap: 8px; color: var(--blue); }
+.os-bot-party-head svg { width: 18px; height: 18px; flex: none; }
+.os-bot-link { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-size: .82rem; overflow-wrap: anywhere; user-select: all; }
+.os-bot-ask { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.os-bot-ask span { overflow-wrap: anywhere; }
+.os-follow-bot { border-inline-start: 3px solid var(--blue); }

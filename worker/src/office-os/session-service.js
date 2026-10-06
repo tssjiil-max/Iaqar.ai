@@ -12,6 +12,7 @@
  * no longer allowed. Replays with the same submission id are no-ops.
  */
 
+import { relayRoomMove } from "./bot-notify.js";
 import {
   OTHER_ACTIONS, PRICE_MOVES, ROLE_LABEL, SESSION_ROLE, SESSION_STAGES, availableActions, eventVisibleTo,
   isOpenJourney, moveText, parseTypedPrice, sessionEventCard, sessionPrices, sessionStage, sessionStageLabel
@@ -51,6 +52,9 @@ function rateLimit(ctx, route, ip) {
 export async function sessionHashOf(deps, token) {
   return `sl_${await deps.sha256Hex(`session-link|${token}`)}`;
 }
+
+/** Room moves the broker is told about on his own Telegram chat too (the rest he sees in the app). */
+const BROKER_NEEDED_MOVES = new Set(["intervention", "info_request", "to_broker", "accept", "accept_fixed", "decline_fixed", "viewing_ok"]);
 
 export function sessionUrlFor(origin, token) {
   return `${String(origin || "").replace(/\/+$/, "")}/s#${token}`;
@@ -553,10 +557,22 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
       title: applied.move === "intervention" ? `تدخل مطلوب — ${who}` : applied.move === "info_request" ? `طلب معلومة — ${who}` : `غرفة التفاوض — ${who}`,
       body: `${card.text}${card.detail ? `: ${card.detail}` : ""}`,
       pushType: applied.move.startsWith("viewing") ? "appointment" : "message",
-      openSession: true
+      openSession: true,
+      // What needs the broker himself (a request to him, a private price, an agreement, a booked viewing, a refusal).
+      urgent: BROKER_NEEDED_MOVES.has(applied.move)
     }
   });
   if (!result.changed) return { ok: true, state: "SAVED", duplicate: true };
+  // «بوت المكتب»: what both sides see in the room is passed to the other side in Telegram (when the office's bot is on).
+  if (!applied.revision && !["to_broker", "intervention", "info_request"].includes(applied.move)) {
+    await relayRoomMove(ctx, {
+      officeId, journey: result.journey, fromRole: role, text: `${card.text}${card.detail ? ` — ${card.detail}` : ""}`,
+      urlFor: async (toRole) => {
+        const secret = await ctx.store.get(["sessionLinkSecrets", secretId(officeId, journeyId, toRole)]);
+        return secret?.token && isReplyTokenShape(secret.token) ? sessionUrlFor(ctx.appOrigin, secret.token) : "";
+      }
+    }).catch((error) => console.warn("[office-os] bot relay failed", error?.message));
+  }
   // Both sides booked a free slot: the viewing is confirmed, so its reminders start.
   if (applied.move === "viewing_ok") await syncMatchAppointment(ctx, officeId, result.journey, result.journey?.viewing?.at, { confirmed: true });
   if (closing) await afterJourneyClosed(ctx, officeId, resolved.journey, { won: false });

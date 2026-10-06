@@ -17,6 +17,7 @@ import { suggestForJourney } from "./assist-service.js";
 import { arrangeRecordImages } from "./record-media-service.js";
 import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
 import { convertInboxMessage } from "./inbox-service.js";
+import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker } from "./bot-service.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
@@ -38,7 +39,14 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/records/media": (ctx, b, actor) => arrangeRecordImages(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), order: Array.isArray(b.order) ? b.order.slice(0, 40).map(text) : null, remove: Array.isArray(b.remove) ? b.remove.slice(0, 40).map(text) : null }),
   "/os/records/candidates": (ctx, b) => findCandidates(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), limit: b.limit }),
   "/os/records/pair": (ctx, b) => pairRecords(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), counterpartId: text(b.counterpartId) }),
-  "/os/review/decide": (ctx, b, actor) => decideMatchReview(ctx, { actor, officeId: ctx.officeId, matchId: text(b.matchId), decision: text(b.decision), postponeDays: b.postponeDays, reason: b.reason }),
+  "/os/review/decide": async (ctx, b, actor) => {
+    const decided = await decideMatchReview(ctx, { actor, officeId: ctx.officeId, matchId: text(b.matchId), decision: text(b.decision), postponeDays: b.postponeDays, reason: b.reason });
+    // With the office's bot on, the sides that are linked to it receive their room link right away.
+    if (decided?.journeyId && !decided.duplicate) {
+      await announceRoom(ctx, { officeId: ctx.officeId, journeyId: decided.journeyId, by: "broker" }).catch((error) => console.warn("[office-os] bot announce failed", error?.code || error?.message));
+    }
+    return decided;
+  },
   "/os/proposals/create": (ctx, b, actor) => createProposals(ctx, {
     actor, officeId: ctx.officeId, journeyId: text(b.journeyId), matchId: text(b.matchId), kind: text(b.kind),
     recipients: Array.isArray(b.recipients) ? b.recipients : [], fields: b.fields || {}, messages: b.messages || {}, requestKey: text(b.requestKey)
@@ -63,7 +71,14 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
   "/os/session/request": (ctx, b, actor) => handleSessionRequest(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), requestId: text(b.requestId), decision: text(b.decision), text: b.text, requestKey: text(b.requestKey) }),
   // Channels: every member sees the state; linking and unlinking are the manager's (checked in the service).
-  "/os/channels/status": (ctx) => channelsStatus(ctx, { officeId: ctx.officeId }),
+  "/os/channels/status": (ctx, b, actor) => channelsStatus(ctx, { officeId: ctx.officeId, actor }),
+  // «بوت المكتب»: the switch is the manager's; a broker links his own alerts; any member may hand a side its link.
+  "/os/bot/enable": (ctx, b, actor) => setBotEnabled(ctx, { actor, officeId: ctx.officeId, enabled: b.enabled === true }),
+  "/os/bot/broker/link": (ctx, b, actor) => startBrokerLink(ctx, { actor, officeId: ctx.officeId }),
+  "/os/bot/broker/unlink": (ctx, b, actor) => unlinkBroker(ctx, { actor, officeId: ctx.officeId }),
+  "/os/bot/party/link": (ctx, b, actor) => startPartyLink(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),
+  "/os/bot/party/status": (ctx, b) => partyLinkStatus(ctx, { officeId: ctx.officeId, recordId: text(b.recordId) }),
+  "/os/journeys/bot": (ctx, b, actor) => setJourneyBotPaused(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), paused: b.paused === true }),
   "/os/channels/telegram/link": (ctx, b, actor) => startTelegramLink(ctx, { actor, officeId: ctx.officeId }),
   "/os/channels/telegram/unlink": (ctx, b, actor) => unlinkTelegram(ctx, { actor, officeId: ctx.officeId }),
   "/os/channels/whatsapp/disconnect": (ctx, b, actor) => disconnectWhatsapp(ctx, { actor, officeId: ctx.officeId }),

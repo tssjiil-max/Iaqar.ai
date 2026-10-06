@@ -39,6 +39,9 @@ META_APP_ID = ""
 META_CONFIG_ID = ""
 FCM_WEB_PUSH_VAPID_KEY = "BD17gmynZ5N6PTXMSKPDx-h36-K_PrqqGMGHd8Hg-G0XjIBrDLRai_htH21Csc-oKJbdur1NDbareOf2I0fy5cU"
 GEMINI_MODEL = "gemini-3.1-flash-lite"
+# «بوت المكتب»: the platform's Telegram bot may write to linked sides and brokers on Staging only.
+# Each office still has its own switch (off by default). Not set for production.
+TELEGRAM_OUTBOUND = "enabled"
 
 [env.staging.ai]
 binding = "AI"

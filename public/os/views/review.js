@@ -3,6 +3,7 @@
  * Approve & start negotiation · Request information · Postpone · Reject.
  */
 
+import { botAskLine } from "./bot-settings.js";
 import { h, ic, clear, append } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
@@ -117,7 +118,8 @@ export function renderReview(container, { matchId }) {
       h("button", { type: "button", class: "os-btn secondary", onClick: () => openPostpone(match) }, ic("clock"), "تأجيل"),
       h("button", { type: "button", class: "os-btn danger", onClick: (e) => reject(match, e.currentTarget) }, ic("x-circle"), "رفض"));
 
-    append(container, 
+    append(container,
+      botAskLine(match),
       h("div", { class: "os-card os-review-card" },
         h("div", { class: "os-review-heading" },
           h("div", {},

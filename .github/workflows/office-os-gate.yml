@@ -103,6 +103,9 @@ jobs:
       - name: Broker steps (one card per deal, «متابعة الصفقة», both contact paths, notifications, search, library link)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/broker-steps" node scripts/qa/office-os/broker-steps.e2e.mjs
+      - name: Office bot on Telegram (switch, links, asking the two sides, opening the deal, taking it back)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/bot" node scripts/qa/office-os/bot.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4

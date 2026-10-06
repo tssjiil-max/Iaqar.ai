@@ -138,7 +138,7 @@ export async function applyJourneyChange(ctx, { officeId, journeyId, actor, fini
   }
   if (notify) {
     const taskId = additions[0]?.id || journey.currentAction?.taskId || "";
-    await notifyBroker(ctx.store, ctx.deps, { officeId, journey, taskId, dedupKey: notify.key, title: notify.title, body: notify.body, pushType: notify.pushType || "message", openSession: Boolean(notify.openSession), now })
+    await notifyBroker(ctx.store, ctx.deps, { officeId, journey, taskId, dedupKey: notify.key, title: notify.title, body: notify.body, pushType: notify.pushType || "message", openSession: Boolean(notify.openSession), urgent: notify.urgent === true, now })
       .catch((error) => console.warn("[office-os] notify failed", error?.message));
   }
   return { journey, changed: true, finishedIds, addedIds: additions.map((t) => t.id) };
@@ -183,7 +183,7 @@ async function loadMatchContext(ctx, officeId, matchId) {
  * Match review decision: approve | reject | postpone. (request_info goes through the
  * proposal service with a match context.)
  */
-export async function decideMatchReview(ctx, { actor, officeId, matchId, decision, postponeDays = 1, reason = "" }) {
+export async function decideMatchReview(ctx, { actor, officeId, matchId, decision, postponeDays = 1, reason = "", viaBot = false }) {
   const now = ctx.now();
   const { match, offer, request, offerId, requestId, reviewTaskId, reviewTask } = await loadMatchContext(ctx, officeId, matchId);
   assertCanActOn(ctx.deps, actor, reviewTask || match);
@@ -211,7 +211,8 @@ export async function decideMatchReview(ctx, { actor, officeId, matchId, decisio
   const pairKey = String(match.canonicalPairKey || matchId);
   const journeyId = await journeyIdForPair(ctx.deps, officeId, pairKey);
   const segments = journeySegments(officeId, journeyId);
-  const assignedBrokerId = String(reviewTask?.assignedBrokerId || match.assignedBrokerId || request.brokerId || offer.brokerId || actor.uid || "");
+  // The deal belongs to the broker of the match or of its records — never to the bot that passed on the two sides' approval.
+  const assignedBrokerId = String(reviewTask?.assignedBrokerId || match.assignedBrokerId || request.brokerId || offer.brokerId || (viaBot ? "" : actor.uid) || "");
   const level = compatibilityLevel(match.score);
   const created = await ctx.store.create(segments, {
     schemaVersion: 1,
@@ -252,8 +253,13 @@ export async function decideMatchReview(ctx, { actor, officeId, matchId, decisio
     mutate: () => existing
       ? { status: JOURNEY_STATUS.ACTIVE, stage: STAGE.NEGOTIATION, matchId, outcome: null, reopenedAt: now, assignedBrokerId }
       : {},
-    add: [{ type: "SEND_PROPOSAL", ref: `start:${matchId}`, reason: "تم اعتماد المطابقة — جهّز أول مقترح للطرفين", actionLabel: "تجهيز المقترح" }],
-    event: { type: "MATCH_APPROVED", key: [matchId, existing ? "reopen" : "approve"], text: existing ? "أعيد فتح الفرصة باعتماد مطابقة جديدة" : "تم اعتماد المطابقة وبدء التفاوض", payload: { score: match.score || 0 } }
+    // Approved by the two sides through the bot: each already has its room link, so there is no «first proposal» to prepare.
+    add: viaBot ? [] : [{ type: "SEND_PROPOSAL", ref: `start:${matchId}`, reason: "تم اعتماد المطابقة — جهّز أول مقترح للطرفين", actionLabel: "تجهيز المقترح" }],
+    event: {
+      type: "MATCH_APPROVED", key: [matchId, existing ? "reopen" : "approve"],
+      text: viaBot ? "وافق العميل والمالك عبر بوت تيليجرام — فُتحت الصفقة وبدأ التفاوض" : existing ? "أعيد فتح الفرصة باعتماد مطابقة جديدة" : "تم اعتماد المطابقة وبدء التفاوض",
+      payload: { score: match.score || 0, viaBot: viaBot === true }
+    }
   });
   return { ok: true, decision, journeyId };
 }

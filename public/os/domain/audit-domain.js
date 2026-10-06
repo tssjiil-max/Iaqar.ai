@@ -19,6 +19,8 @@ const ACTION_TEXT = Object.freeze({
   CHANNEL_LINK_STARTED: "بدأ ربط قناة",
   CHANNEL_UNLINKED: "فصل قناة",
   INBOX_CONVERTED: "حوّل رسالة واردة إلى سجل",
+  BOT_ENABLED: "شغّل بوت المكتب",
+  BOT_DISABLED: "أوقف بوت المكتب",
   COOPERATION_REQUEST_CREATED: "أرسل طلب تعاون",
   COOPERATION_REQUEST_ACCEPTED: "قبل طلب تعاون",
   COOPERATION_REQUEST_REJECTED: "رفض طلب تعاون",

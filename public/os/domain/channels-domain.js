@@ -12,7 +12,8 @@ export const CHANNEL_STATUS_LABELS = Object.freeze({
 });
 
 export const AUTOMATION_LABELS = Object.freeze({
-  ASSISTED: "مساعد — النظام يقترح وأنت تقرر"
+  ASSISTED: "مساعد — النظام يقترح وأنت تقرر",
+  BOT_PARTIES: "بوت المكتب يتواصل مع الأطراف المرتبطين به — وأنت تتدخل عند الحاجة"
 });
 
 export function channelViews(payload) {

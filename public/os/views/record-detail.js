@@ -1,5 +1,6 @@
 /** Record details + linked opportunities + manual search for suitable options. */
 
+import { partyBotRow } from "./bot-settings.js";
 import { h, ic, clear, emptyState, append } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
@@ -66,6 +67,9 @@ export function renderRecordDetail(container, { recordId }) {
   let searchStarted = false;
   journeysForRecord(session.officeId, recordId).then((rows) => { linked = rows; draw(); }).catch(() => { linked = []; draw(); });
 
+  // Built once per visit: a redraw (live data) must not ask the server again or drop a link just made.
+  let botRow = null;
+  let botRowFor = "";
   const draw = () => {
     const record = recordById(recordId);
     clear(container);
@@ -112,6 +116,9 @@ export function renderRecordDetail(container, { recordId }) {
       view.contactPhone ? h("div", { class: "os-btn-row", style: { marginTop: "10px" } },
         h("a", { class: "os-btn secondary", href: `tel:${view.contactPhone}` }, ic("phone"), "اتصال"),
         wa ? h("a", { class: "os-btn whatsapp", href: wa, target: "_blank", rel: "noopener" }, ic("whatsapp"), "واتساب") : null) : null,
+      // «بوت المكتب»: is this person on the bot, and the link to give him (hidden where the bot is not available).
+      // …but a changed mobile is a different person to the bot, so the row is rebuilt then.
+      (botRow = botRow && botRowFor === String(view.contactPhone || "") ? botRow : ((botRowFor = String(view.contactPhone || "")), partyBotRow(record, { who: isRequest ? "العميل" : "المالك" }))),
       h("div", { style: { marginTop: "12px" } }, actions)
     ));
 
