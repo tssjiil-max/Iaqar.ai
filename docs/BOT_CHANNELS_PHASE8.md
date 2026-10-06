@@ -44,6 +44,19 @@ Each office links its own channels from `#/settings/channels`; the server stores
 - Routing truth: `telegramChats/{chatId}` → `officeId` (top level, closed to every client by the rules; also `telegramLinkCodes`, `telegramOfficeLinks`). A chat serves one office; an unlinked chat is ignored; a chat linked elsewhere is refused and shown as «خطأ في الربط».
 - States on screen: غير مرتبط · بانتظار إتمام الربط · مرتبط · خطأ في الربط; actions: ربط · إعادة الربط · فصل (`POST /os/channels/telegram/unlink`).
 
+#### Turning the bot on for Staging
+
+One step for the owner: add the bot's token as the GitHub Actions secret `TELEGRAM_BOT_TOKEN` (repository or `staging` environment). The next Staging deploy then does the rest (`scripts/staging-telegram-activate.mjs`):
+
+1. checks the token with Telegram (`getMe`) and reads the bot's username;
+2. saves `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` and `TELEGRAM_BOT_USERNAME` on the **staging** Worker only;
+3. points the bot at `<staging worker>/telegram/webhook` and proves the chain (Telegram reports that address; the Worker refuses an unsigned call and accepts a signed one).
+
+- `TELEGRAM_WEBHOOK_SECRET` is optional: without it the secret is derived from the token (stable, never printed).
+- A bot has one webhook: this moves it away from wherever it pointed before.
+- The script refuses any address that is not the Staging Worker. Without the token the deploy skips all of this; a failure here is a warning on the deploy, never a failed deploy.
+- The bot only receives. Nothing is sent to anyone.
+
 ### WhatsApp — per-office number, Cloud API with coexistence
 
 - Linking uses Meta Embedded Signup with the existing `POST /meta/signup/complete` (token exchange + `subscribed_apps` only; the number is never registered or migrated by this Worker).
