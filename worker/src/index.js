@@ -4240,6 +4240,24 @@ function canonicalMatchFields(linkage) {
   };
 }
 
+/**
+ * «بوت المكتب» — only when sending is allowed on this environment; the office's own switch and
+ * the client's link are checked inside. A side effect of matching, kept apart from it: whatever
+ * happens here, the Match and its MATCH_REVIEW task are already saved and stay as they are.
+ */
+async function askMatchSidesThroughBot({ projectId, officeId, matchId, accessToken, env }) {
+  if (!matchId || !botOutboundConfig(env || {}).available) return;
+  try {
+    const botDeps = officeOsDeps().bind({ env, projectId, accessToken });
+    await askPartiesAboutMatch(
+      { deps: botDeps, store: createOfficeOsStore(botDeps, { projectId, accessToken }), env, officeId, appOrigin: resolveAppOrigin(env), now: () => new Date() },
+      { officeId, matchId }
+    );
+  } catch (error) {
+    console.warn("[office-os] bot ask skipped", error?.code || error?.message);
+  }
+}
+
 async function ensurePersistedMatchReviewOperation({
   projectId, officeId, match, assignedBrokerId = "", accessToken, env = null,
   notifyOperation = false
@@ -4256,19 +4274,8 @@ async function ensurePersistedMatchReviewOperation({
   });
   const operationId = String(bundle?.operation?.id || "").trim();
   if (!operationId) throw new Error("match_review_operation_missing");
-  // «بوت المكتب»: a match that just became a review task is also put to the client by the bot —
-  // only when the office switched its bot on and the client is linked. Never blocks or undoes matching.
-  if (bundle?.created && botOutboundConfig(env || {}).available) {
-    try {
-      const botDeps = officeOsDeps().bind({ env, projectId, accessToken });
-      await askPartiesAboutMatch(
-        { deps: botDeps, store: createOfficeOsStore(botDeps, { projectId, accessToken }), env, officeId, appOrigin: resolveAppOrigin(env), now: () => new Date() },
-        { officeId, matchId: String(match?.matchId || match?.id || "") }
-      );
-    } catch (error) {
-      console.warn("[office-os] bot ask skipped", error?.code || error?.message);
-    }
-  }
+  // «بوت المكتب»: a match that just became a review task is also put to the client by the bot.
+  if (bundle?.created) await askMatchSidesThroughBot({ projectId, officeId, matchId: String(match?.matchId || match?.id || ""), accessToken, env });
   return { bundle, operationId };
 }
 
