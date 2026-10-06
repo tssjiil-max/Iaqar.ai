@@ -24,6 +24,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Optional: the platform's Telegram bot for «قنوات المكتب» (Staging only, receive-only).
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
 
     steps:
       - name: Checkout unified staging branch

@@ -117,6 +117,33 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
   fi
 )
 
+# «قنوات المكتب» — the platform's Telegram bot (optional). Staging only; the bot only receives.
+# A problem here never fails the deploy: the screen keeps saying «بوت المنصة غير مفعّل».
+TELEGRAM_READY=""
+if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+  echo "--- Telegram bot for Staging (values not printed) ---"
+  CURRENT_STAGE="telegram-prepare"
+  TELEGRAM_SECRET_DIR="$NORMALIZED_SECRET_DIR/telegram"
+  if node scripts/staging-telegram-activate.mjs prepare "$TELEGRAM_SECRET_DIR"; then
+    CURRENT_STAGE="wrangler-secret-telegram"
+    if (
+      cd worker \
+        && npx wrangler secret put TELEGRAM_BOT_TOKEN --env staging < "$TELEGRAM_SECRET_DIR/TELEGRAM_BOT_TOKEN" \
+        && npx wrangler secret put TELEGRAM_WEBHOOK_SECRET --env staging < "$TELEGRAM_SECRET_DIR/TELEGRAM_WEBHOOK_SECRET" \
+        && npx wrangler secret put TELEGRAM_BOT_USERNAME --env staging < "$TELEGRAM_SECRET_DIR/TELEGRAM_BOT_USERNAME"
+    ); then # // pragma: allowlist secret
+      TELEGRAM_READY="@$(cat "$TELEGRAM_SECRET_DIR/TELEGRAM_BOT_USERNAME")"
+      echo "Telegram bot settings synced to staging Worker (values not printed)."
+    else
+      echo "::warning title=Telegram bot (Staging)::the bot settings could not be saved to the Staging Worker — the bot stays off."
+    fi
+  else
+    echo "::warning title=Telegram bot (Staging)::TELEGRAM_BOT_TOKEN was not accepted by Telegram — the bot stays off on Staging."
+  fi
+else
+  echo "NOTE: TELEGRAM_BOT_TOKEN not set — «قنوات المكتب» shows the platform bot as not enabled."
+fi
+
 echo "--- Generate public/version.json from current Git commit ---"
 CURRENT_STAGE="write-staging-version"
 node scripts/write-staging-version.mjs
@@ -188,6 +215,16 @@ if (body.cronEnabled === true) {
 }
 console.log("Staging health OK (full-functional backendReady)");
 '
+
+if [[ -n "$TELEGRAM_READY" ]]; then
+  echo "--- Telegram: point the bot at the Staging Worker and check the chain ---"
+  CURRENT_STAGE="telegram-register"
+  if STAGING_WORKER_URL="$STAGING_WORKER_URL" node scripts/staging-telegram-activate.mjs register; then
+    echo "::notice title=Telegram bot (Staging)::${TELEGRAM_READY} receives on the Staging Worker; offices can link from «قنوات المكتب»."
+  else
+    echo "::warning title=Telegram bot (Staging)::the bot settings were saved but pointing it at Staging failed — see the deploy log."
+  fi
+fi
 
 echo "--- Smoke: staging adapters + hosting wiring ---"
 export STAGING_WORKER_URL
