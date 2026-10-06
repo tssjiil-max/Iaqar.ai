@@ -110,3 +110,48 @@ html,body{background:var(--surface)}
 .os-record-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .os-record-actions .os-btn{min-width:0}
 @media(min-width:430px){.os-record-actions{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+/* بطاقة الصفقة الموحدة: one card per deal — what is needed now, its other tasks inside, and «متابعة الصفقة». */
+.ref-deal-card{align-items:start}
+.ref-deal-card .ref-task-copy h3{margin-bottom:4px}
+.ref-deal-card .ref-contact{align-items:flex-start;line-height:1.5;overflow-wrap:anywhere}
+.ref-deal-card .ref-contact svg{margin-top:2px;flex:none}
+.ref-deal-foot{grid-column:1/-1;display:grid;gap:6px;padding-top:8px;border-top:1px solid var(--brand-line)}
+.ref-deal-now{margin:0;font-size:12px;line-height:1.6;color:var(--text);overflow-wrap:anywhere}
+.ref-deal-now b{color:var(--brand-dark)}
+.ref-urgency{display:inline-block;margin-inline-end:6px;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:800;background:#fff4de;color:#7a4700}
+.ref-urgency.is-late,.ref-urgency.is-urgent{background:#fdeaea;color:#9b2c2c}
+.ref-deal-more{border-radius:12px;background:var(--brand-tint-2)}
+.ref-deal-more>summary{display:flex;align-items:center;gap:6px;min-height:40px;padding:6px 10px;font-size:12px;font-weight:800;color:var(--brand-dark);cursor:pointer;list-style:none}
+.ref-deal-more>summary::-webkit-details-marker{display:none}
+.ref-deal-more>summary svg{width:16px;height:16px;color:var(--brand-primary);flex:none}
+.ref-deal-more>summary svg:last-child{margin-inline-start:auto;transition:transform .15s ease}
+.ref-deal-more[open]>summary svg:last-child{transform:rotate(180deg)}
+.ref-deal-subs{list-style:none;margin:0;padding:0 8px 8px;display:grid;gap:6px}
+.ref-deal-sub{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px;border-radius:10px;background:var(--surface)}
+.ref-deal-sub.is-primary{box-shadow:inset 3px 0 0 var(--brand-primary)}
+.ref-deal-sub-copy{display:grid;gap:1px;min-width:0;font-size:11px;line-height:1.5}
+.ref-deal-sub-copy b{font-size:12px;color:var(--brand-dark)}
+.ref-deal-sub-copy span{color:var(--text);overflow-wrap:anywhere}
+.ref-deal-sub-copy small{color:var(--muted);font-size:10px}
+.ref-deal-sub-copy small.is-late,.ref-deal-sub-copy small.is-urgent{color:#9b2c2c;font-weight:800}
+.ref-deal-sub .os-btn{min-height:40px;padding:6px 10px;font-size:11px;border-radius:12px;gap:4px;white-space:nowrap}
+.ref-deal-sub .os-btn svg{width:15px;height:15px}
+.ref-deal-follow{appearance:none;border:0;background:none;display:flex;align-items:center;gap:6px;min-height:40px;padding:4px 2px;font:inherit;font-size:12px;font-weight:800;color:var(--brand-primary);cursor:pointer;justify-self:start}
+.ref-deal-follow svg{width:16px;height:16px}
+.ref-deal-card.is-returned{box-shadow:0 0 0 2px var(--brand-primary),0 8px 22px rgba(8,47,58,.12);transition:box-shadow .3s ease}
+.ref-deal-parties{margin:0;display:flex;align-items:flex-start;gap:6px;font-size:12px;font-weight:700;line-height:1.6;color:var(--brand-dark);overflow-wrap:anywhere}
+.ref-deal-parties svg{width:16px;height:16px;flex:none;margin-top:2px;color:var(--ico)}
+.ref-deal-links{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:start}
+.ref-deal-links>.ref-deal-more[open]{grid-column:1/-1}
+.ref-deal-links>.ref-deal-follow{justify-self:end}
+.ref-deal-links>.ref-deal-follow:only-child{grid-column:1/-1;justify-self:start}
+
+/* Header shortcuts: search · notifications (with a dot when something is new) · menu. */
+.ref-shell-header{gap:8px}
+.ref-shell-header .ref-search{order:2;appearance:none;border:0;background:var(--brand-tint);color:var(--brand-primary);width:40px;min-width:40px;height:40px;border-radius:14px;display:grid;place-items:center;padding:0;cursor:pointer}
+.ref-shell-header .ref-search svg{width:21px;height:21px}
+.ref-shell-header .ref-bell{width:40px;min-width:40px;height:40px;border-radius:14px;background:var(--brand-tint);color:var(--brand-primary);display:grid;place-items:center}
+.ref-bell-dot{display:none;position:absolute;top:7px;inset-inline-start:8px;width:9px;height:9px;border-radius:50%;background:#C24A4A;box-shadow:0 0 0 2px var(--brand-tint)}
+.ref-bell.has-new .ref-bell-dot{display:block}
+@media (max-width:359px){.ref-shell-header{gap:6px}.ref-shell-header .ref-search,.ref-shell-header .ref-bell,.ref-shell-header .ref-menu{width:36px;min-width:36px;height:36px;min-height:36px;border-radius:12px}.ref-brand{width:40px;height:40px}}

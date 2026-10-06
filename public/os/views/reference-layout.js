@@ -4,6 +4,8 @@ import { h, ic, clear, append } from "../core/dom.js";
 import { propertyTypeIcon } from "../core/icons.js";
 import { go, back } from "../core/nav.js";
 import { watchCooperation } from "../core/community.js";
+import { watchInbox } from "../core/live.js";
+import { inboxItemView } from "../domain/message-class-domain.js";
 import { communitySummary, communityViews } from "../domain/community-domain.js";
 import { session } from "../core/session.js";
 import { state, subscribe, recordById } from "../core/state.js";
@@ -131,13 +133,26 @@ export function renderOffice(container){
         ic("chev-left"))),
 
     h("section", { class: "os-card ref-office-section" },
+      h("button", { type: "button", class: "os-home-community", "data-inbox-entry": "", onClick: () => go("inbox") },
+        h("span", { class: "os-set-icon" }, ic("inbox-in")),
+        h("span", {}, h("b", { text: "مركز التواصل" }), h("small", { text: "الرسائل الواردة من قنوات المكتب مصنّفة" }), h("span", { class: "os-coop-badge", "data-inbox-summary": "" })),
+        ic("chev-left"))),
+
+    h("section", { class: "os-card ref-office-section" },
       h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
       h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)))
   );
 
   // «التعاون»: a light summary only («2 نشط · 1 بانتظار الرد»); the actions live in Daily Tasks and on the cooperation page.
   const badge = container.querySelector("[data-coop-summary]");
-  return watchCooperation(session.officeId, (rows) => { if (badge) badge.textContent = communitySummary(communityViews(rows, session.officeId)); }, () => {});
+  // «مركز التواصل»: how many messages wait for the broker (kept out of the records until he decides).
+  const inboxBadge = container.querySelector("[data-inbox-summary]");
+  const offInbox = watchInbox(session.officeId, (rows) => {
+    const waiting = rows.map(inboxItemView).filter((view) => view.canConvert).length;
+    if (inboxBadge) inboxBadge.textContent = waiting === 0 ? "" : waiting === 1 ? "رسالة واحدة تنتظرك" : waiting === 2 ? "رسالتان تنتظرانك" : `${waiting} رسائل تنتظرك`;
+  }, () => {});
+  const offCoop = watchCooperation(session.officeId, (rows) => { if (badge) badge.textContent = communitySummary(communityViews(rows, session.officeId)); }, () => {});
+  return () => { try { offInbox(); } catch (_) { /* ignore */ } try { offCoop(); } catch (_) { /* ignore */ } };
 }
 
 export function renderTaskDetail(container,{taskId}){const draw=()=>{clear(container);const task=state.tasks.find(t=>t.id===taskId);if(!task){append(container,h("p",{class:"os-sub",text:state.tasksReady?"المهمة غير متاحة":"جارٍ التحميل…"}));return;}const model=taskCardModel(task),record=taskRecord(task)||{},v=recordView(record),step=taskStep(task);

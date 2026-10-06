@@ -76,7 +76,13 @@ const SCREENS = [
   { name: "room-owner-info-topics", url: `/s#${linkToken(negLinks.owner.url)}`, wait: '[data-room-extra="info"]', auth: false, act: async (p) => { await p.locator('[data-room-extra="info"]').click(); await p.locator("[data-info-topic]").first().waitFor(); } },
   { name: "room-owner-note-to-broker", url: `/s#${linkToken(negLinks.owner.url)}`, wait: '[data-room-extra="broker"]', auth: false, act: async (p) => { await p.locator('[data-room-extra="broker"]').click(); await p.locator('textarea[name="brokerNote"]').waitFor(); } },
   { name: "session-broker", url: `/#/session/${s.negotiation.journeyId}`, wait: ".os-session-summary" },
-  { name: "room-broker-rephrase", url: `/#/session/${s.negotiation.journeyId}`, wait: "[data-request]", act: async (p) => { await p.locator('[data-request-action="rephrase"]').click(); await p.locator('textarea[name="requestText"]').waitFor(); } }
+  { name: "room-broker-rephrase", url: `/#/session/${s.negotiation.journeyId}`, wait: "[data-request]", act: async (p) => { await p.locator('[data-request-action="rephrase"]').click(); await p.locator('textarea[name="requestText"]').waitFor(); } },
+  { name: "deal-card-tasks-open", url: "/#/tasks", wait: "[data-deal]", act: async (p) => { await p.locator("[data-deal] [data-deal-subtasks] > summary").first().click(); await p.locator("[data-deal] [data-subtask]").first().waitFor(); } },
+  { name: "deal-follow-hub", url: `/#/deal/${s.negotiation.journeyId}`, wait: "[data-follow-summary]" },
+  { name: "deal-follow-contact-log", url: `/#/deal/${s.negotiation.journeyId}`, wait: "[data-follow-contact]", act: async (p) => { await p.locator("[data-contact-log] > summary").click(); await p.locator("[data-contact-log][open]").waitFor(); } },
+  { name: "deal-follow-closed", url: `/#/deal/${s.closed.journeyId}`, wait: "[data-follow-summary]" },
+  { name: "journey-documents-library-picker", url: `/#/journey/${s.negotiation.journeyId}?focus=documents`, wait: 'details[data-panel="documents"][open]', act: async (p) => { await p.locator("[data-doc-attach]").first().click(); await p.locator("[data-library-pick]").waitFor(); } },
+  { name: "notifications-sheet", url: "/#/tasks", wait: "[data-task]", act: async (p) => { await p.locator("[data-header-bell]").click(); await p.locator("[data-notifications]").waitFor(); } }
 ];
 
 function layoutIssues() {

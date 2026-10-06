@@ -495,13 +495,22 @@ export async function completeFollowUp(ctx, { actor, officeId, journeyId, taskId
  * «مستندات الصفقة»: mark one document ناقص / موجود / تمت المراجعة / غير مطلوب, add an own item,
  * or remove an own item. Each change is a timeline event of the deal and an audit entry.
  */
-export async function updateDealDocument(ctx, { actor, officeId, journeyId, documentId = "", status = "", note, label = "", remove = false }) {
+export async function updateDealDocument(ctx, { actor, officeId, journeyId, documentId = "", status = "", note, label = "", remove = false, libraryItemId = "", unlinkFile = false }) {
   const journey = await loadJourney(ctx, officeId, journeyId);
   assertCanActOn(ctx.deps, actor, journey);
   if (!isJourneyOpen(journey)) throw ctx.deps.appError("journey_closed", 409, "الصفقة مغلقة — مستنداتها للعرض فقط");
   const now = ctx.now();
+  // «إرفاق من المكتبة»: only a reference is saved. The file stays in the office library with its own access rules.
+  let file;
+  if (libraryItemId) {
+    if (!/^[A-Za-z0-9_-]{6,160}$/.test(String(libraryItemId))) throw ctx.deps.appError("library_item_invalid", 400, "اختر ملفًا من مكتبة المكتب");
+    const item = await ctx.store.get(["offices", officeId, "library", String(libraryItemId)]);
+    if (!item || (item.officeId && !ctx.deps.officeIdsEquivalent(item.officeId, officeId))) throw ctx.deps.appError("library_item_not_found", 404, "الملف غير موجود في مكتبة المكتب");
+    file = { libraryId: String(libraryItemId), title: cleanText(item.documentTitle || item.fileName, 120) };
+  }
+  const linkInput = file ? { file } : unlinkFile ? { unlinkFile: true } : {};
   const newId = documentId ? "" : `custom_${(await ctx.deps.sha256Hex(`doc|${officeId}|${journeyId}|${cleanText(label, 80)}`)).slice(0, 16)}`;
-  const change = prepareDocumentChange(journey, { documentId, status, note, label, remove }, { now, actorUid: actor.uid, newId });
+  const change = prepareDocumentChange(journey, { documentId, status, note, label, remove, ...linkInput }, { now, actorUid: actor.uid, newId });
   if (!change.ok) throw ctx.deps.appError("document_invalid", 400, change.error);
   const result = await applyJourneyChange(ctx, {
     officeId, journeyId, actor,
@@ -513,13 +522,13 @@ export async function updateDealDocument(ctx, { actor, officeId, journeyId, docu
         return { documents };
       }
       // Re-validate against the live document so two brokers never overwrite each other's item.
-      const live = prepareDocumentChange(j, { documentId, status, note, label, remove }, { now, actorUid: actor.uid, newId });
+      const live = prepareDocumentChange(j, { documentId, status, note, label, remove, ...linkInput }, { now, actorUid: actor.uid, newId });
       if (!live.ok || sameDocumentEntry(documents[live.id], live.entry)) return null;
       documents[live.id] = live.entry;
       return { documents };
     },
     event: {
-      type: "DOCUMENT_UPDATED", key: [change.id, change.remove ? "remove" : change.entry.status, change.remove ? "" : change.entry.note, now.toISOString().slice(0, 16)],
+      type: "DOCUMENT_UPDATED", key: [change.id, change.remove ? "remove" : change.entry.status, change.remove ? "" : change.entry.note, change.fileChange ? `${change.fileChange}:${change.entry.file?.libraryId || ""}` : "", now.toISOString().slice(0, 16)],
       text: `مستند «${change.label}»: ${change.statusLabel}${!change.remove && change.entry.note ? ` — ${change.entry.note}` : ""}`
     }
   });
@@ -527,7 +536,7 @@ export async function updateDealDocument(ctx, { actor, officeId, journeyId, docu
     await writeAudit(ctx, {
       officeId, action: AUDIT_ACTIONS.DEAL_DOCUMENT_UPDATED, actorUid: actor.uid, entityType: "deal", entityId: journeyId,
       key: `${change.id}:${change.remove ? "remove" : change.entry.status}:${now.toISOString()}`,
-      details: { documentId: change.id, label: change.label, status: change.remove ? "REMOVED" : change.entry.status }
+      details: { documentId: change.id, label: change.label, status: change.remove ? "REMOVED" : change.entry.status, file: change.fileChange || undefined }
     });
   }
   const summary = documentSummary(documentChecklist(result.journey));

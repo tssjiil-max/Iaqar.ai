@@ -9,7 +9,9 @@ import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
 import { recordById, subscribe } from "../core/state.js";
-import { officeSetting, watchDoc, watchJourneyEvents, watchJourneyProposals } from "../core/live.js";
+import { getDoc, officeSetting, watchDoc, watchJourneyEvents, watchJourneyProposals } from "../core/live.js";
+import { fetchLibraryFile, listLibrary } from "../core/library.js";
+import { libraryCategoryLabel, libraryDocumentTitle } from "../../js/office-library-domain.js";
 import { confirmDialog, newRequestKey, openSheet, runAction, toast } from "../core/ui.js";
 import {
   CLOSE_REASONS_LOST, EVENT_SOURCE, JOURNEY_STATUS, JOURNEY_STATUS_LABEL, STAGE, STAGE_LABEL, VIEWING_RESULTS,
@@ -19,6 +21,8 @@ import { PROPOSAL_STATUS, RECIPIENT, RECIPIENT_LABEL, sendStateLabel, replyLabel
 import { recordView, recordTitle } from "../domain/records-domain.js";
 import { formatDateTime, formatPrice, relativeAgo, toNumber } from "../domain/format-domain.js";
 import { openComposer, proposalPreparedPanel } from "./composer.js";
+import { dealFollowBar } from "./deal-follow-bar.js";
+import { rememberDeal } from "../core/deal-return.js";
 import { DOC_STATUS, DOC_STATUS_LABEL, DOC_STATUS_ORDER, documentChecklist, documentSummary, documentSummaryText } from "../domain/deal-documents-domain.js";
 
 const EVENT_ICON = {
@@ -198,6 +202,44 @@ function nowAction(journey, proposals, offer, request, draft) {
  * «مستندات الصفقة»: المطلوب · الموجود · الناقص · حالة المراجعة. Open by default in the agreement
  * stage; read-only once the deal is closed. Every change is saved by the Worker and logged.
  */
+/** Opens a linked library file with the member's own access to the library (nothing is copied). */
+async function openLinkedFile(button, file) {
+  await runAction(button, async () => {
+    const item = await getDoc(session.officeId, "library", file.libraryId);
+    if (!item || !item.mediaPath) throw new Error("الملف لم يعد موجودًا في مكتبة المكتب — افتح المكتبة للتحقق.");
+    const url = await fetchLibraryFile(item);
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+}
+
+/** «إرفاق من المكتبة»: pick one of the office's library files; only the link is saved on the deal. */
+function openLibraryPicker(row, onPick) {
+  const search = h("input", { class: "os-input", type: "search", placeholder: "ابحث باسم المستند أو الملف…", "aria-label": "بحث في المكتبة", "data-library-search": "" });
+  const list = h("div", { class: "os-lib-pick-list", "data-library-pick": "" }, h("div", { class: "os-skeleton" }));
+  const body = h("div", { class: "os-form" },
+    h("p", { class: "os-sub", text: `اختر الملف الذي يخص «${row.label}». يبقى الملف في المكتبة ويُربط بهذه الصفقة فقط.` }),
+    search, list,
+    h("button", { type: "button", class: "os-btn ghost block", onClick: () => { sheet.close(); go("library"); } }, ic("archive"), "رفع ملف جديد في المكتبة"));
+  const sheet = openSheet("إرفاق من المكتبة", body);
+  let items = [];
+  const draw = () => {
+    clear(list);
+    const q = search.value.trim().toLowerCase();
+    const shown = items.filter((item) => !q || `${libraryDocumentTitle(item)} ${item.fileName || ""} ${item.referenceNumber || ""}`.toLowerCase().includes(q)).slice(0, 40);
+    if (!shown.length) { append(list, h("p", { class: "os-sub", text: items.length ? "لا يوجد ملف بهذا الاسم." : "لا توجد ملفات في مكتبة المكتب بعد." })); return; }
+    for (const item of shown) {
+      const pick = h("button", { type: "button", class: "os-lib-pick", "data-library-item": item.id },
+        h("span", { class: "os-set-text" }, h("b", { text: libraryDocumentTitle(item) }), h("small", { text: [libraryCategoryLabel(item.category), item.fileName].filter(Boolean).join(" · ") })),
+        ic("chev-left"));
+      pick.addEventListener("click", () => { sheet.close(); onPick(item); });
+      append(list, pick);
+    }
+  };
+  search.addEventListener("input", draw);
+  listLibrary().then((rows) => { items = rows.filter((item) => item.mediaPath); draw(); })
+    .catch(() => { clear(list); append(list, h("div", { class: "os-alert bad", text: "تعذر تحميل المكتبة." })); });
+}
+
 function documentsCard(journey) {
   const jid = journey.journeyId || journey.id;
   const open = isJourneyOpen(journey);
@@ -215,11 +257,24 @@ function documentsCard(journey) {
     });
     const remove = row.custom && open ? h("button", { type: "button", class: "os-icon-btn", "aria-label": `حذف ${row.label}`, "data-doc-remove": row.id }, ic("trash")) : null;
     remove?.addEventListener("click", () => update(remove, { documentId: row.id, remove: true }, "تم حذف المستند من القائمة"));
+    // The file itself lives in the office library; here it is only linked to this item of the deal.
+    let fileLine = null;
+    if (row.file) {
+      const view = h("button", { type: "button", class: "os-btn soft", "data-doc-file-open": row.id }, ic("eye"), "فتح الملف");
+      view.addEventListener("click", () => openLinkedFile(view, row.file));
+      const unlink = open ? h("button", { type: "button", class: "os-btn ghost", "data-doc-file-unlink": row.id }, ic("x"), "إزالة الربط") : null;
+      unlink?.addEventListener("click", () => update(unlink, { documentId: row.id, unlinkFile: true }, "أُزيل ربط الملف — الملف باقٍ في المكتبة"));
+      fileLine = h("div", { class: "os-doc-file", "data-doc-file": row.file.libraryId }, h("span", { class: "os-doc-file-name" }, ic("archive"), h("span", { text: row.file.title })), h("div", { class: "os-btn-row" }, view, unlink));
+    } else if (open) {
+      const attach = h("button", { type: "button", class: "os-btn ghost os-doc-attach", "data-doc-attach": row.id }, ic("archive"), "إرفاق من المكتبة");
+      attach.addEventListener("click", () => openLibraryPicker(row, (item) => update(attach, { documentId: row.id, libraryItemId: item.id }, `أُرفق «${libraryDocumentTitle(item)}» بمستند ${row.label}`)));
+      fileLine = h("div", { class: "os-doc-file" }, attach);
+    }
     return h("li", { class: `os-doc is-${row.status.toLowerCase()}`, "data-doc": row.id, "data-doc-state": row.status },
       h("span", { class: "os-doc-mark" }, ic(row.status === DOC_STATUS.REVIEWED ? "doc-check" : row.status === DOC_STATUS.RECEIVED ? "check" : row.status === DOC_STATUS.NOT_REQUIRED ? "x" : "hourglass")),
       h("span", { class: "os-doc-copy" }, h("b", { text: row.label }),
         h("small", { text: [row.partyLabel, row.optional && row.status !== DOC_STATUS.NOT_REQUIRED ? "اختياري" : "", row.note].filter(Boolean).join(" · ") })),
-      select, remove);
+      select, remove, fileLine);
   }));
   let adder = null;
   if (open) {
@@ -236,6 +291,7 @@ function documentsCard(journey) {
       h("span", { class: `os-badge${summary.complete ? " ok" : " muted"}`, "data-docs-badge": "", text: summary.complete ? "مكتملة" : `الناقص ${summary.missing}` }), ic("chev-down")),
     h("p", { class: "os-sub os-docs-summary", "data-docs-summary": "", text: documentSummaryText(summary) }),
     list, adder,
+    h("button", { type: "button", class: "os-btn ghost os-docs-library", "data-docs-library": "", onClick: () => go("library") }, ic("archive"), "فتح مكتبة المكتب"),
     open ? null : h("p", { class: "os-sub", text: "الصفقة مغلقة — المستندات للعرض فقط." }));
 }
 
@@ -346,8 +402,9 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
     clear(container);
     const refChip = journey ? h("span", { class: "os-ref", text: `فرصة #${String(journeyId).slice(3, 9).toUpperCase()}` }) : h("span");
     append(container, h("div", { class: "os-page-head" },
-      h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "المهام اليومية"),
+      h("button", { type: "button", class: "os-back", onClick: () => { rememberDeal(journeyId); back("tasks"); } }, ic("chev-right"), "المهام اليومية"),
       h("h1", { class: "os-page-title", text: "متابعة الفرصة" }), refChip));
+    if (journey) append(container, dealFollowBar({ ...journey, journeyId }, { page: "journey", focus }));
     if (journey === undefined) { append(container, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
     if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الفرصة غير موجودة." })); return; }
     const offer = recordById(journey.offerId) || { ...journey.offerSummary, opportunityKind: "OFFER" };
@@ -401,8 +458,18 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
     container.querySelectorAll("details[data-panel]").forEach((panel) => {
       if (disclosureState.has(panel.dataset.panel)) panel.open = disclosureState.get(panel.dataset.panel);
     });
-    if (!focused && focus) { focused = true; document.getElementById("now")?.scrollIntoView({ block: "start" }); }
-    else window.scrollTo({ top: y });
+    if (!focused && focus) {
+      focused = true;
+      // «متابعة الصفقة» opens this page at one of its parts; other values (task types) keep opening «المطلوب الآن».
+      const panel = { documents: "documents", timeline: "history", compose: "communication" }[focus];
+      const target = panel ? container.querySelector(`details[data-panel="${panel}"]`) : document.getElementById("now");
+      if (target && panel) target.open = true;
+      (target || document.getElementById("now"))?.scrollIntoView({ block: "start" });
+      // «الإغلاق»: the existing actions menu is shown; nothing happens until the broker chooses and confirms there.
+      // The address drops «focus=close» at once, so coming back to this page never re-opens the menu by itself.
+      if (focus === "close" && isJourneyOpen(journey)) { history.replaceState(null, "", `#/journey/${journeyId}`); openStageMenu(journey); }
+      if (focus === "close" && !isJourneyOpen(journey)) container.querySelector('details[data-panel="stages"]')?.scrollIntoView({ block: "start" });
+    } else window.scrollTo({ top: y });
   };
   const offs = [
     watchDoc(session.officeId, "journeys", journeyId, (doc) => { journey = doc; draw(); }, () => { journey = null; draw(); }),
