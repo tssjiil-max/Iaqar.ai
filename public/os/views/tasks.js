@@ -300,17 +300,23 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
     for (const group of shown) append(list, group.kind === "deal" ? dealCard(group, now) : taskCard(group.task, now));
     // Coming back from a deal: land on its card, not at the top of the list.
     const returning = dealToReturnTo();
+    const cardOf = (id) => [...list.querySelectorAll("[data-deal]")].find((el) => el.dataset.deal === id);
     if (returning) {
-      const card = [...list.querySelectorAll("[data-deal]")].find((el) => el.dataset.deal === returning);
-      if (card) {
+      if (cardOf(returning)) {
         forgetDeal();
-        returned = { id: returning, until: Date.now() + 2400 };
-        requestAnimationFrame(() => card.scrollIntoView({ block: "center" }));
+        returned = { id: returning, until: Date.now() + 2400, settled: false };
+        // Once the broker moves the list himself, it is never pulled back.
+        const settle = () => { if (returned) returned.settled = true; };
+        window.addEventListener("touchstart", settle, { once: true, passive: true });
+        window.addEventListener("wheel", settle, { once: true, passive: true });
         setTimeout(() => list.querySelectorAll(".is-returned").forEach((el) => el.classList.remove("is-returned")), 2400);
       } else if (state.tasksReady) forgetDeal(); // the deal has no open card any more
     }
-    // The mark survives a live redraw of the list during those moments.
-    if (returned && Date.now() < returned.until) [...list.querySelectorAll("[data-deal]")].find((el) => el.dataset.deal === returned.id)?.classList.add("is-returned");
+    // The landing survives a live redraw of the list during those first moments.
+    if (returned && Date.now() < returned.until) {
+      cardOf(returned.id)?.classList.add("is-returned");
+      if (!returned.settled) requestAnimationFrame(() => { if (returned && !returned.settled) cardOf(returned.id)?.scrollIntoView({ block: "center" }); });
+    }
   };
 
   append(container, strip, h("details",{class:"ref-filters"},h("summary",{},"تصفية المهام",countPill),chipsRow), stageHead, list);

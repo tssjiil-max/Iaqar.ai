@@ -297,5 +297,7 @@ try {
 }
 const failed = checks.filter((c) => !c.ok);
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: new Date().toISOString(), passed: checks.length - failed.length, failed: failed.length, checks }, null, 2));
+// In CI a failed check is also written as an annotation, so it can be read without the raw log.
+if (process.env.GITHUB_ACTIONS) for (const c of failed) console.log(`::error title=broker-steps::${`${c.name} — ${c.detail}`.replace(/\r?\n/g, " ").slice(0, 400)}`);
 console.log(`\n${checks.length - failed.length}/${checks.length} broker-steps checks passed`);
 process.exit(failed.length ? 1 : 0);
