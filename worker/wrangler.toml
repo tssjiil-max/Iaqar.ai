@@ -35,8 +35,9 @@ compatibility_flags = ["nodejs_compat"]
 FIREBASE_PROJECT_ID = "iaqar-ai-staging"
 DEPLOYMENT_ENV = "staging"
 META_GRAPH_VERSION = "v25.0"
-META_APP_ID = ""
-META_CONFIG_ID = ""
+# Public identifiers of the owner's Meta app «IAQAR AI» and its WhatsApp Embedded Signup configuration (Staging only).
+META_APP_ID = "1315826203671419"
+META_CONFIG_ID = "935400705477695"
 FCM_WEB_PUSH_VAPID_KEY = "BD17gmynZ5N6PTXMSKPDx-h36-K_PrqqGMGHd8Hg-G0XjIBrDLRai_htH21Csc-oKJbdur1NDbareOf2I0fy5cU"
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 # «بوت المكتب»: the platform's Telegram bot may write to linked sides and brokers on Staging only.

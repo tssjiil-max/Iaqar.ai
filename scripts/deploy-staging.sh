@@ -117,6 +117,25 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
   fi
 )
 
+# «قنوات المكتب» — WhatsApp Embedded Signup (optional). Staging Worker only; values never reach logs.
+(
+  cd worker
+  if [[ -n "${META_APP_SECRET:-}" ]]; then
+    CURRENT_STAGE="wrangler-secret-meta-app-secret"
+    printf '%s' "$META_APP_SECRET" | tr -d '[:space:]' | npx wrangler secret put META_APP_SECRET --env staging # // pragma: allowlist secret
+    echo "::notice title=WhatsApp link (Staging)::META_APP_SECRET synced to the staging Worker (value not printed)."
+  else
+    echo "NOTE: META_APP_SECRET not set — «ربط واتساب» stays hidden on Staging."
+  fi
+  if [[ -n "${META_WEBHOOK_VERIFY_TOKEN:-}" ]]; then
+    CURRENT_STAGE="wrangler-secret-meta-verify-token"
+    printf '%s' "$META_WEBHOOK_VERIFY_TOKEN" | tr -d '\r\n' | npx wrangler secret put META_WEBHOOK_VERIFY_TOKEN --env staging # // pragma: allowlist secret
+    echo "::notice title=WhatsApp link (Staging)::META_WEBHOOK_VERIFY_TOKEN synced to the staging Worker (value not printed)."
+  else
+    echo "NOTE: META_WEBHOOK_VERIFY_TOKEN not set — the Meta webhook cannot be verified on Staging yet."
+  fi
+)
+
 # «قنوات المكتب» — the platform's Telegram bot (optional). Staging only; the bot only receives.
 # A problem here never fails the deploy: the screen keeps saying «بوت المنصة غير مفعّل».
 TELEGRAM_READY=""
