@@ -63,7 +63,6 @@ jobs:
     env:
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
       EXPECTED_STAGING_SHA: ${{ inputs.expected_staging_sha || '339179ae432b780e27683b6cb345d58d4310250e' }}
-      LIVE_E2E_OUT: ${{ runner.temp }}/negotiation-room-live
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -73,6 +72,8 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Full deployed room journey on pinned Staging only
+        env:
+          LIVE_E2E_OUT: ${{ runner.temp }}/negotiation-room-live
         run: node scripts/live-negotiation-room-qa.mjs
       - uses: actions/upload-artifact@v4
         if: always()
