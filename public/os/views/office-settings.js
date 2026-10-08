@@ -16,7 +16,7 @@ import { COOPERATION_OPTIONS, loadCooperationMode, photoToDataUrl, saveBrokerPho
 import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 import { connectWhatsapp, disconnectWhatsapp, loadChannels, startTelegramLink, unlinkTelegram } from "../core/channels.js";
 import { automationLabel } from "../domain/channels-domain.js";
-import { CHANNEL_REGISTRY } from "../domain/channel-link-domain.js";
+import { CHANNEL_REGISTRY, SIGNUP_TEXT } from "../domain/channel-link-domain.js";
 import { botCard, brokerAlertsCard } from "./bot-settings.js";
 import { OFFICE_NAME_MESSAGES, SPECIALTIES, buildOfficeProfile, checkPublicSlug } from "../domain/office-profile-domain.js";
 import { officePermanentUrl, officeShareUrl } from "../domain/share-card-domain.js";
@@ -315,7 +315,7 @@ function whatsappCard(view, reload) {
       confirmLabel: "فتح نافذة Meta"
     });
     if (!yes) return;
-    await runAction(button, async () => { await connectWhatsapp(session.officeId); await reload(); }, { success: "تم ربط واتساب للأعمال بالمكتب" });
+    await runAction(button, async () => { const result = await connectWhatsapp(session.officeId); await reload(); toast(result?.coexistence === true ? SIGNUP_TEXT.done : SIGNUP_TEXT.doneStandard, "ok"); });
   };
   const unlink = async (button) => {
     const yes = await confirmDialog({

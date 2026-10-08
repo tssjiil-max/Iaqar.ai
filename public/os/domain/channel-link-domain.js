@@ -160,3 +160,26 @@ export function signupCancelFromEvent(payload) {
   const step = String(payload.data?.current_step || payload.data?.error_message || "").replace(/[^0-9A-Za-z _:.-]/g, "").slice(0, 60);
   return { step };
 }
+
+/**
+ * Where a signup attempt stands, whatever order Meta's answers arrive in (the login callback with
+ * its code, and the WA_EMBEDDED_SIGNUP message, are independent and either can come first):
+ *   "closed"   the window was closed before any code (nothing was approved)
+ *   "cancelled" Meta reported CANCEL
+ *   "wait"     the code is here but the account data is not yet — keep waiting
+ *   "ready"    the code and the account (WABA) are both here — only now the Worker is asked to verify
+ * A closed window AFTER the account data arrived is still "ready": closing is never read as failure.
+ */
+export function signupProgress({ loginAnswered = false, code = "", signup = null, cancelled = null } = {}) {
+  if (signup?.wabaId && code) return "ready";
+  if (cancelled) return "cancelled";
+  if (!loginAnswered) return "wait";
+  return code ? "wait" : "closed";
+}
+
+export const SIGNUP_TEXT = Object.freeze({
+  closed: "لم يكتمل الربط لأن نافذة Meta أُغلقت قبل إتمام العملية.",
+  noData: "اكتمل تسجيل الدخول إلى Meta لكن لم تصل بيانات حساب واتساب. أعد المحاولة وأكمل جميع خطوات واتساب حتى النهاية.",
+  done: "تم ربط واتساب للأعمال بنجاح مع بقاء الرقم على تطبيق واتساب للأعمال.",
+  doneStandard: "تم ربط واتساب للأعمال بالمكتب."
+});
