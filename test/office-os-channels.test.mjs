@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  LINK_STATE, embeddedSignupOptions, isLinkCode, parseStartCommand, signupDataFromEvent, telegramDeepLink, telegramLinkView, whatsappLinkView
+  LINK_STATE, embeddedSignupOptions, isLinkCode, isMetaOrigin, parseStartCommand, signupCancelFromEvent, signupDataFromEvent, telegramDeepLink, telegramLinkView, whatsappLinkView
 } from "../public/os/domain/channel-link-domain.js";
 import { MESSAGE_CLASS, classifyInboundMessage, countByClass, filterInbox, inboxItemView } from "../public/os/domain/message-class-domain.js";
 
@@ -329,4 +329,14 @@ test("the routing collections are closed to every client in the Firestore rules"
   // No channel secret or Meta app secret is referenced by anything served to the browser.
   const served = ["public/os/core/channels.js", "public/os/views/office-settings.js", "public/os/domain/channel-link-domain.js"].map((file) => fs.readFileSync(path.join(ROOT, file), "utf8")).join("\n");
   assert.ok(!/APP_SECRET|BOT_TOKEN|WEBHOOK_SECRET|VERIFY_TOKEN|access_token/i.test(served));
+});
+
+test("Meta's signup messages are accepted from facebook.com and its subdomains only, over https", () => {
+  for (const ok of ["https://www.facebook.com", "https://web.facebook.com", "https://m.facebook.com", "https://business.facebook.com", "https://facebook.com"]) assert.equal(isMetaOrigin(ok), true, ok);
+  for (const bad of ["http://www.facebook.com", "https://evilfacebook.com", "https://facebook.com.evil.example", "https://example.com", "", null]) assert.equal(isMetaOrigin(bad), false, String(bad));
+});
+
+test("a closed signup window is recognised and carries no values", () => {
+  assert.deepEqual(signupCancelFromEvent({ type: "WA_EMBEDDED_SIGNUP", event: "CANCEL", data: { current_step: "PHONE_NUMBER_SETUP" } }), { step: "PHONE_NUMBER_SETUP" });
+  assert.equal(signupCancelFromEvent({ type: "WA_EMBEDDED_SIGNUP", event: "FINISH", data: {} }), null);
 });
