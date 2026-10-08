@@ -1,0 +1,73 @@
+name: Negotiation Staging E2E
+
+on:
+  push:
+    branches:
+      - claude/staging-negotiation-room-20261005
+    paths:
+      - '.github/workflows/negotiation-staging-e2e.yml'
+      - 'scripts/live-negotiation-session-qa.mjs'
+      - 'scripts/staging-qa-identity.mjs'
+      - 'scripts/staging-credentials.mjs'
+      - 'public/os/**'
+      - 'worker/src/**'
+      - 'test/*negotiation*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: negotiation-staging-e2e
+  cancel-in-progress: false
+
+jobs:
+  negotiation-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Negotiation regression gate
+        run: npm run test:negotiation:gate
+
+  negotiation-live:
+    needs: negotiation-static
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      LIVE_E2E_OUT: ${{ runner.temp }}/negotiation-live-qa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix worker
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify staging credentials exist
+        shell: bash
+        run: |
+          if [[ -z "${FIREBASE_SERVICE_ACCOUNT_JSON:-}" ]]; then
+            echo "::error::BLOCKED: staging FIREBASE_SERVICE_ACCOUNT_JSON is unavailable"
+            exit 1
+          fi
+      - name: Run existing live negotiation QA against staging only
+        run: node scripts/live-negotiation-session-qa.mjs
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: negotiation-staging-e2e-${{ github.run_id }}
+          path: ${{ runner.temp }}/negotiation-live-qa/
+          if-no-files-found: warn
+          retention-days: 7
