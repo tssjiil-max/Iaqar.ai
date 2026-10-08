@@ -143,3 +143,20 @@ export function signupDataFromEvent(payload) {
   if (!wabaId) return null;
   return { wabaId, phoneNumberId: clean(data.phone_number_id || data.phoneNumberId), event: String(payload.event) };
 }
+
+/** Meta posts the signup events from its own pages: facebook.com or any of its subdomains (www, web, m, business, ar-ar…), https only. */
+export function isMetaOrigin(origin) {
+  try {
+    const url = new URL(String(origin || ""));
+    return url.protocol === "https:" && (url.hostname === "facebook.com" || url.hostname.endsWith(".facebook.com"));
+  } catch (_) {
+    return false;
+  }
+}
+
+/** A closed or failed signup window: { event: "CANCEL", step } — the manager is told it was not completed. */
+export function signupCancelFromEvent(payload) {
+  if (!payload || payload.type !== "WA_EMBEDDED_SIGNUP" || String(payload.event || "") !== "CANCEL") return null;
+  const step = String(payload.data?.current_step || payload.data?.error_message || "").replace(/[^0-9A-Za-z _:.-]/g, "").slice(0, 60);
+  return { step };
+}
