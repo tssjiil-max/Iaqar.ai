@@ -1,0 +1,83 @@
+name: Negotiation final Staging QA
+
+on:
+  push:
+    branches:
+      - codex/negotiation-final-qa-20261008
+      - claude/staging-negotiation-room-20261005
+  workflow_dispatch:
+    inputs:
+      expected_staging_sha:
+        description: Exact deployed Staging commit to test
+        required: true
+        default: 339179ae432b780e27683b6cb345d58d4310250e
+
+permissions:
+  contents: read
+
+concurrency:
+  group: negotiation-final-staging-qa
+  cancel-in-progress: false
+
+jobs:
+  room-regression:
+    if: github.ref == 'refs/heads/codex/negotiation-final-qa-20261008' || github.ref == 'refs/heads/claude/staging-negotiation-room-20261005'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - name: Existing and current room gates
+        run: |
+          mkdir -p "$RUNNER_TEMP/negotiation-regression"
+          set -o pipefail
+          npm run test:negotiation:gate 2>&1 | tee "$RUNNER_TEMP/negotiation-regression/gate.log"
+      - name: Related regression and static checks
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/negotiation-regression/regression.log"
+          npm run check
+      - run: npx playwright install --with-deps chromium
+      - name: Current room mobile browser journey
+        env:
+          OUT_DIR: ${{ runner.temp }}/negotiation-regression/browser
+        run: node scripts/qa/office-os/session.e2e.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: negotiation-regression-${{ github.run_id }}
+          path: ${{ runner.temp }}/negotiation-regression
+          if-no-files-found: error
+          retention-days: 14
+
+  deployed-room:
+    needs: room-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      EXPECTED_STAGING_SHA: ${{ inputs.expected_staging_sha || '339179ae432b780e27683b6cb345d58d4310250e' }}
+      LIVE_E2E_OUT: ${{ runner.temp }}/negotiation-room-live
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Full deployed room journey on pinned Staging only
+        run: node scripts/live-negotiation-room-qa.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: negotiation-room-live-${{ github.run_id }}
+          path: ${{ runner.temp }}/negotiation-room-live
+          if-no-files-found: error
+          retention-days: 14
