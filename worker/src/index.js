@@ -2479,7 +2479,13 @@ async function handleStatus(request, url, env, requestId) {
   return jsonResponse({
     ok: true,
     connected: integrationData.status === "connected",
+    coexistence: integrationData.isOnBizApp === true,
+    onboardingMode: cleanText(integrationData.onboardingMode, 40),
     displayPhoneNumber: maskPhone(integrationData.displayPhoneNumber || ""),
+    metaPhoneStatus: cleanText(integrationData.metaPhoneStatus, 60),
+    platformType: cleanText(integrationData.platformType, 60),
+    codeVerificationStatus: cleanText(integrationData.codeVerificationStatus, 60),
+    nameStatus: cleanText(integrationData.nameStatus, 60),
     outboundMessaging: false,
     usage: {
       inboundMessages,
@@ -2643,6 +2649,51 @@ async function completeEmbeddedSignup(request, env, requestId) {
 
   if (!phoneNumberId) throw appError("phone_number_missing", 502, "لم يتم العثور على رقم واتساب المرتبط");
 
+  // Embedded Signup can finish before the number is actually ready for the requested mode.
+  // Query Meta itself and only persist "connected" after the Cloud API state is confirmed.
+  const onboardingMode = String(env.META_ONBOARDING_MODE || "").trim().toLowerCase() === "standard"
+    ? "standard"
+    : "coexistence";
+  const phoneStateUrl = new URL(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(phoneNumberId)}`);
+  phoneStateUrl.searchParams.set(
+    "fields",
+    "id,display_phone_number,status,platform_type,is_on_biz_app,code_verification_status,name_status,verified_name"
+  );
+  const phoneStateResponse = await fetch(phoneStateUrl.toString(), {
+    headers: { "Authorization": `Bearer ${accessToken}` }
+  });
+  const phoneState = await phoneStateResponse.json().catch(() => ({}));
+  if (!phoneStateResponse.ok) {
+    console.error("[iaqar-whatsapp] phone state failed", {
+      status: phoneStateResponse.status,
+      error: cleanText(phoneState && phoneState.error && phoneState.error.message, 300)
+    });
+    throw appError("meta_phone_status_failed", 502, "تعذر تأكيد حالة رقم واتساب لدى Meta — أعد الربط");
+  }
+
+  displayPhoneNumber = cleanText(phoneState.display_phone_number || displayPhoneNumber, 60);
+  const metaPhoneStatus = cleanText(phoneState.status, 60).toUpperCase();
+  const platformType = cleanText(phoneState.platform_type, 60).toUpperCase();
+  const codeVerificationStatus = cleanText(phoneState.code_verification_status, 60).toUpperCase();
+  const nameStatus = cleanText(phoneState.name_status, 60).toUpperCase();
+  const isOnBizApp = phoneState.is_on_biz_app === true;
+  const signupEvent = cleanText(body.signupEvent, 120);
+
+  if (onboardingMode === "coexistence" && !isOnBizApp) {
+    throw appError(
+      "coexistence_not_confirmed",
+      409,
+      "Meta لم تؤكد التعايش لهذا الرقم. أعد الربط واختر رقم واتساب أعمال الموجود على الجوال وأكمل شاشة الربط للنهاية."
+    );
+  }
+  if (metaPhoneStatus && metaPhoneStatus !== "CONNECTED") {
+    throw appError(
+      "meta_phone_not_connected",
+      409,
+      `رقم واتساب لم يصبح متصلًا لدى Meta بعد (الحالة: ${metaPhoneStatus}). أكمل خطوات الربط ثم أعد المحاولة.`
+    );
+  }
+
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const googleToken = await getGoogleAccessToken(env);
   const now = new Date();
@@ -2671,6 +2722,13 @@ async function completeEmbeddedSignup(request, env, requestId) {
       phoneNumberId: firestoreString(phoneNumberId),
       displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
       status: firestoreString("connected"),
+      onboardingMode: firestoreString(onboardingMode),
+      isOnBizApp: firestoreBoolean(isOnBizApp),
+      platformType: firestoreOptionalString(platformType),
+      metaPhoneStatus: firestoreOptionalString(metaPhoneStatus),
+      codeVerificationStatus: firestoreOptionalString(codeVerificationStatus),
+      nameStatus: firestoreOptionalString(nameStatus),
+      signupEvent: firestoreOptionalString(signupEvent),
       inboundOnly: firestoreBoolean(true),
       outboundEnabled: firestoreBoolean(false),
       connectedAt: firestoreTimestamp(now),
@@ -2689,6 +2747,13 @@ async function completeEmbeddedSignup(request, env, requestId) {
       phoneNumberId: firestoreString(phoneNumberId),
       displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
       status: firestoreString("connected"),
+      onboardingMode: firestoreString(onboardingMode),
+      isOnBizApp: firestoreBoolean(isOnBizApp),
+      platformType: firestoreOptionalString(platformType),
+      metaPhoneStatus: firestoreOptionalString(metaPhoneStatus),
+      codeVerificationStatus: firestoreOptionalString(codeVerificationStatus),
+      nameStatus: firestoreOptionalString(nameStatus),
+      signupEvent: firestoreOptionalString(signupEvent),
       inboundOnly: firestoreBoolean(true),
       outboundEnabled: firestoreBoolean(false),
       connectedAt: firestoreTimestamp(now),
@@ -2700,9 +2765,15 @@ async function completeEmbeddedSignup(request, env, requestId) {
   return jsonResponse({
     ok: true,
     connected: true,
+    coexistence: isOnBizApp,
+    onboardingMode,
     officeId,
     phoneNumberId,
     displayPhoneNumber: maskPhone(displayPhoneNumber),
+    metaPhoneStatus,
+    platformType,
+    codeVerificationStatus,
+    nameStatus,
     outboundMessaging: false,
     requestId
   });

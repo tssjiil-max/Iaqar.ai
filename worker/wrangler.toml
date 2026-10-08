@@ -35,6 +35,7 @@ compatibility_flags = ["nodejs_compat"]
 FIREBASE_PROJECT_ID = "iaqar-ai-staging"
 DEPLOYMENT_ENV = "staging"
 META_GRAPH_VERSION = "v25.0"
+META_ONBOARDING_MODE = "coexistence"
 # Public identifiers of the owner's Meta app «IAQAR AI» and its WhatsApp Embedded Signup configuration (Staging only).
 META_APP_ID = "1315826203671419"
 META_CONFIG_ID = "935400705477695"

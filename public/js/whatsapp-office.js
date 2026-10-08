@@ -16,6 +16,8 @@
   const GRAPH_VERSION_FALLBACK = "v25.0";
   let config = null;
   let signupData = null;
+  let signupDataResolver = null;
+  let signupDataTimer = null;
   let sdkPromise = null;
 
   const elements = {};
@@ -73,9 +75,15 @@
         setStatus("مربوط", true);
         elements.connectBtn.textContent = "واتساب أعمال مربوط";
         elements.connectBtn.disabled = true;
-        elements.note.textContent = status.displayPhoneNumber
-          ? `الرقم المرتبط: ${status.displayPhoneNumber}. الاستقبال فقط، والإرسال التلقائي متوقف.`
-          : "الحساب مربوط للاستقبال فقط، والإرسال التلقائي متوقف.";
+        if (status.coexistence) {
+          elements.note.textContent = status.displayPhoneNumber
+            ? `التعايش مفعّل للرقم ${status.displayPhoneNumber}: واتساب أعمال على الجوال + Cloud API للاستقبال.`
+            : "التعايش مفعّل: واتساب أعمال على الجوال + Cloud API للاستقبال.";
+        } else {
+          elements.note.textContent = status.displayPhoneNumber
+            ? `الرقم المرتبط: ${status.displayPhoneNumber}. الاستقبال فقط، والإرسال التلقائي متوقف.`
+            : "الحساب مربوط للاستقبال فقط، والإرسال التلقائي متوقف.";
+        }
       } else if (config.enabled) {
         setStatus("غير مربوط");
         elements.connectBtn.textContent = "ربط واتساب أعمال";
@@ -140,6 +148,20 @@
     return sdkPromise;
   }
 
+  function resetSignupCapture() {
+    signupData = null;
+    if (signupDataTimer) clearTimeout(signupDataTimer);
+    return new Promise(resolve => {
+      signupDataResolver = resolve;
+      signupDataTimer = setTimeout(() => {
+        if (signupDataResolver === resolve) {
+          signupDataResolver = null;
+          resolve(null);
+        }
+      }, 8000);
+    });
+  }
+
   function listenForSignupEvents() {
     window.addEventListener("message", event => {
       if (!["https://www.facebook.com", "https://web.facebook.com"].includes(event.origin)) return;
@@ -151,9 +173,18 @@
 
       if (["FINISH", "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING", "FINISH_ONLY_WABA"].includes(String(payload.event || ""))) {
         signupData = {
+          event: String(payload.event || ""),
+          version: Number(payload.version || 0),
           wabaId: payload.data && (payload.data.waba_id || payload.data.wabaId),
           phoneNumberId: payload.data && (payload.data.phone_number_id || payload.data.phoneNumberId)
         };
+        if (signupDataResolver) {
+          const resolve = signupDataResolver;
+          signupDataResolver = null;
+          if (signupDataTimer) clearTimeout(signupDataTimer);
+          signupDataTimer = null;
+          resolve(signupData);
+        }
       }
     });
   }
@@ -164,7 +195,7 @@
     return { Authorization: `Bearer ${await user.getIdToken(true)}` };
   }
 
-  async function completeSignup(code) {
+  async function completeSignup(code, sessionData = signupData) {
     setStatus("جارٍ إكمال الربط");
     elements.connectBtn.disabled = true;
 
@@ -175,17 +206,25 @@
         body: JSON.stringify({
           officeId: officeId(),
           code,
-          wabaId: signupData && signupData.wabaId,
-          phoneNumberId: signupData && signupData.phoneNumberId
+          wabaId: sessionData && sessionData.wabaId,
+          phoneNumberId: sessionData && sessionData.phoneNumberId,
+          signupEvent: sessionData && sessionData.event,
+          onboardingMode: config && config.onboardingMode
         })
       });
 
       setStatus("مربوط", true);
       elements.connectBtn.textContent = "واتساب أعمال مربوط";
-      elements.note.textContent = result.displayPhoneNumber
-        ? `تم ربط ${result.displayPhoneNumber}. الاستقبال فقط، ولا يوجد إرسال تلقائي.`
-        : "تم الربط للاستقبال فقط، ولا يوجد إرسال تلقائي.";
-      notify("تم ربط واتساب أعمال بالمكتب");
+      if (result.coexistence) {
+        elements.note.textContent = result.displayPhoneNumber
+          ? `تم تفعيل التعايش للرقم ${result.displayPhoneNumber}: يبقى الرقم على تطبيق واتساب أعمال ومربوط بالـCloud API للاستقبال.`
+          : "تم تفعيل التعايش: يبقى الرقم على تطبيق واتساب أعمال ومربوط بالـCloud API للاستقبال.";
+      } else {
+        elements.note.textContent = result.displayPhoneNumber
+          ? `تم ربط ${result.displayPhoneNumber}. الاستقبال فقط، ولا يوجد إرسال تلقائي.`
+          : "تم الربط للاستقبال فقط، ولا يوجد إرسال تلقائي.";
+      }
+      notify(result.coexistence ? "تم تفعيل تعايش واتساب أعمال" : "تم ربط واتساب أعمال بالمكتب");
     } catch (error) {
       setStatus("فشل الربط");
       elements.connectBtn.disabled = false;
@@ -199,23 +238,35 @@
 
     try {
       const FB = await loadFacebookSdk();
-      signupData = null;
-      FB.login(response => {
+      const signupDataReady = resetSignupCapture();
+      const extras = {
+        setup: {},
+        sessionInfoVersion: "3"
+      };
+      if (String(config.onboardingMode || "coexistence").toLowerCase() !== "standard") {
+        extras.featureType = "whatsapp_business_app_onboarding";
+      }
+
+      FB.login(async response => {
         const code = response && response.authResponse && response.authResponse.code;
         if (!code) {
           notify("لم يكتمل ربط واتساب أعمال");
           return;
         }
-        completeSignup(code);
+        const sessionData = signupData || await signupDataReady;
+        if (!sessionData || !sessionData.wabaId) {
+          setStatus("فشل الربط");
+          elements.connectBtn.removeAttribute("disabled");
+          elements.note.textContent = "Meta أعادت رمز الدخول بدون بيانات حساب واتساب. أعد الربط وأكمل شاشة واتساب أعمال للنهاية.";
+          notify("لم تصل بيانات واتساب من Meta");
+          return;
+        }
+        completeSignup(code, sessionData);
       }, {
         config_id: config.configId,
         response_type: "code",
         override_default_response_type: true,
-        extras: {
-          setup: {},
-          sessionInfoVersion: "3",
-          featureType: "whatsapp_business_app_onboarding"
-        }
+        extras
       });
     } catch (error) {
       notify(error.message);
