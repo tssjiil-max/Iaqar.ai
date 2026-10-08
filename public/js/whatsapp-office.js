@@ -75,9 +75,15 @@
         setStatus("مربوط", true);
         elements.connectBtn.textContent = "واتساب أعمال مربوط";
         elements.connectBtn.disabled = true;
-        elements.note.textContent = status.displayPhoneNumber
-          ? `الرقم المرتبط: ${status.displayPhoneNumber}. الاستقبال فقط، والإرسال التلقائي متوقف.`
-          : "الحساب مربوط للاستقبال فقط، والإرسال التلقائي متوقف.";
+        if (status.coexistence) {
+          elements.note.textContent = status.displayPhoneNumber
+            ? `التعايش مفعّل للرقم ${status.displayPhoneNumber}: واتساب أعمال على الجوال + Cloud API للاستقبال.`
+            : "التعايش مفعّل: واتساب أعمال على الجوال + Cloud API للاستقبال.";
+        } else {
+          elements.note.textContent = status.displayPhoneNumber
+            ? `الرقم المرتبط: ${status.displayPhoneNumber}. الاستقبال فقط، والإرسال التلقائي متوقف.`
+            : "الحساب مربوط للاستقبال فقط، والإرسال التلقائي متوقف.";
+        }
       } else if (config.enabled) {
         setStatus("غير مربوط");
         elements.connectBtn.textContent = "ربط واتساب أعمال";
