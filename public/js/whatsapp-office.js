@@ -149,7 +149,7 @@
       }
       if (!payload || payload.type !== "WA_EMBEDDED_SIGNUP") return;
 
-      if (payload.event === "FINISH") {
+      if (["FINISH", "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING", "FINISH_ONLY_WABA"].includes(String(payload.event || ""))) {
         signupData = {
           wabaId: payload.data && (payload.data.waba_id || payload.data.wabaId),
           phoneNumberId: payload.data && (payload.data.phone_number_id || payload.data.phoneNumberId)
@@ -213,7 +213,8 @@
         override_default_response_type: true,
         extras: {
           setup: {},
-          sessionInfoVersion: "3"
+          sessionInfoVersion: "3",
+          featureType: "whatsapp_business_app_onboarding"
         }
       });
     } catch (error) {
