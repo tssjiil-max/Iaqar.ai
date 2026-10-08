@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  LINK_STATE, embeddedSignupOptions, isLinkCode, isMetaOrigin, parseStartCommand, signupCancelFromEvent, signupDataFromEvent, telegramDeepLink, telegramLinkView, whatsappLinkView
+  LINK_STATE, embeddedSignupOptions, isLinkCode, isMetaOrigin, parseStartCommand, SIGNUP_TEXT, signupCancelFromEvent, signupProgress, signupDataFromEvent, telegramDeepLink, telegramLinkView, whatsappLinkView
 } from "../public/os/domain/channel-link-domain.js";
 import { MESSAGE_CLASS, classifyInboundMessage, countByClass, filterInbox, inboxItemView } from "../public/os/domain/message-class-domain.js";
 
@@ -339,4 +339,36 @@ test("Meta's signup messages are accepted from facebook.com and its subdomains o
 test("a closed signup window is recognised and carries no values", () => {
   assert.deepEqual(signupCancelFromEvent({ type: "WA_EMBEDDED_SIGNUP", event: "CANCEL", data: { current_step: "PHONE_NUMBER_SETUP" } }), { step: "PHONE_NUMBER_SETUP" });
   assert.equal(signupCancelFromEvent({ type: "WA_EMBEDDED_SIGNUP", event: "FINISH", data: {} }), null);
+});
+
+test("signup progress does not depend on the order Meta answers in", () => {
+  const signup = { wabaId: "111", phoneNumberId: "222", event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" };
+  // login code first, account data later
+  assert.equal(signupProgress({ loginAnswered: true, code: "c" }), "wait");
+  assert.equal(signupProgress({ loginAnswered: true, code: "c", signup }), "ready");
+  // account data first, login code later
+  assert.equal(signupProgress({ loginAnswered: false, signup }), "wait");
+  assert.equal(signupProgress({ loginAnswered: true, code: "c", signup }), "ready");
+  // the window closing after success is not a failure
+  assert.equal(signupProgress({ loginAnswered: true, code: "c", signup, cancelled: { step: "" } }), "ready");
+});
+
+test("a closed or cancelled window is reported as such, and a missing code is never a success", () => {
+  assert.equal(signupProgress({ loginAnswered: true, code: "" }), "closed");
+  assert.equal(signupProgress({ loginAnswered: true, code: "", signup: { wabaId: "1" } }), "closed");
+  assert.equal(signupProgress({ loginAnswered: true, code: "c", cancelled: { step: "PHONE" } }), "cancelled");
+  assert.equal(signupProgress({ loginAnswered: false }), "wait");
+});
+
+test("manager-facing signup texts separate the cases and never claim success early", () => {
+  assert.match(SIGNUP_TEXT.closed, /أُغلقت قبل إتمام|أُغلقت نافذة Meta قبل/);
+  assert.match(SIGNUP_TEXT.noData, /لم تصل بيانات حساب واتساب/);
+  assert.match(SIGNUP_TEXT.done, /مع بقاء الرقم على تطبيق واتساب للأعمال/);
+  assert.doesNotMatch(SIGNUP_TEXT.doneStandard, /بقاء الرقم/);
+});
+
+test("embedded signup starts in coexistence unless the environment says standard", () => {
+  assert.equal(embeddedSignupOptions({ configId: "9" }).extras.featureType, "whatsapp_business_app_onboarding");
+  assert.equal(embeddedSignupOptions({ configId: "9", onboardingMode: "standard" }).extras.featureType, undefined);
+  assert.equal(embeddedSignupOptions({ configId: "9" }).response_type, "code");
 });

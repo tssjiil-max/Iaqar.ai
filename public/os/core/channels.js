@@ -4,7 +4,7 @@
  * Meta values used here are the public app id and signup configuration id.
  */
 import { api, idToken, workerBase } from "./runtime.js";
-import { embeddedSignupOptions, isMetaOrigin, signupCancelFromEvent, signupDataFromEvent } from "../domain/channel-link-domain.js";
+import { embeddedSignupOptions, isMetaOrigin, SIGNUP_TEXT, signupCancelFromEvent, signupDataFromEvent, signupProgress } from "../domain/channel-link-domain.js";
 
 /** Older read-only status (kept for screens that still use it). */
 export function loadChannelStatus(officeId) {
@@ -39,7 +39,7 @@ async function metaConfig(officeId) {
 
 // How long to wait for Meta's «WA_EMBEDDED_SIGNUP» message after the login answered: Meta posts it
 // independently of the login callback, so it can arrive just after.
-const SIGNUP_EVENT_WAIT_MS = 15000;
+const SIGNUP_EVENT_WAIT_MS = 45000; // generous: a phone can be slow to hand the result back
 let sdkPromise = null;
 
 function loadFacebookSdk(config) {
@@ -87,19 +87,19 @@ export async function connectWhatsapp(officeId) {
     window.addEventListener("message", onMessage);
     const finish = (work) => { window.removeEventListener("message", onMessage); work(); };
     FB.login((response) => {
-      const code = response?.authResponse?.code;
-      if (!code) return finish(() => reject(new Error("لم يكتمل الربط — أُغلقت نافذة Meta قبل الإتمام.")));
+      const code = response?.authResponse?.code || "";
       const complete = () => {
         waiter = null;
-        if (cancelled) return finish(() => reject(new Error("لم يكتمل الربط — أُغلقت نافذة Meta قبل الإتمام.")));
-        if (!signup?.wabaId) {
+        const progress = signupProgress({ loginAnswered: true, code, signup, cancelled });
+        if (progress === "closed" || progress === "cancelled") return finish(() => reject(new Error(SIGNUP_TEXT.closed)));
+        if (progress !== "ready") {
           console.warn("[iaqar-whatsapp] signup event missing", seen);
-          return finish(() => reject(new Error(`لم تصل بيانات الحساب من Meta — أعد المحاولة. (رمز التشخيص: ${seen.length ? seen.join(" | ") : "لا أحداث"})`)));
+          return finish(() => reject(new Error(`${SIGNUP_TEXT.noData} (رمز التشخيص: ${seen.length ? seen.join(" | ") : "لا أحداث"})`)));
         }
-        api("/meta/signup/complete", { officeId, code, wabaId: signup.wabaId, phoneNumberId: signup.phoneNumberId })
+        api("/meta/signup/complete", { officeId, code, wabaId: signup.wabaId, phoneNumberId: signup.phoneNumberId, signupEvent: signup.event })
           .then((result) => finish(() => resolve(result)), (error) => finish(() => reject(error)));
       };
-      if (signup?.wabaId || cancelled) return complete();
+      if (!code || signup?.wabaId || cancelled) return complete();
       const timer = setTimeout(complete, SIGNUP_EVENT_WAIT_MS);
       waiter = () => { clearTimeout(timer); complete(); };
     }, embeddedSignupOptions({ configId: config.configId, onboardingMode: config.onboardingMode }));
