@@ -255,8 +255,8 @@
         }
         const sessionData = signupData || await signupDataReady;
         if (!sessionData || !sessionData.wabaId) {
-          setStatus("لم يكتمل الربط");
-          elements.connectBtn.disabled = false;
+          setStatus("فشل الربط");
+          elements.connectBtn.removeAttribute("disabled");
           elements.note.textContent = "Meta أعادت رمز الدخول بدون بيانات حساب واتساب. أعد الربط وأكمل شاشة واتساب أعمال للنهاية.";
           notify("لم تصل بيانات واتساب من Meta");
           return;
