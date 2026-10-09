@@ -119,23 +119,45 @@ export function renderAgentTry(container) {
     for (const reply of result.replies || []) {
       askContact = askContact || reply.askContact;
       const box = h("div", { class: "os-agent-msg is-agent", "data-try-reply": "" }, h("p", { dir: "auto", text: reply.text }));
+      // A message's buttons answer once: pressing one disables all of that message's buttons.
+      const mine = [];
       for (const row of reply.buttons || []) {
-        append(box, h("div", { class: "os-btn-row" }, ...row.map((b) => h("button", { type: "button", class: "os-chip", "data-try-button": b.data, onClick: () => { addMine(`[${b.text}]`); go_({ action: "button", data: b.data }); } }, b.text))));
+        const buttons = row.map((b) => {
+          const button = h("button", { type: "button", class: "os-chip", "data-try-button": b.data }, b.text);
+          button.addEventListener("click", () => {
+            if (button.disabled) return;
+            mine.forEach((other) => { other.disabled = true; });
+            button.setAttribute("aria-pressed", "true");
+            send_(`[${b.text}]`, { action: "button", data: b.data });
+          });
+          mine.push(button);
+          return button;
+        });
+        append(box, h("div", { class: "os-btn-row" }, ...buttons));
       }
       append(thread, box);
     }
     contactRow.hidden = !askContact;
     thread.lastElementChild?.scrollIntoView({ block: "end" });
   };
-  function go_(payload) {
-    return runAction(send, async () => show(await agentPreview(session.officeId, payload)));
+  // Every message and press is sent IN ORDER, one after the other — never dropped while the previous answer is
+  // still on its way (a dropped press was what brought the welcome back after «عميل يبحث عن عقار»).
+  let queue = Promise.resolve();
+  function send_(mine, payload) {
+    if (mine) addMine(mine);
+    send.setAttribute("aria-busy", "true");
+    queue = queue.then(() => agentPreview(session.officeId, payload).then(show))
+      .catch((error) => toast(error?.message || "تعذر الإرسال — حاول مجددًا", "bad"))
+      .finally(() => send.removeAttribute("aria-busy"));
+    return queue;
   }
-  const submit = () => { const v = input.value.trim(); if (!v) return; input.value = ""; addMine(v); go_({ action: "text", text: v }); };
+  const submit = () => { const v = input.value.trim(); if (!v) return; input.value = ""; send_(v, { action: "text", text: v }); };
   send.addEventListener("click", submit);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
-  share.addEventListener("click", () => { const v = phone.value.trim(); if (!v) return; addMine(`📱 ${v}`); go_({ action: "contact", phone: v }); });
-  restart.addEventListener("click", () => { clear(thread); go_({ action: "reset" }); });
-  go_({ action: "start" });
+  share.addEventListener("click", () => { const v = phone.value.trim(); if (!v) return; phone.value = ""; send_(`📱 ${v}`, { action: "contact", phone: v }); });
+  restart.addEventListener("click", () => { clear(thread); send_("", { action: "reset" }); });
+  // Opening the page continues the conversation where it stopped.
+  send_("", { action: "open" });
   return null;
 }
 
