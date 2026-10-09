@@ -14,6 +14,11 @@ export function startBrokerBotLink(officeId) {
   return api("/os/bot/broker/link", { officeId });
 }
 
+/** «دخول بتيليجرام»: the signed account data from Telegram's sign-in page; the Worker checks the signature. */
+export function linkBrokerWithTelegramLogin(officeId, auth) {
+  return api("/os/bot/broker/telegram-login", { officeId, auth });
+}
+
 export function unlinkBrokerBot(officeId) {
   return api("/os/bot/broker/unlink", { officeId });
 }

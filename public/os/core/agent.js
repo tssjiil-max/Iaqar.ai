@@ -30,6 +30,12 @@ export function agentHistory(officeId) {
   return api("/os/agent/history", { officeId });
 }
 
-export function agentAct(officeId, tool, journeyId) {
-  return api("/os/agent/act", { officeId, tool, journeyId });
+/** The broker's own press on a button the office manager showed (the approval gate). */
+export function agentAct(officeId, action = {}) {
+  return api("/os/agent/act", { officeId, tool: action.tool, journeyId: action.journeyId || "", askIds: Array.isArray(action.askIds) ? action.askIds : [] });
+}
+
+/** What the office manager suggests now (counts only; each opens a command in the chat). */
+export function agentSuggestions(officeId) {
+  return api("/os/agent/suggestions", { officeId });
 }

@@ -19,6 +19,8 @@ import {
 } from "../../../public/os/domain/channel-link-domain.js";
 
 import { botStatus, completeBotLink, handleBotCallback, handleBotChatMessage } from "./bot-service.js";
+import { handleVisitorCallback, handleVisitorMessage, isVisitorCallback, startVisitor } from "./visitor-service.js";
+import { parseOfficeStart } from "../../../public/os/domain/visitor-domain.js";
 import { handleValidityCallback, isValidityCallback } from "./validity-service.js";
 
 const text = (value) => String(value ?? "").trim();
@@ -217,13 +219,26 @@ export async function handleCentralTelegramWebhook({ request, env, store, deps, 
   // «بوت المكتب»: a side pressed «مناسب / غير مناسب». A failure is logged, never sent back to Telegram as an error (it would retry forever).
   if (update.callback_query) {
     if (!bot) return { ok: true, status: 200, ignored: true, reason: "bot_off" };
-    try { return isValidityCallback(update.callback_query.data) ? await handleValidityCallback(bot, update.callback_query) : await handleBotCallback(bot, update.callback_query); } catch (error) {
+    try {
+      const data = update.callback_query.data;
+      if (isVisitorCallback(data)) return await handleVisitorCallback(bot, update.callback_query);
+      return isValidityCallback(data) ? await handleValidityCallback(bot, update.callback_query) : await handleBotCallback(bot, update.callback_query);
+    } catch (error) {
       console.error("[office-os] bot callback failed", error?.code || error?.message);
       return { ok: true, status: 200, ignored: true, reason: "bot_error" };
     }
   }
   const message = update.message || update.channel_post || update.edited_message || {};
   const chat = message.chat || {};
+  // «مدير المكتب الذكي»: an office's own bot link (t.me/<bot>?start=of_<officeId>).
+  const visitorOffice = update.message ? parseOfficeStart(message.text) : "";
+  if (visitorOffice) {
+    if (!bot) return { ok: true, status: 200, ignored: true, reason: "bot_off" };
+    try { return await startVisitor(bot, { officeId: visitorOffice, chat, from: message.from || {} }); } catch (error) {
+      console.error("[office-os] visitor start failed", error?.code || error?.message);
+      return { ok: true, status: 200, ignored: true, reason: "bot_error" };
+    }
+  }
   const code = parseStartCommand(message.text);
   if (code) {
     if (bot) {
@@ -249,10 +264,20 @@ export async function handleCentralTelegramWebhook({ request, env, store, deps, 
   if (!officeId) {
     // Not an office's intake chat: it may be a side's own chat with the bot.
     if (bot && update.message) {
+      // A transaction being collected by the office manager comes first (the same person may already be a linked side).
+      try {
+        const collecting = await handleVisitorMessage(bot, { update, message, activeOnly: true });
+        if (collecting) return collecting;
+      } catch (error) { console.error("[office-os] visitor message failed", error?.code || error?.message); }
       try {
         const handled = await handleBotChatMessage(bot, { update, message });
         if (handled) return handled;
       } catch (error) { console.error("[office-os] bot message failed", error?.code || error?.message); }
+      // A person talking to the office manager (opened from the office's own bot link).
+      try {
+        const visitor = await handleVisitorMessage(bot, { update, message });
+        if (visitor) return visitor;
+      } catch (error) { console.error("[office-os] visitor message failed", error?.code || error?.message); }
     }
     return { ok: true, status: 200, ignored: true, reason: "chat_not_linked" };
   }

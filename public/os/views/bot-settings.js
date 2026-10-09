@@ -9,6 +9,7 @@ import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
 import { loadChannels } from "../core/channels.js";
 import { partyBotStatus, setBotEnabled, startBrokerBotLink, startPartyBotLink, unlinkBrokerBot } from "../core/bot.js";
+import { telegramLoginUrl } from "../domain/telegram-login-domain.js";
 import { ASK_STATE_LABEL } from "../domain/bot-domain.js";
 
 async function copyText(value, done) {
@@ -61,6 +62,10 @@ export function brokerAlertsCard() {
     link.addEventListener("click", () => runAction(link, async () => { const result = await startBrokerBotLink(session.officeId); pending.link = result.deepLink; pending.until = new Date(result.expiresAt || Date.now() + 15 * 60000).getTime(); await refresh(); }));
     const unlink = view.brokerLinked ? h("button", { type: "button", class: "os-btn danger", "data-bot-alerts-unlink": "" }, ic("x"), "إيقاف تنبيهاتي") : null;
     if (unlink) unlink.addEventListener("click", () => runAction(unlink, async () => { await unlinkBrokerBot(session.officeId); await refresh(); }, { success: "توقفت تنبيهات تيليجرام" }));
+    // «دخول بتيليجرام»: one tap from the site (Telegram's own sign-in page); the one-time link stays as the other way.
+    const loginUrl = view.available && view.loginBotId ? telegramLoginUrl({ botId: view.loginBotId, origin: location.origin, returnTo: `${location.origin}${location.pathname}` }) : "";
+    const login = loginUrl ? h("a", { class: "os-btn primary", href: loginUrl, "data-bot-alerts-login": "", onClick: () => { try { sessionStorage.setItem("os.tgLoginBack", "settings/notifications"); } catch (_) { /* optional */ } } }, ic("telegram"), "دخول بتيليجرام") : null;
+    if (login) link.className = "os-btn secondary";
     const copy = h("button", { type: "button", class: "os-btn secondary" }, ic("clipboard"), "نسخ الرابط");
     copy.addEventListener("click", () => copyText(pending.link, "تم نسخ الرابط"));
     append(card,
@@ -72,7 +77,7 @@ export function brokerAlertsCard() {
       view.available && pending.link ? h("div", { class: "os-chan-link", "data-bot-alerts-pending": "" },
         h("p", { class: "os-sub", text: "افتح الرابط من حسابك الشخصي في تيليجرام ثم اضغط «Start». الرابط صالح 15 دقيقة ولمرة واحدة." }),
         h("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-bot-alerts-open": "" }, ic("telegram"), "فتح تيليجرام"), copy)) : null,
-      view.available ? h("div", { class: "os-btn-row" }, link, unlink) : null);
+      view.available ? h("div", { class: "os-btn-row" }, login, link, unlink) : null);
     // While the link waits for «Start», check again so the card turns «مرتبط» by itself.
     if (pending.link && card.isConnected) timer = setTimeout(() => { if (card.isConnected) refresh().catch(() => {}); }, 4000);
   };

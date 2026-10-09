@@ -587,6 +587,9 @@ service cloud.firestore {
     match /telegramBotChats/{chatId} {
       allow read, write: if false;
     }
+    match /telegramVisitors/{chatId} {
+      allow read, write: if false;
+    }
     match /telegramAsks/{token} {
       allow read, write: if false;
     }

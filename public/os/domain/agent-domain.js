@@ -161,6 +161,10 @@ export const AGENT_TOOLS = Object.freeze({
   upcoming_viewings: { category: "AUTO", description: "مواعيد المعاينة القادمة خلال 7 أيام" },
   stuck_deals: { category: "AUTO", description: "صفقات مفتوحة بلا حركة منذ 3 أيام أو أكثر" },
   deal_status: { category: "AUTO", description: "حالة صفقة يذكرها الوسيط بالحي أو نوع العقار", args: ["query"] },
+  negotiation_summary: { category: "AUTO", description: "ملخص التفاوض في صفقة (السعر، آخر مقترح، رد كل طرف، الخطوة المقترحة)", args: ["query"] },
+  why_stuck: { category: "AUTO", description: "سبب توقف صفقة أو الصفقات المتوقفة: بانتظار من ومنذ متى", args: ["query"] },
+  plan_viewings: { category: "AUTO", description: "ترتيب المعاينات القادمة: الأقرب أولًا مع غير المؤكد والمتعارض" },
+  follow_up_silent: { category: "APPROVAL", description: "تذكير لطيف واحد للأطراف المرتبطين بالبوت الذين لم يردوا على سؤال المطابقة منذ يوم أو أكثر (بعد ضغط الوسيط)" },
   take_over_deal: { category: "APPROVAL", description: "استلام صفقة من البوت (إيقاف رسائله فيها)", args: ["journeyId"] },
   hand_back_deal: { category: "APPROVAL", description: "إعادة صفقة للبوت", args: ["journeyId"] },
   accept_price: { category: "FORBIDDEN", description: "قبول سعر نيابة عن طرف" },
@@ -196,6 +200,10 @@ export function fallbackIntent(text = "") {
   const t = String(text || "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").toLowerCase();
   if (/(اقبل|اعتمد|وافق).*(سعر|عرض)|سعر نهائي|عمول|عربون|دفع|توقيع|وقع العقد|اغلق الصفقه|سكر الصفقه|احذف/.test(t)) return { tool: "forbidden" };
   if (/تدخل|يحتاج.*(ني|ك)|وش علي|ايش علي|قراراتي|ينتظرني|اولوي/.test(t)) return { tool: "needs_attention" };
+  if (/(تابع|ذكر|كلم).{0,20}(ما ردوا|ما رد|ساكت|اللي ما)/.test(t)) return { tool: "follow_up_silent" };
+  if (/ملخص.{0,12}(تفاوض|مفاوض|الصفقه)|(تفاوض|مفاوض).{0,12}ملخص|وين وصل(نا)? (التفاوض|المفاوض)/.test(t)) return { tool: "negotiation_summary", args: { query: text } };
+  if (/(رتب|نظم|جدول).{0,12}معاين/.test(t)) return { tool: "plan_viewings" };
+  if (/ليش.{0,20}(وقف|توقف|متعطل|واقف|متاخر)|وش سبب.{0,12}(توقف|تعطل)/.test(t)) return { tool: "why_stuck", args: { query: text } };
   if (/ما ردوا|ما رد|بانتظار|تتابع|يتابع/.test(t)) return { tool: "following" };
   if (/انجز|خلصت|اليوم.*(تم|منجز)|وش سويت/.test(t)) return { tool: "done_today" };
   if (/مطابق/.test(t)) return { tool: "new_matches" };
@@ -214,4 +222,72 @@ export function parseAgentStep(raw) {
   }
   if (typeof raw.reply === "string" && raw.reply.trim()) return { kind: "reply", reply: raw.reply.trim().slice(0, 2000) };
   return { kind: "invalid" };
+}
+
+// ------------------------------------------------------------------ the broker's executive commands (pure)
+
+const DAY_MS = 86400000;
+const daysSince = (at, now) => Math.max(0, Math.floor((now.getTime() - new Date(at || 0).getTime()) / DAY_MS));
+const sideLabel = (role) => (role === "owner" ? "المالك" : role === "client" ? "العميل" : "الطرف");
+const money = (value) => (Number(value) > 0 ? `${Number(value).toLocaleString("en-US")} ريال` : "");
+
+/** «جهز ملخص المفاوضة»: only what the deal itself records — nothing guessed. */
+export function negotiationSummary(journey = {}, { now = new Date(), nextStep = "" } = {}) {
+  const replies = journey.lastReplies || {};
+  const proposal = journey.lastProposal || null;
+  const lines = [
+    `السعر المعروض: ${money(journey.offerSummary?.price) || "غير محدد"}`,
+    journey.requestSummary?.price ? `ميزانية العميل: ${money(journey.requestSummary.price)}` : "",
+    `آخر مقترح: ${proposal ? `${proposal.label || "مقترح"}${proposal.fields?.price ? ` بسعر ${money(proposal.fields.price)}` : ""}` : "لم يُرسل مقترح بعد"}`,
+    `رد العميل: ${replies.client?.label ? `${replies.client.label}${replies.client.at ? ` (قبل ${daysSince(replies.client.at, now)} يوم)` : ""}` : "لا يوجد"}`,
+    `رد المالك: ${replies.owner?.label ? `${replies.owner.label}${replies.owner.at ? ` (قبل ${daysSince(replies.owner.at, now)} يوم)` : ""}` : "لا يوجد"}`,
+    journey.priceAcceptedBy ? `قبول مبدئي للسعر من ${sideLabel(journey.priceAcceptedBy)}${journey.price ? ` على ${money(journey.price)}` : ""} — القرار النهائي لأصحابه` : "",
+    nextStep ? `الخطوة المقترحة: ${nextStep}` : ""
+  ].filter(Boolean);
+  return lines;
+}
+
+/** «ليش توقفت»: the first reason that applies, in plain words. */
+export function stuckReason(journey = {}, { now = new Date() } = {}) {
+  const idle = daysSince(journey.lastEvent?.at || journey.updatedAt, now);
+  const viewing = journey.viewing || {};
+  if (String(journey.status || "") === "PAUSED") return "الصفقة موقوفة مؤقتًا من المكتب.";
+  if (viewing.state === "CONFIRMED" && viewing.at && new Date(viewing.at).getTime() < now.getTime()) return `موعد المعاينة مضى ولم تُسجل نتيجتها (منذ ${daysSince(viewing.at, now)} يوم).`;
+  if (viewing.state === "ACCEPTED") return "طرف قبل موعد المعاينة وينتظر تأكيدك.";
+  const action = journey.currentAction || {};
+  if (action.code === "AWAIT_REPLY") {
+    return `بانتظار رد الأطراف على آخر مقترح منذ ${idle} يوم${action.reason ? ` — ${action.reason}` : ""}.`;
+  }
+  if (action.code === "REVIEW_REPLY") return `وصل رد ولم يُراجع منذ ${idle} يوم.`;
+  if (!journey.lastProposalAt && !journey.lastProposal) return "لم يُرسل أي مقترح للطرفين بعد.";
+  if (journey.bot?.paused === true) return `البوت متوقف في هذه الصفقة، وآخر حركة قبل ${idle} يوم.`;
+  return idle >= 3 ? `لا توجد حركة منذ ${idle} يوم${action.label ? ` — المطلوب الآن: ${action.label}` : ""}.` : (action.label ? `المطلوب الآن: ${action.label}` : "الصفقة تتحرك.");
+}
+
+/** «رتب المعاينات»: soonest first; flags the unconfirmed and the ones closer than 90 minutes to another. */
+export function viewingPlan(journeys = [], { now = new Date(), days = 7 } = {}) {
+  const until = now.getTime() + days * DAY_MS;
+  const list = journeys.filter((j) => j.viewing?.at && ["ACCEPTED", "CONFIRMED", "PROPOSED"].includes(j.viewing.state || "CONFIRMED"))
+    .map((j) => ({ journey: j, at: new Date(j.viewing.at).getTime() }))
+    .filter((x) => Number.isFinite(x.at) && x.at >= now.getTime() - 3600000 && x.at <= until)
+    .sort((a, b) => a.at - b.at);
+  return list.map((x, i) => {
+    const near = list.some((y, k) => k !== i && Math.abs(y.at - x.at) < 90 * 60000);
+    const flags = [x.journey.viewing.state === "CONFIRMED" ? "" : "غير مؤكد", near ? "قريب من موعد آخر" : ""].filter(Boolean);
+    return { journey: x.journey, at: new Date(x.at), confirmed: x.journey.viewing.state === "CONFIRMED", conflict: near, flags };
+  });
+}
+
+/**
+ * Proactive suggestions on the office manager's screen: each is one short line and the exact command that
+ * shows the details. Built from counts only; pressing one runs a read — never a change.
+ */
+export function proactiveSuggestions({ silent = 0, unconfirmedSoon = 0, stuck = 0, expiringSoon = 0, newMatches = 0 } = {}) {
+  const out = [];
+  if (silent > 0) out.push({ id: "silent", text: `${silent} ${silent === 1 ? "طرف ما رد" : "أطراف ما ردوا"} على سؤال المطابقة من يوم أو أكثر — أذكّرهم؟`, prompt: "تابع العملاء اللي ما ردوا" });
+  if (unconfirmedSoon > 0) out.push({ id: "viewings", text: `${unconfirmedSoon} ${unconfirmedSoon === 1 ? "معاينة خلال يومين غير مؤكدة" : "معاينات خلال يومين غير مؤكدة"}`, prompt: "رتب المعاينات" });
+  if (stuck > 0) out.push({ id: "stuck", text: `${stuck} ${stuck === 1 ? "صفقة بلا حركة" : "صفقات بلا حركة"} من 3 أيام — أوضح لك السبب؟`, prompt: "ليش توقفت الصفقات" });
+  if (newMatches > 0) out.push({ id: "matches", text: `${newMatches} ${newMatches === 1 ? "مطابقة قوية تنتظر" : "مطابقات قوية تنتظر"} قرارك`, prompt: "وش المطابقات الجديدة" });
+  if (expiringSoon > 0) out.push({ id: "expiring", text: `${expiringSoon} ${expiringSoon === 1 ? "سجل تنتهي مدته" : "سجلات تنتهي مدتها"} خلال 3 أيام`, prompt: "وش يحتاج تدخلي" });
+  return out.slice(0, 4);
 }

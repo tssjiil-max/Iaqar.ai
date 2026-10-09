@@ -137,6 +137,7 @@ test("the office bot: its switch, its questions and its routing are closed to ev
     await setDoc(doc(db, "telegramParties/tp_1"), { officeId: "office-a", chatId: "1", status: "ACTIVE" });
     await setDoc(doc(db, "telegramBrokers/office-a__owner-a"), { officeId: "office-a", chatId: "2", status: "ACTIVE" });
     await setDoc(doc(db, "telegramBotChats/1"), { chatId: "1", parties: { "office-a": "tp_1" } });
+    await setDoc(doc(db, "telegramVisitors/1"), { chatId: "1", officeId: "office-a" });
     await setDoc(doc(db, "telegramAsks/tok_1"), { officeId: "office-a", matchId: "m1", role: "client" });
     await setDoc(doc(db, "telegramPartyPending/1"), { officeId: "office-a", partyKey: "tp_1" });
   });
@@ -147,7 +148,7 @@ test("the office bot: its switch, its questions and its routing are closed to ev
     await assertFails(getDoc(doc(db, "offices/office-a/botSettings/telegram")));
     await assertFails(getDoc(doc(db, "offices/office-a/matchAsks/ask_1")));
     await assertFails(setDoc(doc(db, "offices/office-a/matchAsks/ask_2"), { officeId: "office-a", state: "OPENED" }));
-    for (const path of ["telegramParties/tp_1", "telegramBrokers/office-a__owner-a", "telegramBotChats/1", "telegramAsks/tok_1", "telegramPartyPending/1"]) {
+    for (const path of ["telegramParties/tp_1", "telegramBrokers/office-a__owner-a", "telegramBotChats/1", "telegramAsks/tok_1", "telegramPartyPending/1", "telegramVisitors/1"]) {
       await assertFails(getDoc(doc(db, path)));
       await assertFails(setDoc(doc(db, path), { officeId: "office-a", status: "ACTIVE" }));
     }

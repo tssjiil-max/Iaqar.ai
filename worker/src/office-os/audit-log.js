@@ -25,7 +25,8 @@ export const AUDIT_ACTIONS = Object.freeze({
   AGENT_ACTION_APPROVED: "AGENT_ACTION_APPROVED",
   RECORD_VALIDITY_SET: "RECORD_VALIDITY_SET",
   RECORD_AVAILABILITY: "RECORD_AVAILABILITY",
-  RECORD_REACTIVATED: "RECORD_REACTIVATED"
+  RECORD_REACTIVATED: "RECORD_REACTIVATED",
+  BOT_BROKER_LINKED: "BOT_BROKER_LINKED"
 });
 
 export async function writeAudit(ctx, { officeId, action, actorUid = "", entityType = "", entityId = "", details = {}, key = "" }) {

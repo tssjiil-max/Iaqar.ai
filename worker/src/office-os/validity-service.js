@@ -15,7 +15,7 @@
 
 import {
   ANSWER, AVAILABILITY_LABEL, STATE, STATE_LABEL, answerOptions, applyAnswer, availabilityIntent, nextValidityStep, renewFields,
-  validityFields, validityState
+  validityFields, validitySettingsFrom, validityState
 } from "../../../public/os/domain/validity-domain.js";
 import { recordTitle, kindOf } from "../../../public/os/domain/records-domain.js";
 import { isJourneyOpen } from "../../../public/os/domain/journey-domain.js";
@@ -28,6 +28,12 @@ import { holdRecord } from "./records-service.js";
 
 const text = (value, max = 200) => String(value ?? "").trim().slice(0, max);
 const SYSTEM_ACTOR = Object.freeze({ uid: "office-agent", role: "owner", isManager: true });
+
+/** This office's validity settings (its agent settings), within platform limits. */
+export async function officeValiditySettings(ctx, officeId) {
+  const raw = (await ctx.store.get(["offices", officeId, "agentSettings", "main"]).catch(() => null)) || {};
+  return validitySettingsFrom({ defaultDuration: raw.validityDefaultDuration, periodicDays: raw.validityPeriodicDays, remindBeforeDays: raw.validityRemindBeforeDays });
+}
 
 async function loadRecord(ctx, officeId, recordId) {
   const record = await ctx.store.get(["offices", officeId, "opportunities", text(recordId, 120)]);
@@ -106,7 +112,8 @@ export async function setRecordValidity(ctx, { actor, officeId, recordId, durati
   const record = await loadRecord(ctx, officeId, recordId);
   assertCanActOn(ctx.deps, actor, record);
   const before = validityState(record, ctx.now());
-  const built = validityFields({ duration, customDate, urgent: urgent === true, chosen: true, now: ctx.now(), confirmedBy: `broker:${actor.uid}` });
+  const settings = await officeValiditySettings(ctx, officeId);
+  const built = validityFields({ duration, customDate, urgent: urgent === true, chosen: true, now: ctx.now(), confirmedBy: `broker:${actor.uid}`, periodicDays: settings.periodicDays });
   if (!built.ok) throw ctx.deps.appError("validity_invalid", 400, built.error);
   await ctx.store.set(["offices", officeId, "opportunities", record.id], { ...built.fields, validityAskedFor: "", updatedAt: ctx.now() });
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.RECORD_VALIDITY_SET, actorUid: actor.uid, entityType: "record", entityId: record.id, key: ctx.now().toISOString(), details: { duration: built.fields.validityDuration, urgent: built.fields.validityUrgent } });
@@ -128,7 +135,7 @@ export async function applyAvailabilityAnswer(ctx, { actor = SYSTEM_ACTOR, offic
     await finishValidityTasks(ctx, officeId, record.id, actor === SYSTEM_ACTOR ? "AGENT" : actor.uid);
     return { ok: true, state: STATE.PAUSED, ...held };
   }
-  const patch = applyAnswer(record, answer, { now, by: who });
+  const patch = applyAnswer(record, answer, { now, by: who, periodicDays: (await officeValiditySettings(ctx, officeId)).periodicDays });
   if (!patch) throw ctx.deps.appError("validity_answer_invalid", 400, "إجابة غير معروفة");
   await ctx.store.set(["offices", officeId, "opportunities", record.id], { ...patch, updatedAt: now, version: Number(record.version || 1) + 1 });
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.RECORD_AVAILABILITY, actorUid: actor === SYSTEM_ACTOR ? "office-agent" : actor.uid, entityType: "record", entityId: record.id, key: `${answer}|${now.toISOString()}`, details: { answer, by: who } });
@@ -160,7 +167,7 @@ export async function applyAvailabilityAnswer(ctx, { actor = SYSTEM_ACTOR, offic
 export async function reactivateRecord(ctx, { actor, officeId, recordId, duration = "", customDate = "" }) {
   const record = await loadRecord(ctx, officeId, recordId);
   assertCanActOn(ctx.deps, actor, record);
-  const renewed = renewFields(record, { duration, customDate, now: ctx.now(), confirmedBy: `broker:${actor.uid}` });
+  const renewed = renewFields(record, { duration, customDate, now: ctx.now(), confirmedBy: `broker:${actor.uid}`, periodicDays: (await officeValiditySettings(ctx, officeId)).periodicDays });
   if (!renewed.ok) throw ctx.deps.appError("validity_invalid", 400, renewed.error);
   await ctx.store.set(["offices", officeId, "opportunities", record.id], { ...renewed.fields, validityAskedFor: "", reactivatedAt: ctx.now().toISOString(), reactivatedBy: actor.uid, updatedAt: ctx.now(), version: Number(record.version || 1) + 1 });
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.RECORD_REACTIVATED, actorUid: actor.uid, entityType: "record", entityId: record.id, key: ctx.now().toISOString() });
@@ -223,12 +230,13 @@ export async function askOwnerBeforeMatch(ctx, { officeId, offer }) {
 export async function sweepOfficeValidity(ctx, { officeId, limit = 50 }) {
   const now = ctx.now();
   const records = await ctx.store.list(["offices", officeId, "opportunities"], 500);
+  const settings = await officeValiditySettings(ctx, officeId);
   const done = { asked: 0, rematched: 0, attention: 0, unreachable: 0 };
   for (const raw of records) {
     if (done.asked + done.attention >= limit) break;
     const record = { ...raw, id: raw.id };
     if (String(record.officeId || officeId) !== officeId) continue;
-    const step = nextValidityStep(record, now);
+    const step = nextValidityStep(record, now, { remindBeforeDays: settings.remindBeforeDays });
     if (!step) continue;
     const state = validityState(record, now);
     // Out of matching as soon as its time ran out (once per step): the engine supersedes its open matches.

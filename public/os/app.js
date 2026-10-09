@@ -35,6 +35,8 @@ import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js
 import { go, noteNavigation, setRenderer } from "./core/nav.js";
 import { forgetDeal } from "./core/deal-return.js";
 import { operationIdFromParams } from "./core/deep-link.js";
+import { parseTgAuthResult } from "./domain/telegram-login-domain.js";
+import { linkBrokerWithTelegramLogin } from "./core/bot.js";
 
 const root = document.getElementById("app");
 let cleanup = null;
@@ -88,6 +90,22 @@ function render() {
   cleanup = current.run(body) || null;
   if (current.main) append(page, renderBottomNav(current.name));
   window.scrollTo({ top: 0 });
+}
+
+/** Back from Telegram's sign-in page («#tgAuthResult=…»): the Worker checks it and links the broker's alerts. */
+function applyTelegramLogin() {
+  const auth = parseTgAuthResult(location.hash);
+  if (!auth && !/^#tgAuthResult=/.test(location.hash)) return false;
+  let back = "settings/notifications";
+  try { back = sessionStorage.getItem("os.tgLoginBack") || back; sessionStorage.removeItem("os.tgLoginBack"); } catch (_) { /* optional */ }
+  history.replaceState({}, "", `${location.pathname}${location.search}#/${back}`);
+  if (!auth) { toast("تعذر قراءة بيانات تيليجرام — أعد المحاولة", "bad"); return true; }
+  linkBrokerWithTelegramLogin(session.officeId, auth).then((result) => {
+    if (result?.linked) toast("تم ربط تنبيهاتك على تيليجرام", "ok");
+    else if (result?.deepLink) { toast("افتح البوت واضغط «Start» لإكمال الربط", "bad"); window.open(result.deepLink, "_blank", "noopener"); }
+    render();
+  }).catch((error) => toast(error?.message || "تعذر الربط بتيليجرام", "bad"));
+  return true;
 }
 
 /** Push-notification links (?openOperation=…) and legacy deep links → routes. */
@@ -162,6 +180,7 @@ function enterOffice() {
   startOfficeData(session.officeId);
   setRenderer(render);
   window.addEventListener("hashchange", () => { noteNavigation(); render(); });
+  applyTelegramLogin();
   applyDeepLink();
   render();
   // Repair pass: re-creates any review/task whose write was interrupted (idempotent).

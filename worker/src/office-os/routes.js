@@ -18,9 +18,9 @@ import { arrangeRecordImages } from "./record-media-service.js";
 import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
 import { convertInboxMessage } from "./inbox-service.js";
 import { createOfficeTicket, supportStatus } from "./support-service.js";
-import { agentChat, agentHistory, agentStatus, runApprovedAction, saveAgentSettings } from "./agent-service.js";
+import { agentChat, agentHistory, agentStatus, agentSuggestions, runApprovedAction, saveAgentSettings } from "./agent-service.js";
 import { applyAvailabilityAnswer, reactivateRecord, setRecordValidity, sweepValidityNow } from "./validity-service.js";
-import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker } from "./bot-service.js";
+import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker, linkBrokerWithTelegramLogin } from "./bot-service.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
@@ -84,6 +84,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/bot/enable": (ctx, b, actor) => setBotEnabled(ctx, { actor, officeId: ctx.officeId, enabled: b.enabled === true }),
   "/os/bot/broker/link": (ctx, b, actor) => startBrokerLink(ctx, { actor, officeId: ctx.officeId }),
   "/os/bot/broker/unlink": (ctx, b, actor) => unlinkBroker(ctx, { actor, officeId: ctx.officeId }),
+  "/os/bot/broker/telegram-login": (ctx, b, actor) => linkBrokerWithTelegramLogin(ctx, { actor, officeId: ctx.officeId, auth: b.auth && typeof b.auth === "object" ? b.auth : null }),
   "/os/bot/party/link": (ctx, b, actor) => startPartyLink(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),
   "/os/bot/party/status": (ctx, b) => partyLinkStatus(ctx, { officeId: ctx.officeId, recordId: text(b.recordId) }),
   "/os/journeys/bot": (ctx, b, actor) => setJourneyBotPaused(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), paused: b.paused === true }),
@@ -94,10 +95,11 @@ const OFFICE_ROUTES = Object.freeze({
   // «مركز التواصل والدعم»: platform support (Telegram Business). Any member may read the state and send a question or report.
   // «مدير المكتب الذكي»: every member reads its state and talks to it; switching it and its instructions are the manager's.
   "/os/agent/status": (ctx, b, actor) => agentStatus(ctx, { officeId: ctx.officeId, actor }),
-  "/os/agent/settings": (ctx, b, actor) => saveAgentSettings(ctx, { actor, officeId: ctx.officeId, enabled: typeof b.enabled === "boolean" ? b.enabled : undefined, instructions: typeof b.instructions === "string" ? b.instructions : undefined }),
+  "/os/agent/settings": (ctx, b, actor) => saveAgentSettings(ctx, { actor, officeId: ctx.officeId, enabled: typeof b.enabled === "boolean" ? b.enabled : undefined, instructions: typeof b.instructions === "string" ? b.instructions : undefined, validity: b.validity && typeof b.validity === "object" ? b.validity : undefined }),
   "/os/agent/chat": (ctx, b, actor) => agentChat(ctx, { actor, officeId: ctx.officeId, message: typeof b.message === "string" ? b.message : "", requestKey: text(b.requestKey) }),
   "/os/agent/history": (ctx, b, actor) => agentHistory(ctx, { officeId: ctx.officeId, actor }),
-  "/os/agent/act": (ctx, b, actor) => runApprovedAction(ctx, { actor, officeId: ctx.officeId, tool: text(b.tool), journeyId: text(b.journeyId) }),
+  "/os/agent/act": (ctx, b, actor) => runApprovedAction(ctx, { actor, officeId: ctx.officeId, tool: text(b.tool), journeyId: text(b.journeyId), askIds: Array.isArray(b.askIds) ? b.askIds.slice(0, 20).map(text) : [] }),
+  "/os/agent/suggestions": (ctx, b, actor) => agentSuggestions(ctx, { officeId: ctx.officeId, actor }),
   "/os/support/status": (ctx) => supportStatus(ctx),
   "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } })
 });

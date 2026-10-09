@@ -19,7 +19,7 @@ import { isJourneyOpen } from "../../../public/os/domain/journey-domain.js";
 import { counterpartsEligible, opportunityToMatchInput, scoreMatch, MATCH_THRESHOLD } from "../matching-engine.js";
 import { recordFailure } from "./journey-service.js";
 import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
-import { DEFAULT_DURATION, validityFields } from "../../../public/os/domain/validity-domain.js";
+import { validityFields, validitySettingsFrom } from "../../../public/os/domain/validity-domain.js";
 
 async function runMatchingSafely(ctx, officeId, opportunityId) {
   if (typeof ctx.deps.runMatching !== "function") return { matchingPending: true, matches: 0 };
@@ -34,7 +34,7 @@ async function runMatchingSafely(ctx, officeId, opportunityId) {
   }
 }
 
-export async function saveRecord(ctx, { actor, officeId, recordId = "", input = {}, requestKey = "" }) {
+export async function saveRecord(ctx, { actor, officeId, recordId = "", input = {}, requestKey = "", sourceType = "BROKER_DIRECT" }) {
   const check = validateRecordInput(input);
   if (!check.ok) {
     const error = ctx.deps.appError("record_invalid", 400, Object.values(check.errors)[0]);
@@ -62,7 +62,7 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
     }
   }
   const fields = recordFields(check.value, {
-    officeId, brokerId: actor.uid, sourceType: "BROKER_DIRECT", sourceReference: `office-os:${actor.uid}`, existing, now
+    officeId, brokerId: actor.uid, sourceType: sourceType === "TELEGRAM_AGENT" ? "TELEGRAM_AGENT" : "BROKER_DIRECT", sourceReference: sourceType === "TELEGRAM_AGENT" ? "office-os:telegram-agent" : `office-os:${actor.uid}`, existing, now
   });
   if (!existing) fields.deduplicationFingerprint = recordFingerprint(check.value, officeId);
   // «مدة العرض أو الطلب»: a new record always gets one (the person's choice, or the announced default of a
@@ -73,9 +73,12 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
     // Only the urgency changed: the duration keeps running as it was.
     fields.validityUrgent = validityInput.urgent === true;
   } else if (!existing || validityInput) {
+    // The office's own default duration (announced on the form) when the broker did not pick one.
+    const agent = (await ctx.store.get(["offices", officeId, "agentSettings", "main"]).catch(() => null)) || {};
+    const settings = validitySettingsFrom({ defaultDuration: agent.validityDefaultDuration, periodicDays: agent.validityPeriodicDays, remindBeforeDays: agent.validityRemindBeforeDays });
     const built = validityFields({
-      duration: validityInput?.duration || DEFAULT_DURATION, customDate: String(validityInput?.customDate || ""),
-      urgent: validityInput?.urgent === true, chosen: Boolean(validityInput?.duration), now, confirmedBy: `broker:${actor.uid}`
+      duration: validityInput?.duration || settings.defaultDuration, customDate: String(validityInput?.customDate || ""),
+      urgent: validityInput?.urgent === true, chosen: Boolean(validityInput?.duration), now, confirmedBy: `broker:${actor.uid}`, periodicDays: settings.periodicDays
     });
     if (!built.ok) throw ctx.deps.appError("validity_invalid", 400, built.error);
     Object.assign(fields, built.fields, { validityAskedFor: "", validityNotedFor: "" });

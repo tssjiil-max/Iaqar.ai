@@ -71,7 +71,17 @@ export function customExpiry(dayText, now = new Date()) {
  * The person's choice → stored fields. `chosen` = the person picked it (false = the announced default).
  * Returns { ok, error, fields }.
  */
-export function validityFields({ duration = DEFAULT_DURATION, customDate = "", urgent = false, chosen = true, now = new Date(), confirmedBy = "" } = {}) {
+/**
+ * Each office's own settings, within platform limits (one office never changes another's):
+ * default duration, how often «حتى ألغيه» is confirmed again, and how many days before expiry to remind.
+ */
+export function validitySettingsFrom(raw = {}) {
+  const clamp = (value, min, max, fallback) => { if (value === undefined || value === null || value === "") return fallback; const n = Math.round(Number(value)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback; };
+  const duration = [DURATION.WEEK, DURATION.MONTH, DURATION.QUARTER, DURATION.UNTIL_CANCELLED].includes(String(raw.defaultDuration)) ? String(raw.defaultDuration) : DEFAULT_DURATION;
+  return { defaultDuration: duration, periodicDays: clamp(raw.periodicDays, 7, 90, PERIODIC_CHECK_DAYS), remindBeforeDays: clamp(raw.remindBeforeDays, 1, 7, REMIND_BEFORE_DAYS) };
+}
+
+export function validityFields({ duration = DEFAULT_DURATION, customDate = "", urgent = false, chosen = true, now = new Date(), confirmedBy = "", periodicDays = PERIODIC_CHECK_DAYS } = {}) {
   const id = Object.values(DURATION).includes(String(duration)) ? String(duration) : DEFAULT_DURATION;
   let expiresAt = null;
   let nextCheckAt = null;
@@ -79,7 +89,7 @@ export function validityFields({ duration = DEFAULT_DURATION, customDate = "", u
     expiresAt = customExpiry(customDate, now);
     if (!expiresAt) return { ok: false, error: "اختر تاريخًا صالحًا في المستقبل (خلال سنة)." };
   } else if (id === DURATION.UNTIL_CANCELLED) {
-    nextCheckAt = riyadhDayEnd(new Date(now.getTime() + PERIODIC_CHECK_DAYS * DAY));
+    nextCheckAt = riyadhDayEnd(new Date(now.getTime() + periodicDays * DAY));
   } else {
     expiresAt = riyadhDayEnd(new Date(now.getTime() + DURATION_DAYS[id] * DAY));
   }
@@ -101,10 +111,10 @@ export function validityFields({ duration = DEFAULT_DURATION, customDate = "", u
 }
 
 /** Renewing keeps the same record and the same choice (or a newly chosen one). */
-export function renewFields(record = {}, { duration = "", customDate = "", now = new Date(), confirmedBy = "" } = {}) {
+export function renewFields(record = {}, { duration = "", customDate = "", now = new Date(), confirmedBy = "", periodicDays = PERIODIC_CHECK_DAYS } = {}) {
   return validityFields({
     duration: duration || record.validityDuration || DEFAULT_DURATION,
-    customDate, urgent: record.validityUrgent === true, chosen: true, now, confirmedBy
+    customDate, urgent: record.validityUrgent === true, chosen: true, now, confirmedBy, periodicDays
   });
 }
 
@@ -138,7 +148,7 @@ export function availabilityFresh(record = {}, now = new Date()) {
 }
 
 /** What the sweep should do for one record now (one step at a time; idempotent with `validityAskedFor`). */
-export function nextValidityStep(record = {}, now = new Date()) {
+export function nextValidityStep(record = {}, now = new Date(), { remindBeforeDays = REMIND_BEFORE_DAYS } = {}) {
   const state = validityState(record, now);
   if (![STATE.ACTIVE, STATE.EXPIRED, STATE.NEEDS_CONFIRMATION].includes(state) || !hasValidity(record)) return null;
   const expires = toDate(record.validityExpiresAt);
@@ -147,7 +157,7 @@ export function nextValidityStep(record = {}, now = new Date()) {
     const days = (expires.getTime() - now.getTime()) / DAY;
     const totalDays = (expires.getTime() - (toDate(record.validityStartedAt)?.getTime() || now.getTime())) / DAY;
     // A reminder 3 days before, when the duration is long enough for it to make sense.
-    if (days <= REMIND_BEFORE_DAYS && totalDays > REMIND_BEFORE_DAYS + 1) {
+    if (days <= remindBeforeDays && totalDays > remindBeforeDays + 1) {
       const key = `pre:${expires.toISOString()}`;
       return asked === key ? null : { kind: "REMIND", key };
     }
@@ -225,9 +235,9 @@ export function availabilityIntent(text = "") {
 }
 
 /** The record changes one confirmed answer makes (no deletion, nothing financial or legal). */
-export function applyAnswer(record = {}, answer, { now = new Date(), by = "" } = {}) {
+export function applyAnswer(record = {}, answer, { now = new Date(), by = "", periodicDays = PERIODIC_CHECK_DAYS } = {}) {
   if (answer === ANSWER.AVAILABLE || answer === ANSWER.STILL_LOOKING) {
-    const renewed = renewFields(record, { now, confirmedBy: by });
+    const renewed = renewFields(record, { now, confirmedBy: by, periodicDays });
     return renewed.ok ? { ...renewed.fields, validityAskedFor: "" } : null;
   }
   if ([ANSWER.SOLD, ANSWER.RENTED, ANSWER.FOUND].includes(answer)) {

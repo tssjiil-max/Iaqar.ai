@@ -20,6 +20,7 @@ import { applyJourneyChange, decideMatchReview, loadJourney } from "./journey-se
 import { journeyTitle } from "./task-service.js";
 import { sessionLinks } from "./session-service.js";
 import { isLinkCode, telegramDeepLink } from "../../../public/os/domain/channel-link-domain.js";
+import { botIdFromToken, cleanAuth, telegramLoginCheckString, telegramLoginFresh } from "../../../public/os/domain/telegram-login-domain.js";
 import { buildWhatsAppUrl, cleanText, toDate, whatsappDigits } from "../../../public/os/domain/format-domain.js";
 import { isJourneyOpen } from "../../../public/os/domain/journey-domain.js";
 import { LIFECYCLE, lifecycleOf, priceOf } from "../../../public/os/domain/records-domain.js";
@@ -73,7 +74,9 @@ export async function botStatus(ctx, { actor, officeId }) {
     botSettings(ctx.store, officeId),
     actor?.uid ? ctx.store.get(["telegramBrokers", brokerKey(officeId, actor.uid)]) : null
   ]);
-  return botView({ available: config.available, botUsername: config.botUsername, settings, linkedParties: settings.linkedParties, broker: broker || {} });
+  const view = botView({ available: config.available, botUsername: config.botUsername, settings, linkedParties: settings.linkedParties, broker: broker || {} });
+  // The bot's public numeric id for «دخول بتيليجرام» (never the token).
+  return { ...view, loginBotId: config.available ? botIdFromToken(ctx.env.TELEGRAM_BOT_TOKEN) : "" };
 }
 
 export async function setBotEnabled(ctx, { actor, officeId, enabled }) {
@@ -140,6 +143,49 @@ export async function startBrokerLink(ctx, { actor, officeId }) {
   assertAvailable(ctx);
   const { code, expiresAt } = await issueCode(ctx, { kind: "broker", officeId, uid: actor.uid, createdBy: actor.uid }, { minutes: BOT_LIMITS.brokerLinkMinutes });
   return { ok: true, deepLink: telegramDeepLink(botOutboundConfig(ctx.env).botUsername, code), expiresAt: expiresAt.toISOString() };
+}
+
+/**
+ * «دخول بتيليجرام»: the broker signed in with Telegram on the site. The signature is checked with the bot's
+ * token (HMAC-SHA256 with SHA256(token) as the key, Telegram's rule); the data must be under a day old.
+ * Linked only after the bot really wrote to him (Telegram allows it when he ticked «السماح بالرسائل»).
+ */
+export async function linkBrokerWithTelegramLogin(ctx, { actor, officeId, auth: rawAuth }) {
+  assertAvailable(ctx);
+  const auth = cleanAuth(rawAuth || {});
+  const now = ctx.now();
+  if (!auth) throw ctx.deps.appError("telegram_login_invalid", 400, "بيانات الدخول بتيليجرام غير صالحة — أعد المحاولة.");
+  if (!telegramLoginFresh(auth, now)) throw ctx.deps.appError("telegram_login_expired", 400, "انتهت صلاحية الدخول بتيليجرام — أعد المحاولة.");
+  const valid = await verifyTelegramLogin(text(ctx.env.TELEGRAM_BOT_TOKEN), auth);
+  if (!valid) throw ctx.deps.appError("telegram_login_invalid", 400, "تعذر التحقق من الدخول بتيليجرام — أعد المحاولة.");
+  const chatId = text(auth.id);
+  const tgName = cleanText([auth.first_name, auth.last_name].filter(Boolean).join(" "), 60);
+  const sent = await sendToChat(ctx.deps, chatId, BOT_TEXT.brokerLinked, { now });
+  if (!sent.ok) {
+    // Telegram did not let the bot write (the permission was not ticked): the one-time link still works.
+    const fallback = await startBrokerLink(ctx, { actor, officeId });
+    return { ok: false, reason: "bot_cannot_write", deepLink: fallback.deepLink, expiresAt: fallback.expiresAt };
+  }
+  await ctx.store.set(["telegramBrokers", brokerKey(officeId, actor.uid)], { officeId, uid: actor.uid, chatId, status: "ACTIVE", telegramName: tgName, linkedAt: now.toISOString(), linkedBy: "telegram_login", updatedAt: now });
+  await rememberChat(ctx.store, chatId, { brokers: { [officeId]: actor.uid } }, now);
+  await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.BOT_BROKER_LINKED, actorUid: actor.uid, entityType: "telegramBroker", entityId: actor.uid, key: `tglogin|${auth.auth_date}` }).catch(() => {});
+  return { ok: true, linked: true, telegramName: tgName };
+}
+
+async function hmacHex(keyBytes, message) {
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
+  return [...sig].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function verifyTelegramLogin(token, auth) {
+  if (!token || !auth?.hash) return false;
+  const secret = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)));
+  const expected = await hmacHex(secret, telegramLoginCheckString(auth));
+  // Constant-time comparison.
+  let diff = expected.length ^ auth.hash.length;
+  for (let i = 0; i < expected.length; i += 1) diff |= expected.charCodeAt(i) ^ (auth.hash.charCodeAt(i) || 0);
+  return diff === 0;
 }
 
 export async function unlinkBroker(ctx, { actor, officeId }) {
@@ -381,6 +427,64 @@ export async function askPartiesAboutMatch(ctx, { officeId, matchId }) {
   await countAsk(ctx, client, today);
   await mirrorOnMatch(ctx, officeId, matchId, ASK_STATE.CLIENT_ASKED);
   return { asked: true, state: ASK_STATE.CLIENT_ASKED };
+}
+
+// ------------------------------------------------------------------ «تابع العملاء اللي ما ردوا»
+
+export const SILENT_AFTER_HOURS = 24;
+const REMINDER_PREFIX = "تذكير لطيف 🌷 ما زال سؤالنا عن هذه الفرصة بانتظار ردك:";
+
+/** Questions a linked side has not answered for a day or more and was never reminded about (visible to this broker). */
+export async function silentAsks(ctx, { officeId, actor }) {
+  const now = ctx.now().getTime();
+  const asks = await ctx.store.list(["offices", officeId, "matchAsks"], 300);
+  const out = [];
+  for (const ask of asks) {
+    const role = ask.state === ASK_STATE.CLIENT_ASKED ? BOT_ROLE.CLIENT : ask.state === ASK_STATE.OWNER_ASKED ? BOT_ROLE.OWNER : "";
+    if (!role) continue;
+    if (!actor.isManager && text(ask.assignedBrokerId) && text(ask.assignedBrokerId) !== actor.uid) continue;
+    const side = ask[role] || {};
+    const askedAt = toDate(side.askedAt)?.getTime() || 0;
+    if (!side.token || !side.partyKey || side.remindedAt || !askedAt || now - askedAt < SILENT_AFTER_HOURS * 3600000) continue;
+    out.push({ askId: text(ask.askId || ask.id), role, askedAt: new Date(askedAt), matchId: text(ask.matchId), offerId: text(ask.offerId), requestId: text(ask.requestId) });
+  }
+  return out.sort((a, b) => a.askedAt - b.askedAt);
+}
+
+/**
+ * The broker pressed «أرسل التذكير»: each silent side gets ONE reminder with the same buttons (the same question,
+ * not a new one). Only sides linked to the bot and still active; the office's bot switch must be on.
+ */
+export async function remindSilentSides(ctx, { actor, officeId, askIds = [] }) {
+  if (!botOutboundConfig(ctx.env).available) return { ok: true, sent: 0, skipped: askIds.length, reason: "bot_unavailable" };
+  if ((await botSettings(ctx.store, officeId)).enabled !== true) return { ok: true, sent: 0, skipped: askIds.length, reason: "office_switch_off" };
+  const wanted = new Set(askIds.map((id) => text(id, 80)).filter(Boolean).slice(0, 20));
+  const silent = (await silentAsks(ctx, { officeId, actor })).filter((row) => wanted.has(row.askId));
+  let sent = 0;
+  for (const row of silent) {
+    // Claimed atomically before sending: a double press reminds once.
+    const claimed = await ctx.store.update(askSegments(officeId, row.askId), (current) => {
+      const side = current?.[row.role];
+      if (!side || side.remindedAt || current.state !== (row.role === BOT_ROLE.CLIENT ? ASK_STATE.CLIENT_ASKED : ASK_STATE.OWNER_ASKED)) return null;
+      return { [row.role]: { ...side, remindedAt: ctx.now().toISOString(), remindedBy: actor.uid }, updatedAt: ctx.now() };
+    });
+    if (!claimed || !claimed.patch) continue;
+    const ask = await ctx.store.get(askSegments(officeId, row.askId));
+    const side = ask?.[row.role] || {};
+    const link = await ctx.store.get(["telegramParties", text(side.partyKey)]);
+    if (!link || link.status !== "ACTIVE" || !deps_ok(ctx, officeId, link)) continue;
+    const pair = await loadPair(ctx, officeId, { offerId: row.offerId, requestId: row.requestId });
+    if (!pair) continue;
+    const message = `${REMINDER_PREFIX}\n\n${askMessage(row.role, { officeName: await officeName(ctx, officeId), offer: summaryOf(pair.offer), request: summaryOf(pair.request) })}`;
+    const result = await sendToParty(ctx.store, ctx.deps, officeId, { ...link, key: text(side.partyKey) }, message, { buttons: askButtons(side.token), now: ctx.now() });
+    if (result?.ok) sent += 1;
+  }
+  await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.AGENT_ACTION_APPROVED, actorUid: actor.uid, entityType: "agent", entityId: "follow_up_silent", key: `remind|${ctx.now().toISOString()}`, details: { tool: "follow_up_silent", sent, asked: wanted.size } });
+  return { ok: true, sent, skipped: wanted.size - sent };
+}
+
+function deps_ok(ctx, officeId, link) {
+  return ctx.deps.officeIdsEquivalent ? ctx.deps.officeIdsEquivalent(link.officeId, officeId) : text(link.officeId) === officeId;
 }
 
 async function tellSide(ctx, officeId, record, message) {
