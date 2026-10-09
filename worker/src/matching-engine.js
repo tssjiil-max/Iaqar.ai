@@ -1,4 +1,5 @@
 import { evaluateCounterpartAdmission } from "./matching-admission-domain.js";
+import { isOpenForMatching } from "../../public/os/domain/validity-domain.js";
 
 /**
  * Phase 4 — Matching Engine (pure domain).
@@ -169,6 +170,9 @@ export function isActiveLifecycle(record = {}) {
   const life = String(record.lifecycleStatus || record.status || "ACTIVE").toUpperCase();
   if (["DELETED", "ARCHIVED", "CLOSED", "LOST"].includes(life)) return false;
   if (record.archivedAt && life !== "ACTIVE") return false;
+  // صلاحية العرض أو الطلب: expired, unavailable (sold/rented/found) or awaiting its periodic confirmation
+  // takes no part in a NEW match. Records without validity fields (older ones) are unaffected.
+  if (!isOpenForMatching(record)) return false;
   if (record.status && !["active", "new", "open", "ACTIVE", "READY"].includes(String(record.status))) {
     // Legacy clients/owners use status active/new/open.
     if (!record.lifecycleStatus) return false;

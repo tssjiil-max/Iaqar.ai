@@ -176,6 +176,7 @@ import { handleCentralTelegramWebhook } from "./office-os/channels-service.js";
 import { askPartiesAboutMatch } from "./office-os/bot-service.js";
 import { botOutboundConfig, callTelegram } from "./office-os/bot-notify.js";
 import { handleSupportUpdate, verifySupportSecret } from "./office-os/support-service.js";
+import { sweepAllValidity } from "./office-os/validity-service.js";
 import { classifyInboundMessage } from "../../public/os/domain/message-class-domain.js";
 import { createStore as createOfficeOsStore } from "./office-os/store.js";
 import { channelCleanupBoundaryGuarantees } from "./channel-boundary-domain.js";
@@ -1072,6 +1073,11 @@ export default {
     }
     ctx.waitUntil(processOpportunityFollowupReminders(env, scheduledTime));
     ctx.waitUntil(processViewingReminders(env, scheduledTime));
+    // صلاحية العروض والطلبات: once an hour, only where switched on for the environment (Staging) and only
+    // for offices whose office manager is on. Nothing is deleted; asks go only to sides linked to the bot.
+    if (String(env.VALIDITY_SWEEP || "").toLowerCase() === "enabled" && new Date(scheduledTime || Date.now()).getUTCMinutes() < 5) {
+      ctx.waitUntil(runValiditySweep(env).catch((error) => console.warn("[office-os] validity sweep", error?.message)));
+    }
   }
 };
 
@@ -1813,6 +1819,15 @@ async function handleTelegramWebhookRoute(request, env, requestId) {
     }
   });
   return jsonResponse({ ...result, requestId }, Number(result.status || 200));
+}
+
+async function runValiditySweep(env) {
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const bound = officeOsDeps().bind({ env, projectId, accessToken });
+  const ctx = { deps: bound, store: createOfficeOsStore(bound, { projectId, accessToken }), env, officeId: "", appOrigin: resolveAppOrigin(env), now: () => new Date() };
+  return sweepAllValidity(ctx);
 }
 
 async function handleSupportTelegramRoute(request, env, requestId) {

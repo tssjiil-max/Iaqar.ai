@@ -19,6 +19,7 @@ import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram }
 import { convertInboxMessage } from "./inbox-service.js";
 import { createOfficeTicket, supportStatus } from "./support-service.js";
 import { agentChat, agentHistory, agentStatus, runApprovedAction, saveAgentSettings } from "./agent-service.js";
+import { applyAvailabilityAnswer, reactivateRecord, setRecordValidity, sweepValidityNow } from "./validity-service.js";
 import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker } from "./bot-service.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
@@ -39,6 +40,11 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/records/pause": (ctx, b, actor) => holdRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), kind: "PAUSED", reason: b.reason }),
   "/os/records/archive": (ctx, b, actor) => holdRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), kind: "ARCHIVED", reason: b.reason }),
   "/os/records/media": (ctx, b, actor) => arrangeRecordImages(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), order: Array.isArray(b.order) ? b.order.slice(0, 40).map(text) : null, remove: Array.isArray(b.remove) ? b.remove.slice(0, 40).map(text) : null }),
+  // صلاحية العرض أو الطلب والتأكد من التوفر — the same record, never deleted.
+  "/os/records/validity": (ctx, b, actor) => setRecordValidity(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), duration: text(b.duration), customDate: text(b.customDate), urgent: b.urgent === true }),
+  "/os/records/availability": (ctx, b, actor) => applyAvailabilityAnswer(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), answer: text(b.answer).toUpperCase() }),
+  "/os/records/reactivate": (ctx, b, actor) => reactivateRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), duration: text(b.duration), customDate: text(b.customDate) }),
+  "/os/validity/sweep": (ctx, b, actor) => sweepValidityNow(ctx, { actor, officeId: ctx.officeId }),
   "/os/records/candidates": (ctx, b) => findCandidates(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), limit: b.limit }),
   "/os/records/pair": (ctx, b) => pairRecords(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), counterpartId: text(b.counterpartId) }),
   "/os/review/decide": async (ctx, b, actor) => {

@@ -44,6 +44,8 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 # «بوت المكتب»: the platform's Telegram bot may write to linked sides and brokers on Staging only.
 # Each office still has its own switch (off by default). Not set for production.
 TELEGRAM_OUTBOUND = "enabled"
+# صلاحية العروض والطلبات: the hourly sweep runs on Staging only (asks go only through the office bot's gates).
+VALIDITY_SWEEP = "enabled"
 
 [env.staging.ai]
 binding = "AI"

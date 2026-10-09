@@ -37,6 +37,9 @@ export const TASK_TYPES = Object.freeze({
   COOPERATION_MATCH: { badge: "تعاون", button: "فتح التعاون", icon: "users", opens: "community", needsBroker: true },
   PLATFORM_OPPORTUNITY_OFFER: { badge: "فرصة من المنصة", button: "استلام الفرصة", icon: "inbox-in", opens: "legacy", needsBroker: true },
   EXTERNAL_RESPONSE: { badge: "رد", button: "مراجعة الرد", icon: "mail", opens: "legacy", needsBroker: true },
+  // صلاحية العروض والطلبات: the office manager asked the side (a known wait), or an exception for the broker.
+  AVAILABILITY_CHECK: { badge: "تأكيد التوفر", button: "عرض السجل", icon: "clock", opens: "record", needsBroker: false, waiting: true },
+  AVAILABILITY_ATTENTION: { badge: "صلاحية وتوفر", button: "مراجعة السجل", icon: "alert", opens: "record", needsBroker: true },
   SYSTEM_ACTION: { badge: "إجراء", button: "عرض التفاصيل", icon: "info", opens: "legacy", needsBroker: false }
 });
 

@@ -13,6 +13,7 @@ import { JOURNEY_STATUS_LABEL, STAGE_LABEL, isJourneyOpen } from "../domain/jour
 import { buildWhatsAppUrl, formatDateTime } from "../domain/format-domain.js";
 import { archiveRecordFlow, pauseRecordFlow, removeRecordFlow, restoreRecordFlow } from "./record-actions.js";
 import { imageGallery } from "./record-images.js";
+import { ANSWER, STATE, answerOptions, validityView } from "../domain/validity-domain.js";
 
 function fact(iconName, label, value) {
   if (!value) return null;
@@ -121,6 +122,26 @@ export function renderRecordDetail(container, { recordId }) {
       (botRow = botRow && botRowFor === String(view.contactPhone || "") ? botRow : ((botRowFor = String(view.contactPhone || "")), partyBotRow(record, { who: isRequest ? "العميل" : "المالك" }))),
       h("div", { style: { marginTop: "12px" } }, actions)
     ));
+
+    // «الصلاحية والتوفر»: the record's own facts and one-tap answers (same record; nothing is deleted).
+    if (view.state !== "DELETED") {
+      const v = validityView(record);
+      const tone = v.state === STATE.ACTIVE || v.state === STATE.LEGACY ? "" : " muted";
+      const answer = (id, label, kind = "secondary") => {
+        const b = h("button", { type: "button", class: `os-btn ${kind}`, "data-validity-answer": id }, label);
+        b.addEventListener("click", () => runAction(b, () => api(id === "REACTIVATE" ? "/os/records/reactivate" : "/os/records/availability", { officeId: session.officeId, recordId: view.id, ...(id === "REACTIVATE" ? {} : { answer: id }) }),
+          { success: id === "REACTIVATE" ? "عاد السجل نشطًا بمدة جديدة" : id === ANSWER.AVAILABLE || id === ANSWER.STILL_LOOKING ? "تم التأكيد والتجديد" : "تم تحديث التوفر — توقفت مطابقاته الجديدة" }));
+        return b;
+      };
+      const options = answerOptions(view.kind, record.purpose).filter((o) => o.id !== ANSWER.EDIT && o.id !== ANSWER.PAUSE);
+      const reopen = [STATE.EXPIRED, STATE.UNAVAILABLE, STATE.NEEDS_CONFIRMATION].includes(v.state);
+      append(container, h("div", { class: "os-card", "data-validity-card": v.state },
+        h("div", { class: "os-card-head" }, h("h2", { class: "os-h2" }, ic("clock"), "الصلاحية والتوفر"), h("span", { class: `os-badge${tone}`, "data-validity-state": v.state, text: v.label })),
+        h("p", { class: "os-sub", text: [v.duration, v.urgent ? "مستعجل" : "", v.remaining, v.periodic, v.lastConfirmed].filter(Boolean).join(" · ") || "لم تُحدد مدة لهذا السجل بعد — يبقى في المطابقة كما كان." }),
+        v.reason && v.state !== STATE.ACTIVE ? h("p", { class: "os-sub", "data-validity-reason": "", text: `السبب: ${v.reason}` }) : null,
+        h("div", { class: "os-btn-row" },
+          ...([STATE.PAUSED, STATE.ARCHIVED].includes(v.state) ? [] : reopen && v.state !== STATE.NEEDS_CONFIRMATION ? [answer("REACTIVATE", "إعادة تفعيل بمدة جديدة", "soft")] : options.map((o, i) => answer(o.id, o.label, i === 0 ? "soft" : "secondary"))))));
+    }
 
     // Linked opportunities + pending reviews
     const reviews = state.tasks.filter((t) => String(t.type).toUpperCase() === "MATCH_REVIEW" && (t.offerId === recordId || t.requestId === recordId || t.opportunityId === recordId));

@@ -628,6 +628,10 @@ service cloud.firestore {
     match /supportResume/{token} {
       allow read, write: if false;
     }
+    // صلاحية العروض والطلبات: ما يشير إليه زر التأكيد المرسل للطرف — للـ Worker فقط.
+    match /validityAsks/{token} {
+      allow read, write: if false;
+    }
     match /partySessionTokens/{tokenHash} {
       allow read, write: if false;
     }
