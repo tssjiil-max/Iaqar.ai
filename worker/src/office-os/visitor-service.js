@@ -19,7 +19,7 @@ import {
 import { AGENT_LANGUAGE_RULES } from "../../../public/os/domain/agent-domain.js";
 import { partyCommand } from "../../../public/os/domain/bot-domain.js";
 import { DURATION_OPTIONS } from "../../../public/os/domain/validity-domain.js";
-import { recordView } from "../../../public/os/domain/records-domain.js";
+import { recordView, validateRecordInput } from "../../../public/os/domain/records-domain.js";
 import { whatsappDigits } from "../../../public/os/domain/format-domain.js";
 import { botOutboundConfig, botSettings, notifyOffice, partyKey, sendToChat } from "./bot-notify.js";
 import { saveRecord } from "./records-service.js";
@@ -31,6 +31,8 @@ const AI_CALLS_PER_CHAT_DAY = 40;
 const visitorPath = (chatId) => ["telegramVisitors", text(chatId, 30)];
 
 async function gatesOpen(ctx, officeId) {
+  // «جرّب مدير مكتبك»: nothing leaves the Worker, so only the office's agent switch matters.
+  if (ctx.preview) return (await ctx.store.get(["offices", officeId, "agentSettings", "main"]))?.enabled === true;
   if (!botOutboundConfig(ctx.env).available) return false;
   if ((await botSettings(ctx.store, officeId)).enabled !== true) return false;
   return (await ctx.store.get(["offices", officeId, "agentSettings", "main"]))?.enabled === true;
@@ -157,6 +159,7 @@ async function understand(ctx, { officeId, doc, draft, body }) {
 }
 
 async function forwardToOffice(ctx, { officeId, doc, chatId, body, update }) {
+  if (ctx.preview) return false; // a try-out never reaches the office's inbox
   const inboxId = `tgv_${String(update?.update_id ?? Date.now()).replace(/[^0-9A-Za-z_-]/g, "").slice(0, 40)}`;
   const created = await ctx.store.create(["offices", officeId, "inbox", inboxId], {
     schemaVersion: 3, officeId, direction: "inbound", source: "telegram_bot_visitor", channel: "telegram", status: "kept", processingState: "kept", isProcessed: true,
@@ -281,6 +284,13 @@ async function saveVisitorRecord(ctx, { chatId, doc, officeId, lang }) {
   const t = visitorText(lang);
   if (doc.stage !== "CONFIRM" || !doc.phone) return { ok: true, status: 200, ignored: true, reason: "not_ready" };
   const draft = parseDraft(doc);
+  if (ctx.preview) {
+    // A try-out: the record is checked by the office's own rules but never saved, and nobody is linked.
+    const check = validateRecordInput(toRecordInput(draft, { phone: doc.phone, name: doc.name }));
+    await saveState(ctx, chatId, { stage: check.ok ? "DONE" : "COLLECT", ...(check.ok ? { draft: {} } : {}) });
+    await say(ctx, chatId, check.ok ? PREVIEW_SAVED : `${Object.values(check.errors || {})[0] || t.unclear}\n${t.editHint}`, check.ok ? { buttons: [[{ text: t.newTx, callback_data: "vn:NEW" }]] } : {});
+    return { ok: true, status: 200, saved: false, preview: true, valid: check.ok };
+  }
   const actor = { uid: await assigneeOf(ctx, officeId), role: "broker", isManager: false };
   let saved;
   try {
@@ -304,6 +314,75 @@ async function saveVisitorRecord(ctx, { chatId, doc, officeId, lang }) {
   await saveState(ctx, chatId, { stage: "DONE", draft: {}, lastRecordId: saved.recordId });
   await say(ctx, chatId, t.saved(ref, lang === "en" ? (record?.validityDuration || "MONTH").toLowerCase().replace("_", " ") : (duration || "شهر")), { buttons: [[{ text: t.newTx, callback_data: "vn:NEW" }]] });
   return { ok: true, status: 200, saved: true, recordId: saved.recordId, duplicate: saved.duplicate === true, reference: ref };
+}
+
+// ------------------------------------------------------------------ «جرّب مدير مكتبك» (no Telegram needed)
+
+const PREVIEW_CHAT = "1000000001";
+const PREVIEW_SAVED = "معاينة ✅ هنا يُسجَّل الطلب في مكتبك ويصل صاحبه رقمه المرجعي ومدة صلاحيته. (في التجربة لا يُحفظ شيء ولا يُرسل شيء.)";
+const PREVIEW_BLOCKED = new Set(["telegramBotChats", "telegramParties", "telegramPartyPending"]);
+
+/** The office's own store, with the conversation kept per member and every link/inbox write switched off. */
+function previewStore(store, officeId, uid) {
+  const own = ["offices", officeId, "agentPreview", uid];
+  const blocked = (seg) => PREVIEW_BLOCKED.has(seg[0]) || (seg[0] === "offices" && seg[2] === "inbox");
+  const map = (seg) => (seg[0] === "telegramVisitors" ? own : seg);
+  return {
+    get: async (seg) => (blocked(seg) ? null : store.get(map(seg))),
+    set: async (seg, obj) => (blocked(seg) ? undefined : store.set(map(seg), obj)),
+    create: async (seg, obj) => (blocked(seg) ? false : store.create(map(seg), obj)),
+    update: async (seg, fn, opts) => (blocked(seg) ? null : store.update(map(seg), fn, opts)),
+    list: (seg, size) => store.list(seg, size)
+  };
+}
+
+/**
+ * The office's members talk to their own office manager exactly as an owner / broker / client would on
+ * Telegram — same texts, buttons, questions and checks — without Telegram, without saving a record and
+ * without linking anyone. Works on any environment (no bot or webhook needed).
+ *   input: { action: "start" | "text" | "button" | "contact" | "reset", text, data, phone }
+ */
+export async function previewVisitor(ctx, { actor, officeId, input = {} }) {
+  const replies = [];
+  const pctx = {
+    ...ctx, preview: true,
+    store: previewStore(ctx.store, officeId, text(actor.uid, 128)),
+    deps: {
+      ...ctx.deps,
+      telegram: async (method, payload = {}) => {
+        if (method === "sendMessage") {
+          const markup = payload.reply_markup || {};
+          replies.push({
+            text: String(payload.text || ""),
+            buttons: (markup.inline_keyboard || []).map((row) => row.map((b) => ({ text: String(b.text || ""), data: String(b.callback_data || "") }))),
+            askContact: Boolean(markup.keyboard?.flat?.().some((b) => b.request_contact))
+          });
+        }
+        return { ok: true, messageId: replies.length };
+      }
+    }
+  };
+  if (!(await gatesOpen(pctx, officeId))) return { ok: true, off: true, replies: [{ text: "شغّل مدير المكتب الذكي أولًا من الإعدادات ← مدير المكتب الذكي.", buttons: [] }] };
+  const action = String(input.action || "");
+  const chat = { id: Number(PREVIEW_CHAT), type: "private" };
+  const from = { id: Number(PREVIEW_CHAT), first_name: text(actor.name || "تجربة", 40), language_code: "ar" };
+  const updateId = Date.now();
+  if (action === "start" || action === "reset") {
+    await startVisitor(pctx, { officeId, chat, from });
+  } else if (action === "button") {
+    if (!isVisitorCallback(input.data)) throw ctx.deps.appError("preview_button_invalid", 400, "زر غير معروف");
+    await handleVisitorCallback(pctx, { id: `p${updateId}`, from, data: String(input.data), message: { chat } });
+  } else if (action === "contact") {
+    await handleVisitorMessage(pctx, { update: { update_id: updateId }, message: { chat, from, contact: { phone_number: text(input.phone, 20), user_id: from.id } } });
+  } else if (action === "text") {
+    const body = text(input.text, 1500);
+    if (!body) throw ctx.deps.appError("empty_message", 400, "اكتب رسالتك");
+    const handled = await handleVisitorMessage(pctx, { update: { update_id: updateId }, message: { chat, from, text: body } });
+    if (!handled) await startVisitor(pctx, { officeId, chat, from });
+  } else {
+    throw ctx.deps.appError("preview_action_invalid", 400, "إجراء غير معروف");
+  }
+  return { ok: true, replies };
 }
 
 export { PERSONA };

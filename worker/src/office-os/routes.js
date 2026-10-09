@@ -19,6 +19,7 @@ import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram }
 import { convertInboxMessage } from "./inbox-service.js";
 import { createOfficeTicket, supportStatus } from "./support-service.js";
 import { agentChat, agentHistory, agentStatus, agentSuggestions, runApprovedAction, saveAgentSettings } from "./agent-service.js";
+import { previewVisitor } from "./visitor-service.js";
 import { applyAvailabilityAnswer, reactivateRecord, setRecordValidity, sweepValidityNow } from "./validity-service.js";
 import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker, linkBrokerWithTelegramLogin } from "./bot-service.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
@@ -100,6 +101,8 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/agent/history": (ctx, b, actor) => agentHistory(ctx, { officeId: ctx.officeId, actor }),
   "/os/agent/act": (ctx, b, actor) => runApprovedAction(ctx, { actor, officeId: ctx.officeId, tool: text(b.tool), journeyId: text(b.journeyId), askIds: Array.isArray(b.askIds) ? b.askIds.slice(0, 20).map(text) : [] }),
   "/os/agent/suggestions": (ctx, b, actor) => agentSuggestions(ctx, { officeId: ctx.officeId, actor }),
+  // «جرّب مدير مكتبك»: the Telegram conversation an owner/broker/client would have — nothing sent, nothing saved.
+  "/os/agent/preview": (ctx, b, actor) => previewVisitor(ctx, { actor, officeId: ctx.officeId, input: { action: text(b.action), text: typeof b.text === "string" ? b.text.slice(0, 1500) : "", data: text(b.data), phone: text(b.phone) } }),
   "/os/support/status": (ctx) => supportStatus(ctx),
   "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } })
 });

@@ -102,7 +102,7 @@ test("assignment and deal-permission settings: managers only", async () => {
 });
 
 test("the office agent: settings, conversations and stats are closed to every client (Worker only)", async () => {
-  const paths = ["offices/office-a/agentSettings/main", "offices/office-a/agentChats/owner-a", "offices/office-a/agentStats/2026-10-09"];
+  const paths = ["offices/office-a/agentSettings/main", "offices/office-a/agentChats/owner-a", "offices/office-a/agentStats/2026-10-09", "offices/office-a/agentPreview/owner-a"];
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     for (const path of paths) await setDoc(doc(db, path), { officeId: "office-a", enabled: true });

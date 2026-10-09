@@ -76,7 +76,7 @@ export async function botStatus(ctx, { actor, officeId }) {
   ]);
   const view = botView({ available: config.available, botUsername: config.botUsername, settings, linkedParties: settings.linkedParties, broker: broker || {} });
   // The bot's public numeric id for «دخول بتيليجرام» (never the token).
-  return { ...view, loginBotId: config.available ? botIdFromToken(ctx.env.TELEGRAM_BOT_TOKEN) : "" };
+  return { ...view, loginBotId: config.loginAvailable ? botIdFromToken(ctx.env.TELEGRAM_BOT_TOKEN) : "", webhookKept: config.webhookKept === true };
 }
 
 export async function setBotEnabled(ctx, { actor, officeId, enabled }) {
@@ -151,7 +151,8 @@ export async function startBrokerLink(ctx, { actor, officeId }) {
  * Linked only after the bot really wrote to him (Telegram allows it when he ticked «السماح بالرسائل»).
  */
 export async function linkBrokerWithTelegramLogin(ctx, { actor, officeId, auth: rawAuth }) {
-  assertAvailable(ctx);
+  const config = botOutboundConfig(ctx.env);
+  if (!config.loginAvailable) throw ctx.deps.appError("bot_unavailable", 409, "بوت المنصة غير مهيأ على هذه البيئة بعد");
   const auth = cleanAuth(rawAuth || {});
   const now = ctx.now();
   if (!auth) throw ctx.deps.appError("telegram_login_invalid", 400, "بيانات الدخول بتيليجرام غير صالحة — أعد المحاولة.");
@@ -163,6 +164,14 @@ export async function linkBrokerWithTelegramLogin(ctx, { actor, officeId, auth: 
   if (!used) throw ctx.deps.appError("telegram_login_used", 409, "استُخدم هذا الدخول من قبل — أعد «دخول بتيليجرام».");
   const chatId = text(auth.id);
   const tgName = cleanText([auth.first_name, auth.last_name].filter(Boolean).join(" "), 60);
+  // Where the bot's webhook was kept elsewhere nothing is sent: the sign-in is verified and saved, and alerts
+  // start when this environment receives the bot (the confirmation message is then the first one).
+  if (config.webhookKept) {
+    await ctx.store.set(["telegramBrokers", brokerKey(officeId, actor.uid)], { officeId, uid: actor.uid, chatId, status: "ACTIVE", telegramName: tgName, linkedAt: now.toISOString(), linkedBy: "telegram_login", confirmationSent: false, updatedAt: now });
+    await rememberChat(ctx.store, chatId, { brokers: { [officeId]: actor.uid } }, now);
+    await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.BOT_BROKER_LINKED, actorUid: actor.uid, entityType: "telegramBroker", entityId: actor.uid, key: `tglogin|${auth.auth_date}` }).catch(() => {});
+    return { ok: true, linked: true, telegramName: tgName, confirmationSent: false };
+  }
   const sent = await sendToChat(ctx.deps, chatId, BOT_TEXT.brokerLinked, { now });
   if (!sent.ok) {
     // Telegram did not let the bot write (the permission was not ticked): the one-time link still works.

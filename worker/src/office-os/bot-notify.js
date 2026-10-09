@@ -24,7 +24,14 @@ const CHAT_ID = /^-?\d{1,20}$/;
 export function botOutboundConfig(env = {}) {
   const botUsername = text(env.TELEGRAM_BOT_USERNAME).replace(/^@/, "");
   const configured = Boolean(text(env.TELEGRAM_BOT_TOKEN) && text(env.TELEGRAM_WEBHOOK_SECRET) && botUsername);
-  return { configured, available: configured && text(env.TELEGRAM_OUTBOUND).toLowerCase() === "enabled", botUsername };
+  // The bot's webhook was kept where it is (the central bot serves Production): this environment does not
+  // receive the bot's messages, so it sends none either. It can still check «دخول بتيليجرام» signatures.
+  const webhookKept = text(env.TELEGRAM_WEBHOOK_KEPT).toLowerCase() === "yes";
+  return {
+    configured, botUsername, webhookKept,
+    available: configured && !webhookKept && text(env.TELEGRAM_OUTBOUND).toLowerCase() === "enabled",
+    loginAvailable: configured
+  };
 }
 
 /** Never let a token reach a log line (Telegram addresses carry it). */

@@ -10,7 +10,8 @@
  *
  * The bot only receives: nothing here sends a message to anyone. No secret value is ever
  * printed — only the bot's public username and the webhook's address.
- * A bot has ONE webhook: registering it here moves it away from wherever it pointed before.
+ * A bot has ONE webhook. This script never moves a webhook that points elsewhere (the central bot
+ * @iaqar_intake_bot serving Production above all) unless TELEGRAM_WEBHOOK_MOVE_APPROVED = «@<username>».
  */
 import { createHmac } from "node:crypto";
 import fs from "node:fs";
@@ -52,6 +53,22 @@ export function stagingWebhookUrl(workerUrl) {
     throw new Error(`refusing: ${url.hostname} is not the Staging Worker (${STAGING_WORKER_NAME})`);
   }
   return `${url.origin}${WEBHOOK_PATH}`;
+}
+
+/**
+ * The central bot (@iaqar_intake_bot) serves Production: its webhook is never moved by a Staging deploy.
+ * Any bot whose webhook points somewhere other than this Staging Worker keeps it too, unless the owner set
+ * TELEGRAM_WEBHOOK_MOVE_APPROVED to exactly «@<that bot's username>» for this one deploy.
+ */
+export const PROTECTED_BOTS = Object.freeze(["iaqar_intake_bot"]);
+export function webhookMoveDecision({ username = "", previous = "", url = "", approved = "" } = {}) {
+  let host = "no address";
+  if (previous) { host = "another address"; try { host = new URL(previous).hostname; } catch { /* generic */ } }
+  const explicit = String(approved || "").trim().toLowerCase() === `@${String(username).toLowerCase()}`;
+  if (previous === url) return { move: true, host, reason: "already_staging" };
+  if (PROTECTED_BOTS.includes(String(username).toLowerCase()) && !explicit) return { move: false, host, reason: "central_bot_protected" };
+  if (previous && !explicit) return { move: false, host, reason: "webhook_in_use_elsewhere" };
+  return { move: true, host, reason: previous ? "approved" : "no_previous_webhook" };
 }
 
 /** Never let a token reach a log line (Telegram addresses carry it). */
@@ -109,11 +126,14 @@ export async function register({ env = process.env, fetchImpl = fetch, log = con
 
   const before = await telegram(fetchImpl, token, "getWebhookInfo");
   const previous = String(before?.url || "");
-  if (previous && previous !== url) {
-    let host = "another address";
-    try { host = new URL(previous).hostname; } catch { /* keep the generic wording */ }
-    log(`NOTE: the bot pointed at ${host}; it is moved to Staging now.`);
+  const { username } = await botIdentity({ token, fetchImpl });
+  const decision = webhookMoveDecision({ username, previous, url, approved: env.TELEGRAM_WEBHOOK_MOVE_APPROVED });
+  if (!decision.move) {
+    // The bot keeps its current address (e.g. the central bot serving Production): nothing is changed at Telegram.
+    log(`KEEP: @${username} stays on ${decision.host} — the webhook is not moved (${decision.reason}).`);
+    return { url: previous, kept: true, reason: decision.reason };
   }
+  if (previous && previous !== url) log(`NOTE: the bot pointed at ${decision.host}; it is moved to Staging now (approved for @${username}).`);
   await telegram(fetchImpl, token, "setWebhook", { url, secret_token: secret, allowed_updates: ALLOWED_UPDATES });
   const info = await telegram(fetchImpl, token, "getWebhookInfo");
   if (String(info?.url || "") !== url) throw new Error("Telegram did not keep the Staging address");

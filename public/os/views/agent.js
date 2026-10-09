@@ -9,7 +9,7 @@ import { h, ic, clear, append } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction, toast } from "../core/ui.js";
-import { agentAct, agentChat, agentHistory, agentSuggestions, loadAgentStatus, saveAgentSettings } from "../core/agent.js";
+import { agentAct, agentChat, agentHistory, agentPreview, agentSuggestions, loadAgentStatus, saveAgentSettings } from "../core/agent.js";
 import { listAuditLog } from "../core/live.js";
 import { agentStatusView } from "../domain/agent-domain.js";
 import { relativeAgo } from "../domain/format-domain.js";
@@ -97,6 +97,48 @@ export function renderAgent(container) {
   return null;
 }
 
+/**
+ * #/agent/try — «جرّب مدير مكتبك»: the same conversation an owner / broker / client has on Telegram (texts,
+ * buttons, one question at a time, checks), right here. Nothing is sent to anyone and no record is saved.
+ */
+export function renderAgentTry(container) {
+  const thread = h("div", { class: "os-agent-thread os-try-thread", "aria-live": "polite", "data-try-thread": "" });
+  const input = h("input", { class: "os-input", type: "text", maxlength: "500", dir: "auto", placeholder: "اكتب كأنك مالك أو عميل…", "data-try-input": "" });
+  const send = h("button", { type: "button", class: "os-btn primary", "data-try-send": "" }, ic("send"), "إرسال");
+  const restart = h("button", { type: "button", class: "os-btn secondary", "data-try-restart": "" }, ic("refresh"), "ابدأ من جديد");
+  const contactRow = h("div", { class: "os-try-contact", hidden: true, "data-try-contact": "" });
+  const phone = h("input", { class: "os-input", type: "tel", inputmode: "tel", dir: "ltr", placeholder: "+9665XXXXXXXX", "data-try-phone": "" });
+  const share = h("button", { type: "button", class: "os-btn primary", "data-try-share": "" }, ic("phone"), "مشاركة رقمي");
+  append(contactRow, h("small", { class: "os-sub", text: "في تيليجرام يضغط الشخص زر «مشاركة رقمي». هنا اكتب رقمًا تجريبيًا:" }), phone, share);
+  append(container, head("جرّب مدير مكتبك", "settings/agent"),
+    h("div", { class: "os-alert", text: "تجربة فقط: نفس محادثة تيليجرام التي يراها المالك أو الوسيط أو العميل. لا يُرسل شيء لأحد ولا يُحفظ أي سجل." }),
+    thread, contactRow, h("div", { class: "os-agent-compose" }, input, send), h("div", { class: "os-btn-row" }, restart));
+  const addMine = (textValue) => append(thread, h("div", { class: "os-agent-msg is-mine" }, h("p", { dir: "auto", text: textValue })));
+  const show = (result) => {
+    let askContact = false;
+    for (const reply of result.replies || []) {
+      askContact = askContact || reply.askContact;
+      const box = h("div", { class: "os-agent-msg is-agent", "data-try-reply": "" }, h("p", { dir: "auto", text: reply.text }));
+      for (const row of reply.buttons || []) {
+        append(box, h("div", { class: "os-btn-row" }, ...row.map((b) => h("button", { type: "button", class: "os-chip", "data-try-button": b.data, onClick: () => { addMine(`[${b.text}]`); go_({ action: "button", data: b.data }); } }, b.text))));
+      }
+      append(thread, box);
+    }
+    contactRow.hidden = !askContact;
+    thread.lastElementChild?.scrollIntoView({ block: "end" });
+  };
+  function go_(payload) {
+    return runAction(send, async () => show(await agentPreview(session.officeId, payload)));
+  }
+  const submit = () => { const v = input.value.trim(); if (!v) return; input.value = ""; addMine(v); go_({ action: "text", text: v }); };
+  send.addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+  share.addEventListener("click", () => { const v = phone.value.trim(); if (!v) return; addMine(`📱 ${v}`); go_({ action: "contact", phone: v }); });
+  restart.addEventListener("click", () => { clear(thread); go_({ action: "reset" }); });
+  go_({ action: "start" });
+  return null;
+}
+
 /** The office's own Telegram link: whoever opens it talks to this office's manager (owner / broker / client). */
 function officeLinkBox(link) {
   const copy = h("button", { type: "button", class: "os-btn secondary", "data-agent-office-link-copy": "" }, ic("clipboard"), "نسخ الرابط");
@@ -161,7 +203,9 @@ export function renderAgentSettings(container) {
         h("h2", { class: "os-h2", text: "القنوات" }),
         h("p", { class: "os-sub", "data-agent-telegram": "", text: s.telegramBotOn ? "بوت تيليجرام مفعّل في مكتبك: يسأل الطرفين عن المطابقات ويفتح الصفقة عند موافقتهما." : "بوت تيليجرام متوقف في مكتبك." }),
         s.officeBotLink ? officeLinkBox(s.officeBotLink) : h("p", { class: "os-sub", "data-agent-office-link": "off", text: "رابط مكتبك على تيليجرام يظهر هنا بعد تشغيل البوت ومدير المكتب الذكي." }),
-        h("button", { type: "button", class: "os-btn secondary", onClick: () => go("settings/channels") }, ic("link"), "قنوات المكتب")),
+        h("div", { class: "os-btn-row" },
+          h("button", { type: "button", class: "os-btn primary", "data-agent-try": "", onClick: () => go("agent/try") }, ic("robot"), "جرّب مدير مكتبك"),
+          h("button", { type: "button", class: "os-btn secondary", onClick: () => go("settings/channels") }, ic("link"), "قنوات المكتب"))),
       h("section", { class: "os-card" }, h("h2", { class: "os-h2", text: "آخر الإجراءات" }), actions));
     listAuditLog(session.officeId, 60).then((rows) => {
       clear(actions);
