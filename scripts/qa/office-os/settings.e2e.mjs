@@ -50,7 +50,7 @@ try {
   const page = await openAs(OWNER_A, "settings");
   await page.route("**/worker/os/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", state: "CONNECTED", stateLabel: "مرتبط", signupEnabled: true, actions: ["reconnect", "disconnect"], number: "••••••1234", inboundToday: 3, webhookReady: true, webhookLabel: "يعمل — تصل الرسائل", onboardingMode: "coexistence", detail: "", note: "" }, { id: "telegram", state: "DISCONNECTED", stateLabel: "غير مرتبط", configured: true, actions: ["connect"], detail: "", botUsername: "iaqar_bot", note: "" }] }) }));
   await page.locator(".os-set-row").first().waitFor();
-  check("hub lists the seven settings pages", (await page.locator(".os-set-row").count()) === 7);
+  check("hub lists the eight settings pages", (await page.locator(".os-set-row").count()) === 8);
   check("settings hub has no link to the old app", (await page.locator("a[href*='legacy']").count()) === 0);
   await shot(page, "01-hub");
 

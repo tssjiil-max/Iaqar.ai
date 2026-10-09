@@ -17,6 +17,8 @@ import { loadChannels } from "../core/channels.js";
 import { loadSupportStatus, sendSupportTicket } from "../core/support.js";
 import { supportCardView, TICKET_KIND, TICKET_KIND_LABEL, validateOfficeTicket } from "../domain/support-domain.js";
 import { openSheet, runAction, toast } from "../core/ui.js";
+import { loadAgentStatus } from "../core/agent.js";
+import { LANE, agentCounts, agentStatusView } from "../domain/agent-domain.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){return taskPathStep(task);}
@@ -100,6 +102,39 @@ function officeToolCard([label, iconName]) {
     h("span", { class: "ref-office-tool-icon" }, ic(iconName)),
     h("strong", { text: label }));
   if (tool) card.addEventListener("click", () => go(tool.route));
+  return card;
+}
+
+/**
+ * «مدير المكتب»: a compact card at the start of «أدوات المكتب». Every number comes from the same
+ * lanes Daily Tasks shows (one function, so the two never disagree); the status is the Worker's.
+ */
+function agentCard() {
+  const statusPill = h("span", { class: "ref-agent-status", "data-agent-status": "", text: "جارٍ التحقق" });
+  const needs = h("button", { type: "button", class: "ref-agent-needs", "data-agent-needs": "", onClick: () => go(`tasks?lane=${LANE.NEEDS_YOU}`) });
+  const facts = h("small", { class: "ref-agent-facts", "data-agent-facts": "" });
+  const chat = h("button", { type: "button", class: "ref-agent-chat", "data-agent-chat": "", onClick: () => go("agent") }, ic("robot"), h("span", { text: "تحدث مع مدير المكتب" }));
+  const card = h("div", { class: "ref-agent-card", "data-agent-card": "" },
+    h("div", { class: "ref-agent-head" }, h("span", { class: "os-set-icon" }, ic("robot")), h("b", { text: "مدير المكتب" }), statusPill),
+    needs, facts, chat);
+  let status = { loaded: false };
+  const mine = (list) => list.filter((task) => visibleToActor(task, { uid: session.user?.uid, isManager: session.isManager, officeId: session.officeId }));
+  card.fill = () => {
+    const view = agentStatusView(status);
+    statusPill.textContent = view.label;
+    statusPill.dataset.state = view.state;
+    statusPill.className = `ref-agent-status${view.tone ? ` is-${view.tone}` : ""}`;
+    if (!state.tasksReady) { needs.textContent = "جارٍ تحميل المعاملات…"; facts.textContent = ""; return; }
+    const counts = agentCounts(mine(state.tasks), mine(state.doneToday || []));
+    clear(needs);
+    if (counts.needsYou) append(needs, h("strong", { text: String(counts.needsYou) }), h("span", { text: counts.needsYou === 1 ? "معاملة تحتاج تدخلك" : "معاملات تحتاج تدخلك" }), ic("chev-left"));
+    else append(needs, h("span", { text: "جميع المعاملات تحت المتابعة، ولا توجد قرارات تنتظرك حاليًا." }));
+    needs.dataset.count = String(counts.needsYou);
+    facts.textContent = `${status.enabled ? "يتابعها مدير المكتب" : "بانتظار رد"}: ${counts.following} · أُنجز اليوم: ${counts.doneToday}`;
+    facts.dataset.following = String(counts.following);
+    facts.dataset.done = String(counts.doneToday);
+  };
+  loadAgentStatus(session.officeId).then((s) => { status = s; card.fill(); }).catch(() => { status = { loaded: true, enabled: false, lastErrorAt: new Date().toISOString() }; card.fill(); });
   return card;
 }
 
@@ -197,6 +232,7 @@ export function renderOffice(container){
     // Order (approved): office card → office tools → التعاون → مركز التواصل والدعم; the bottom bar stays fixed.
     h("section", { class: "os-card ref-office-section" },
       h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
+      agentCard(),
       h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard))),
 
     h("section", { class: "os-card ref-office-section" },
@@ -216,6 +252,9 @@ export function renderOffice(container){
     const waiting = rows.map(inboxItemView).filter((view) => view.canConvert).length;
     if (inboxBadge) inboxBadge.textContent = waiting === 0 ? "" : waiting === 1 ? "رسالة واحدة تنتظرك" : waiting === 2 ? "رسالتان تنتظرانك" : `${waiting} رسائل تنتظرك`;
   }, () => {});
+  const agentBox = container.querySelector("[data-agent-card]");
+  agentBox?.fill?.();
+  const offAgent = subscribe((kind) => { if (kind === "tasks" || kind === "done") agentBox?.fill?.(); });
   // Real states only: the office's linked channels and the platform support line; a failure just leaves them hidden.
   const card = container.querySelector("[data-support-card]");
   let alive = true;
@@ -224,7 +263,7 @@ export function renderOffice(container){
     card.fill({ channels: channels.status === "fulfilled" ? channels.value?.channels || [] : [], support: support.status === "fulfilled" ? support.value || {} : {} });
   });
   const offCoop = watchCooperation(session.officeId, (rows) => { if (badge) badge.textContent = communitySummary(communityViews(rows, session.officeId)); }, () => {});
-  return () => { alive = false; try { offInbox(); } catch (_) { /* ignore */ } try { offCoop(); } catch (_) { /* ignore */ } };
+  return () => { alive = false; offAgent(); try { offInbox(); } catch (_) { /* ignore */ } try { offCoop(); } catch (_) { /* ignore */ } };
 }
 
 export function renderTaskDetail(container,{taskId}){const draw=()=>{clear(container);const task=state.tasks.find(t=>t.id===taskId);if(!task){append(container,h("p",{class:"os-sub",text:state.tasksReady?"المهمة غير متاحة":"جارٍ التحميل…"}));return;}const model=taskCardModel(task),record=taskRecord(task)||{},v=recordView(record),step=taskStep(task);

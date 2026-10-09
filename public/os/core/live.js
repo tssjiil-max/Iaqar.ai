@@ -4,6 +4,7 @@
  */
 
 import { db, docData } from "./runtime.js";
+import { riyadhDayStart } from "../domain/agent-domain.js";
 
 const ACTIVE = ["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"];
 
@@ -21,6 +22,13 @@ function listen(ref, onData, onError) {
 export function watchTasks(officeId, cb, onError) {
   return listen(office(officeId).collection("operations").where("status", "in", ACTIVE).limit(300),
     (snap) => cb(snap.docs.map(docData)), onError);
+}
+
+/** Tasks finished since the start of today (Riyadh): «تم إنجازها». Single-field range, filtered to COMPLETED here. */
+export function watchDoneToday(officeId, cb, onError, now = new Date()) {
+  const start = riyadhDayStart(now);
+  return listen(office(officeId).collection("operations").where("completedAt", ">=", start).limit(100),
+    (snap) => cb(snap.docs.map(docData).filter((task) => String(task.status || "").toUpperCase() === "COMPLETED")), onError);
 }
 
 export function watchRecords(officeId, cb, onError) {

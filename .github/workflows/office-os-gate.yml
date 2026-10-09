@@ -106,6 +106,9 @@ jobs:
       - name: Office bot on Telegram (switch, links, asking the two sides, opening the deal, taking it back)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/bot" node scripts/qa/office-os/bot.e2e.mjs
+      - name: «مدير المكتب الذكي» in a real browser (home card = Daily Tasks lanes, chat, settings)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/agent" node scripts/qa/office-os/agent.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4

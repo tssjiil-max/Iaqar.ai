@@ -18,6 +18,8 @@ import { compatibilityLevel } from "../domain/match-review-domain.js";
 import { formatDateTime, formatPrice, relativeAgo } from "../domain/format-domain.js";
 import { photo, taskRecord, taskStep, timeChip, stepStrip, STEPS } from "./reference-layout.js";
 import { proposalPreparedPanel } from "./composer.js";
+import { LANE, laneLabels, laneOfGroup, needsYouReason, needsYouTask } from "../domain/agent-domain.js";
+import { loadAgentStatus } from "../core/agent.js";
 import { recordTitle, recordView, kindOf } from "../domain/records-domain.js";
 
 export function countLabel(n) {
@@ -208,7 +210,23 @@ function closedDealCard(journey) {
       h("div", {}, open)));
 }
 
-export function renderTasks(container, { filter = "all", step = null } = {}) {
+/** «تم إنجازها»: one compact row per task finished today, with who did it when that is known. */
+function doneRow(task) {
+  const model = taskCardModel(task);
+  const by = task.completedBy === "AGENT" ? "مدير المكتب الذكي" : task.completedBy === session.user?.uid ? "أنت" : task.completedBy ? "الوسيط" : "";
+  const route = model.journeyId ? `deal/${model.journeyId}` : model.opportunityId ? `record/${model.opportunityId}` : "";
+  const row = h(route ? "button" : "div", { class: "os-card os-center-row ref-done-row", "data-done-task": model.id, ...(route ? { type: "button" } : {}) },
+    h("span", { class: "os-set-text" },
+      h("b", { text: model.title || model.badge }),
+      h("small", { text: [String(task.titleText || model.badge), task.completedAt ? formatDateTime(task.completedAt).split(" · ").pop() : "", by ? `نفذه: ${by}` : ""].filter(Boolean).join(" · ") })),
+    route ? ic("chev-left") : null);
+  if (route) row.addEventListener("click", () => go(route));
+  return row;
+}
+
+export function renderTasks(container, { filter = "all", step = null, lane = null } = {}) {
+  let activeLane = Object.values(LANE).includes(String(lane || "")) ? String(lane) : null;
+  let agentActive = false;
   let active = TASK_FILTERS.some((f) => f.id === filter) ? filter : "all";
   let activeStep = parsePathStep(step);
   let closed = null;        // null = not loaded yet, [] = none
@@ -224,6 +242,7 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
     const params = new URLSearchParams();
     if (active !== "all") params.set("filter", active);
     if (activeStep !== null) params.set("step", String(activeStep));
+    if (activeLane) params.set("lane", activeLane);
     const query = params.toString();
     history.replaceState(null, "", `#/tasks${query ? `?${query}` : ""}`);
   };
@@ -276,14 +295,33 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
       return;
     }
 
-    const shown = filterGroupsByStep(inFilter, activeStep);
+    const stepShown = filterGroupsByStep(inFilter, activeStep);
+    const shown = activeLane && activeLane !== LANE.DONE ? stepShown.filter((group) => laneOfGroup(group) === activeLane) : activeLane === LANE.DONE ? [] : stepShown;
     countPill.textContent = cardCountLabel(shown.length);
+    const labels = laneLabels(agentActive);
+    if (activeLane) {
+      append(stageHead, h("b", { text: labels[activeLane] }), h("button", { type: "button", class: "ref-stage-all", "data-lane-all": "", onClick: () => { activeLane = null; writeRoute(); draw(); } }, "عرض كل المهام"));
+      stageHead.hidden = false;
+    }
+    const mineDone = (state.doneToday || []).filter((task) => visibleToActor(task, { uid: session.user?.uid, isManager: session.isManager, officeId: session.officeId }));
+    const doneSection = () => (activeStep === null && (!activeLane || activeLane === LANE.DONE) && mineDone.length
+      ? h("details", { class: "ref-lane ref-lane-done", "data-lane": LANE.DONE, open: activeLane === LANE.DONE ? true : null },
+        h("summary", { class: "ref-lane-head" }, labels.DONE, h("span", { class: "os-count", text: String(mineDone.length) })),
+        h("div", { class: "os-center-list" }, ...mineDone.slice(0, 30).map(doneRow)))
+      : null);
     if (activeStep !== null) {
       append(stageHead, h("b", { text: `مرحلة «${STEPS[activeStep][0]}» — ${cardCountLabel(shown.length)}` }),
         h("button", { type: "button", class: "ref-stage-all", "data-stage-all": "", onClick: () => selectStep(null) }, "عرض كل المهام"));
     }
     if (!state.tasksReady) {
       append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" }));
+      return;
+    }
+    if (!shown.length && activeLane) {
+      const done = doneSection();
+      if (done) { append(list, done); return; }
+      append(list, h("div", { class: "os-card" }, emptyState("check-circle", activeLane === LANE.NEEDS_YOU ? "لا توجد قرارات تنتظرك" : activeLane === LANE.FOLLOWING ? "لا شيء بانتظار رد" : "لم يُنجز شيء اليوم بعد",
+        activeLane === LANE.NEEDS_YOU ? "جميع المعاملات تحت المتابعة، ولا توجد قرارات تنتظرك حاليًا." : "")));
       return;
     }
     if (!shown.length) {
@@ -297,7 +335,24 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
         h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus-circle"), "إضافة عرض أو طلب"))));
       return;
     }
-    for (const group of shown) append(list, group.kind === "deal" ? dealCard(group, now) : taskCard(group.task, now));
+    // Three lanes on the same cards (same task, same id): what needs the broker first, then the known waits.
+    for (const laneId of [LANE.NEEDS_YOU, LANE.FOLLOWING]) {
+      const groups = shown.filter((group) => laneOfGroup(group) === laneId);
+      if (!groups.length) continue;
+      if (!activeLane) append(list, h("h2", { class: "ref-lane-head", "data-lane": laneId }, labels[laneId], h("span", { class: "os-count", text: String(groups.length) })));
+      for (const group of groups) {
+        const card = group.kind === "deal" ? dealCard(group, now) : taskCard(group.task, now);
+        card.dataset.lane = laneId;
+        if (laneId === LANE.NEEDS_YOU) {
+          const lead = needsYouTask(group);
+          const reason = lead ? needsYouReason(lead) : "";
+          if (reason) card.prepend(h("small", { class: "ref-lane-reason", "data-lane-reason": "", text: reason }));
+        }
+        append(list, card);
+      }
+    }
+    const done = doneSection();
+    if (done) append(list, done);
     // Coming back from a deal: land on its card, not at the top of the list.
     const returning = dealToReturnTo();
     const cardOf = (id) => [...list.querySelectorAll("[data-deal]")].find((el) => el.dataset.deal === id);
@@ -324,7 +379,9 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
   loadClosed();
   // A deal that closes while this page is open leaves the task list; refresh the closed list then.
   let openDeals = state.tasks.length;
+  loadAgentStatus(session.officeId).then((status) => { agentActive = status.enabled === true; draw(); }).catch(() => {});
   const off = subscribe((kind) => {
+    if (kind === "done") { draw(); return; }
     if (kind !== "tasks" && kind !== "records") return;
     if (kind === "tasks" && state.tasks.length < openDeals) loadClosed();
     openDeals = state.tasks.length;

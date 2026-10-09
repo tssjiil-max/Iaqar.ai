@@ -99,7 +99,7 @@ export async function upsertJourneyTask(store, deps, {
 }
 
 /** Complete (or dismiss) the given task ids; missing or terminal ones are skipped. */
-export async function finishTasks(store, { officeId, taskIds = [], status = "COMPLETED", reason = "", now = new Date() }) {
+export async function finishTasks(store, { officeId, taskIds = [], status = "COMPLETED", reason = "", completedBy = "", now = new Date() }) {
   let finished = 0;
   for (const id of new Set(taskIds.filter(Boolean))) {
     const segments = ["offices", officeId, "operations", id];
@@ -109,6 +109,8 @@ export async function finishTasks(store, { officeId, taskIds = [], status = "COM
       status,
       updatedAt: now,
       completedAt: status === "COMPLETED" ? now : null,
+      // "AGENT" when the office manager (bot) finished it; otherwise the broker's uid when known.
+      ...(status === "COMPLETED" && completedBy ? { completedBy: String(completedBy).slice(0, 128) } : {}),
       dismissedAt: status === "DISMISSED" ? now : null,
       dismissalReason: reason || ""
     });

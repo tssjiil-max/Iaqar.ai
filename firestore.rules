@@ -43,7 +43,9 @@ service cloud.firestore {
         'activityEvents', 'adminNotes', 'importJobs', 'partySessions', 'partySessionKeys', 'coordinationSessions', 'officeRatings',
         'journeys', 'proposals', 'osFailures',
         // بوت المكتب: مفتاح التشغيل وأسئلة المطابقة — للـ Worker فقط (المدير يغيّر المفتاح عبر الـ Worker).
-        'botSettings', 'matchAsks'
+        'botSettings', 'matchAsks',
+        // مدير المكتب الذكي — للـ Worker فقط.
+        'agentSettings', 'agentChats', 'agentStats'
       ];
     }
     function validOfficeProfile() {
@@ -592,6 +594,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /offices/{officeId}/botSettings/{settingId} {
+      allow read, write: if false;
+    }
+    // مدير المكتب الذكي: الإعدادات والمحادثات والإحصاءات — للـ Worker فقط (المكتب يقرؤها عبر /os/agent/*).
+    match /offices/{officeId}/agentSettings/{settingId} {
+      allow read, write: if false;
+    }
+    match /offices/{officeId}/agentChats/{uid} {
+      allow read, write: if false;
+    }
+    match /offices/{officeId}/agentStats/{day} {
       allow read, write: if false;
     }
     match /telegramPartyPending/{chatId} {
