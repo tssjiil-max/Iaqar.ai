@@ -17,6 +17,7 @@ import {
   toRecordInput, visitorText, wantsHuman
 } from "../../../public/os/domain/visitor-domain.js";
 import { AGENT_LANGUAGE_RULES } from "../../../public/os/domain/agent-domain.js";
+import { partyCommand } from "../../../public/os/domain/bot-domain.js";
 import { DURATION_OPTIONS } from "../../../public/os/domain/validity-domain.js";
 import { recordView } from "../../../public/os/domain/records-domain.js";
 import { whatsappDigits } from "../../../public/os/domain/format-domain.js";
@@ -87,6 +88,13 @@ export async function handleVisitorCallback(ctx, query = {}) {
   const t = visitorText(lang);
   const data = String(query.data || "");
   await toast("");
+  // A button from an older message must not undo the current step.
+  const stage = String(doc.stage || "");
+  const allowed = data.startsWith("vp:") ? ["PERSONA", "KIND"].includes(stage)
+    : data.startsWith("vk:") ? stage === "KIND"
+      : data.startsWith("vc:") ? stage === "CONFIRM"
+        : data === "vn:NEW" ? ["DONE", "CONFIRM", "COLLECT", "PHONE", "KIND", "PERSONA"].includes(stage) || !stage : false;
+  if (!allowed) return { ok: true, status: 200, ignored: true, reason: "stale_button" };
   if (data.startsWith("vp:")) {
     const persona = data.slice(3);
     const kind = kindForPersona(persona);
@@ -162,6 +170,20 @@ async function forwardToOffice(ctx, { officeId, doc, chatId, body, update }) {
 }
 
 const ACTIVE_STAGES = ["PERSONA", "KIND", "COLLECT", "PHONE", "CONFIRM"];
+const MINUTE = 60000;
+// How long a started conversation keeps taking the person's messages before his other links (an office he is a
+// side of) get them again: a choice not made yet — 30 minutes; a transaction being filled in or a chat handed
+// to the office — 24 hours.
+const WINDOW = { PERSONA: 30 * MINUTE, KIND: 30 * MINUTE, COLLECT: 1440 * MINUTE, PHONE: 1440 * MINUTE, CONFIRM: 1440 * MINUTE, HUMAN: 1440 * MINUTE };
+const msOf = (value) => (value instanceof Date ? value.getTime() : value?.toDate ? value.toDate().getTime() : new Date(value || 0).getTime()) || 0;
+
+function stillActive(doc, now) {
+  const key = doc.mode === VISITOR_MODE.HUMAN ? "HUMAN" : String(doc.stage || "");
+  const span = WINDOW[key];
+  if (!span) return false;
+  const since = key === "HUMAN" ? msOf(doc.handedAt || doc.updatedAt) : msOf(doc.updatedAt);
+  return now.getTime() - since <= span;
+}
 
 /**
  * A message in a visitor conversation. null = not a visitor chat (the caller continues as before).
@@ -174,15 +196,24 @@ export async function handleVisitorMessage(ctx, { update = {}, message = {}, act
   const doc = await ctx.store.get(visitorPath(chatId));
   if (!doc) return null;
   if (activeOnly) {
-    if (doc.mode === VISITOR_MODE.HUMAN || !ACTIVE_STAGES.includes(doc.stage)) return null;
-    if (/^\//.test(text(message.text, 20))) return null;
-    if (message.contact && doc.stage !== "PHONE") return null;
+    if (!(ACTIVE_STAGES.includes(doc.stage) || doc.mode === VISITOR_MODE.HUMAN) || !stillActive(doc, ctx.now())) return null;
+    // «/stop», «إيقاف» and the like stay the linked-side commands they were.
+    if (/^\//.test(text(message.text, 20)) || partyCommand(message.text)) return null;
+    if (message.contact && (doc.mode === VISITOR_MODE.HUMAN || doc.stage !== "PHONE")) return null;
+    // A record-page link waiting for this person's contact completes first.
+    if (message.contact && (await ctx.store.get(["telegramPartyPending", chatId]))?.status === "WAITING") return null;
   }
   const officeId = ctx.deps.firestoreOfficeId(doc.officeId);
-  // A webhook delivered twice is answered once.
-  if (update.update_id !== undefined && Number(doc.lastUpdateId || 0) >= Number(update.update_id)) return { ok: true, status: 200, duplicate: true };
-  await saveState(ctx, chatId, { lastUpdateId: Number(update.update_id || 0) });
   if (!(await gatesOpen(ctx, officeId))) return null;
+  // A webhook delivered twice is answered once (by id, not by order: Telegram may deliver two updates in parallel).
+  if (update.update_id !== undefined) {
+    const id = Number(update.update_id);
+    const seen = await ctx.store.update(visitorPath(chatId), (current) => {
+      const recent = Array.isArray(current.recentUpdates) ? current.recentUpdates.map(Number) : [];
+      return recent.includes(id) ? null : { recentUpdates: [...recent, id].slice(-30) };
+    });
+    if (seen && !seen.patch) return { ok: true, status: 200, duplicate: true };
+  }
   const body = text(message.text, 1500);
   let lang = doc.lang === "en" ? "en" : "ar";
   const t = () => visitorText(lang);
@@ -196,7 +227,7 @@ export async function handleVisitorMessage(ctx, { update = {}, message = {}, act
     if (doc.stage !== "PHONE") return { ok: true, status: 200, ignored: true, reason: "contact_not_expected" };
     if (text(message.contact.user_id, 30) !== text(message.from?.id, 30)) { await say(ctx, chatId, t().phoneMismatch); return { ok: true, status: 200, phone: "not_own" }; }
     const digits = whatsappDigits(message.contact.phone_number);
-    if (!digits) { await say(ctx, chatId, t().phoneMismatch); return { ok: true, status: 200, phone: "invalid" }; }
+    if (!digits) { await say(ctx, chatId, t().phoneSaudiOnly, { keyboard: { remove_keyboard: true } }); return { ok: true, status: 200, phone: "not_saudi" }; }
     const phone = `0${digits.slice(3)}`;
     await saveState(ctx, chatId, { phone, stage: "CONFIRM" });
     await say(ctx, chatId, "✓", { keyboard: { remove_keyboard: true } });

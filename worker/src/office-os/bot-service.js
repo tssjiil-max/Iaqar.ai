@@ -158,6 +158,9 @@ export async function linkBrokerWithTelegramLogin(ctx, { actor, officeId, auth: 
   if (!telegramLoginFresh(auth, now)) throw ctx.deps.appError("telegram_login_expired", 400, "انتهت صلاحية الدخول بتيليجرام — أعد المحاولة.");
   const valid = await verifyTelegramLogin(text(ctx.env.TELEGRAM_BOT_TOKEN), auth);
   if (!valid) throw ctx.deps.appError("telegram_login_invalid", 400, "تعذر التحقق من الدخول بتيليجرام — أعد المحاولة.");
+  // Each signed result links once.
+  const used = await ctx.store.create(["telegramLoginUsed", auth.hash], { uid: actor.uid, officeId, usedAt: now, expiresAt: new Date(now.getTime() + 86400000) });
+  if (!used) throw ctx.deps.appError("telegram_login_used", 409, "استُخدم هذا الدخول من قبل — أعد «دخول بتيليجرام».");
   const chatId = text(auth.id);
   const tgName = cleanText([auth.first_name, auth.last_name].filter(Boolean).join(" "), 60);
   const sent = await sendToChat(ctx.deps, chatId, BOT_TEXT.brokerLinked, { now });
@@ -461,23 +464,33 @@ export async function remindSilentSides(ctx, { actor, officeId, askIds = [] }) {
   const wanted = new Set(askIds.map((id) => text(id, 80)).filter(Boolean).slice(0, 20));
   const silent = (await silentAsks(ctx, { officeId, actor })).filter((row) => wanted.has(row.askId));
   let sent = 0;
+  const today = riyadhDayId(ctx.now());
+  const awaitedState = (role) => (role === BOT_ROLE.CLIENT ? ASK_STATE.CLIENT_ASKED : ASK_STATE.OWNER_ASKED);
   for (const row of silent) {
-    // Claimed atomically before sending: a double press reminds once.
-    const claimed = await ctx.store.update(askSegments(officeId, row.askId), (current) => {
-      const side = current?.[row.role];
-      if (!side || side.remindedAt || current.state !== (row.role === BOT_ROLE.CLIENT ? ASK_STATE.CLIENT_ASKED : ASK_STATE.OWNER_ASKED)) return null;
-      return { [row.role]: { ...side, remindedAt: ctx.now().toISOString(), remindedBy: actor.uid }, updatedAt: ctx.now() };
-    });
-    if (!claimed || !claimed.patch) continue;
-    const ask = await ctx.store.get(askSegments(officeId, row.askId));
-    const side = ask?.[row.role] || {};
+    const before = await ctx.store.get(askSegments(officeId, row.askId));
+    const side = before?.[row.role] || {};
+    // Everything that could make the reminder wrong is checked BEFORE it is claimed.
     const link = await ctx.store.get(["telegramParties", text(side.partyKey)]);
     if (!link || link.status !== "ACTIVE" || !deps_ok(ctx, officeId, link)) continue;
+    if (asksTodayOf(link, today) >= BOT_LIMITS.dailyAsks) continue;
     const pair = await loadPair(ctx, officeId, { offerId: row.offerId, requestId: row.requestId });
-    if (!pair) continue;
+    if (!pair || !isOpenForMatching(pair.offer, ctx.now()) || !isOpenForMatching(pair.request, ctx.now())) continue;
+    // Claimed atomically before sending: a double press reminds once.
+    const claimed = await ctx.store.update(askSegments(officeId, row.askId), (current) => {
+      const now = current?.[row.role];
+      if (!now || now.remindedAt || current.state !== awaitedState(row.role)) return null;
+      return { [row.role]: { ...now, remindedAt: ctx.now().toISOString(), remindedBy: actor.uid }, updatedAt: ctx.now() };
+    });
+    if (!claimed || !claimed.patch) continue;
     const message = `${REMINDER_PREFIX}\n\n${askMessage(row.role, { officeName: await officeName(ctx, officeId), offer: summaryOf(pair.offer), request: summaryOf(pair.request) })}`;
     const result = await sendToParty(ctx.store, ctx.deps, officeId, { ...link, key: text(side.partyKey) }, message, { buttons: askButtons(side.token), now: ctx.now() });
-    if (result?.ok) sent += 1;
+    if (result?.ok) {
+      sent += 1;
+      await countAsk(ctx, { ...link, key: text(side.partyKey) }, today);
+    } else {
+      // Not delivered: the side can be reminded later (the claim is given back).
+      await ctx.store.update(askSegments(officeId, row.askId), (current) => (current?.[row.role]?.remindedAt ? { [row.role]: { ...current[row.role], remindedAt: null, remindedBy: null }, updatedAt: ctx.now() } : null)).catch(() => {});
+    }
   }
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.AGENT_ACTION_APPROVED, actorUid: actor.uid, entityType: "agent", entityId: "follow_up_silent", key: `remind|${ctx.now().toISOString()}`, details: { tool: "follow_up_silent", sent, asked: wanted.size } });
   return { ok: true, sent, skipped: wanted.size - sent };

@@ -8,7 +8,15 @@
  * «Bot domain invalid» and the broker uses the one-time link instead.
  */
 
-export const LOGIN_MAX_AGE_SECONDS = 24 * 3600;
+// The sign-in is used right after it happens: a short life, and each signed result once (the Worker keeps its hash).
+export const LOGIN_MAX_AGE_SECONDS = 15 * 60;
+export const NONCE_KEY = "os.tgLoginNonce";
+
+/** This browser started the sign-in: the nonce it saved is the one Telegram's return address carries. */
+export function loginNonceMatches(saved = "", returned = "", now = Date.now(), maxAgeMs = 15 * 60 * 1000) {
+  const [nonce, at] = String(saved || "").split("|");
+  return /^[A-Za-z0-9]{16,64}$/.test(nonce || "") && nonce === String(returned || "") && now - Number(at || 0) <= maxAgeMs && Number(at || 0) <= now + 60000;
+}
 const FIELDS = ["id", "first_name", "last_name", "username", "photo_url", "auth_date"];
 
 /** The bot's public numeric id (the part before «:» of its token). Never the token itself. */

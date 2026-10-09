@@ -9,7 +9,11 @@ import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
 import { loadChannels } from "../core/channels.js";
 import { partyBotStatus, setBotEnabled, startBrokerBotLink, startPartyBotLink, unlinkBrokerBot } from "../core/bot.js";
-import { telegramLoginUrl } from "../domain/telegram-login-domain.js";
+import { NONCE_KEY, telegramLoginUrl } from "../domain/telegram-login-domain.js";
+
+function canStoreNonce() {
+  try { sessionStorage.setItem("os.tgProbe", "1"); sessionStorage.removeItem("os.tgProbe"); return true; } catch (_) { return false; }
+}
 import { ASK_STATE_LABEL } from "../domain/bot-domain.js";
 
 async function copyText(value, done) {
@@ -63,8 +67,14 @@ export function brokerAlertsCard() {
     const unlink = view.brokerLinked ? h("button", { type: "button", class: "os-btn danger", "data-bot-alerts-unlink": "" }, ic("x"), "إيقاف تنبيهاتي") : null;
     if (unlink) unlink.addEventListener("click", () => runAction(unlink, async () => { await unlinkBrokerBot(session.officeId); await refresh(); }, { success: "توقفت تنبيهات تيليجرام" }));
     // «دخول بتيليجرام»: one tap from the site (Telegram's own sign-in page); the one-time link stays as the other way.
-    const loginUrl = view.available && view.loginBotId ? telegramLoginUrl({ botId: view.loginBotId, origin: location.origin, returnTo: `${location.origin}${location.pathname}` }) : "";
-    const login = loginUrl ? h("a", { class: "os-btn primary", href: loginUrl, "data-bot-alerts-login": "", onClick: () => { try { sessionStorage.setItem("os.tgLoginBack", "settings/notifications"); } catch (_) { /* optional */ } } }, ic("telegram"), "دخول بتيليجرام") : null;
+    // A one-time nonce proves on return that THIS browser started the sign-in (a sign-in result sent by someone
+    // else in a link is refused). Without browser storage the button is not offered; the one-time link remains.
+    const login = view.available && view.loginBotId && canStoreNonce() ? h("button", { type: "button", class: "os-btn primary", "data-bot-alerts-login": "", onClick: () => {
+      const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+      try { sessionStorage.setItem(NONCE_KEY, `${nonce}|${Date.now()}`); sessionStorage.setItem("os.tgLoginBack", "settings/notifications"); } catch (_) { return; }
+      const url = telegramLoginUrl({ botId: view.loginBotId, origin: location.origin, returnTo: `${location.origin}${location.pathname}?tgl=${nonce}` });
+      if (url) location.assign(url);
+    } }, ic("telegram"), "دخول بتيليجرام") : null;
     if (login) link.className = "os-btn secondary";
     const copy = h("button", { type: "button", class: "os-btn secondary" }, ic("clipboard"), "نسخ الرابط");
     copy.addEventListener("click", () => copyText(pending.link, "تم نسخ الرابط"));

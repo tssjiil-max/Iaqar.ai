@@ -9,7 +9,7 @@ import {
   detectLang, isSmallTalk, mergeDraft, nextMissing, officeBotLink, parseOfficeStart, wantsHuman
 } from "../public/os/domain/visitor-domain.js";
 import { negotiationSummary, proactiveSuggestions, stuckReason, viewingPlan, fallbackIntent } from "../public/os/domain/agent-domain.js";
-import { botIdFromToken, parseTgAuthResult, telegramLoginCheckString, telegramLoginFresh, telegramLoginUrl } from "../public/os/domain/telegram-login-domain.js";
+import { botIdFromToken, loginNonceMatches, parseTgAuthResult, telegramLoginCheckString, telegramLoginFresh, telegramLoginUrl } from "../public/os/domain/telegram-login-domain.js";
 import { validitySettingsFrom } from "../public/os/domain/validity-domain.js";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -118,8 +118,13 @@ test("rules: «دخول بتيليجرام» — the sign-in address, the return
   assert.deepEqual(parseTgAuthResult(`#tgAuthResult=${encoded}`, (b) => Buffer.from(b, "base64").toString("binary")), auth);
   assert.equal(parseTgAuthResult("#/office"), null);
   assert.equal(telegramLoginCheckString({ ...auth, extra: "x" }), "auth_date=1760000000\nfirst_name=سعد\nid=42");
-  assert.ok(telegramLoginFresh(auth, new Date(1760000000 * 1000 + 3600000)));
-  assert.ok(!telegramLoginFresh(auth, new Date(1760000000 * 1000 + 2 * 86400000)));
+  assert.ok(telegramLoginFresh(auth, new Date(1760000000 * 1000 + 10 * 60000)));
+  assert.ok(!telegramLoginFresh(auth, new Date(1760000000 * 1000 + 3600000)), "a sign-in is used right away, not hours later");
+  const nonce = "a1b2c3d4e5f6a7b8c9d0";
+  assert.ok(loginNonceMatches(`${nonce}|${Date.now()}`, nonce));
+  assert.ok(!loginNonceMatches("", nonce), "a result this browser did not start is refused");
+  assert.ok(!loginNonceMatches(`${nonce}|${Date.now()}`, "someone-elses-nonce"));
+  assert.ok(!loginNonceMatches(`${nonce}|${Date.now() - 3600000}`, nonce));
 });
 
 // ------------------------------------------------------------------ the office's own bot link
@@ -319,6 +324,8 @@ test("«دخول بتيليجرام»: the Worker checks Telegram's signature an
   refuseWritesTo = "";
   const ok = await call("/os/bot/broker/telegram-login", { officeId: OFFICE_A, auth: signed({ id: "7301", first_name: "سعد", auth_date: fresh }) }, OWNER_A);
   assert.equal(ok.body.linked, true, JSON.stringify(ok.body));
+  const replay = await call("/os/bot/broker/telegram-login", { officeId: OFFICE_A, auth: signed({ id: "7301", first_name: "سعد", auth_date: fresh }) }, OWNER_A);
+  assert.equal(replay.status, 409, "each signed result links once");
   const link = h.store.list("telegramBrokers").find((x) => x.uid === OWNER_A && x.officeId === OFFICE_A);
   assert.equal(link.chatId, "7301");
   assert.equal(link.status, "ACTIVE");
@@ -363,4 +370,49 @@ test("the office's public page: the owner's chosen duration is kept; none chosen
   assert.equal((await run("intakeVal02")).validityDuration, "WEEK", "the office's default (set above)");
   seedIntake("intakeVal03", { phone: "0556788003" });
   assert.equal((await run("intakeVal03")).validityDuration ?? null, null, "an older page's intake gets no invented dates");
+});
+
+test("review fixes: old buttons do nothing; a non-Saudi number is told clearly; updates out of order are both handled", async () => {
+  const chat = 5505;
+  await says(chat, `/start of_${OFFICE_A}`);
+  await press(chat, "vp:CLIENT");
+  const stale = await press(chat, "vk:OFFER");
+  assert.equal(stale.body.reason, "stale_button", "a client's request cannot be turned into an offer by an old button");
+  const early = await press(chat, "vc:SAVE");
+  assert.equal(early.body.reason, "stale_button");
+  // Two messages delivered in parallel/reversed: the lower id is not dropped as a «duplicate».
+  const later = await telegram(msg(chat, { text: "فيلا" }), 99010);
+  const earlier = await telegram(msg(chat, { text: "شراء" }), 99009);
+  assert.notEqual(later.body.duplicate, true);
+  assert.notEqual(earlier.body.duplicate, true);
+  for (const answer of ["حي النرجس", "الرياض", "2000000"]) await says(chat, answer);
+  const foreign = await shares(chat, "+201001234567");
+  assert.equal(foreign.body.phone, "not_saudi");
+  assert.match(lastTo(chat).text, /أرقام الجوال السعودية/);
+});
+
+test("review fixes: a started conversation does not hold a linked side's messages forever, and «إيقاف» stays a side command", async () => {
+  const chat = 5101; // linked as a side of office A since the first transaction
+  await press(chat, "vn:NEW"); // back at the persona buttons
+  const stop = await says(chat, "إيقاف");
+  assert.equal(stop.body.command, "stop", "the side's stop word is not taken by the office manager");
+  await says(chat, "تشغيل");
+  // An hour later the unanswered persona question no longer captures his messages: they reach the office as a side's message.
+  h.store.patch(`telegramVisitors/${chat}`, { updatedAt: new Date(Date.now() - 3600000) });
+  const later = await says(chat, "متى موعد المعاينة؟");
+  assert.equal(later.body.forwarded, 1, JSON.stringify(later.body));
+});
+
+test("review fixes: a reminder is not used up when it cannot be delivered (side stopped the bot), nor sent about a sold offer", async () => {
+  seedAsk({ askId: "ask_silent_2", partyKey: "tp_silent_2", chatId: 6201, hoursAgo: 40 });
+  h.store.patch("telegramParties/tp_silent_2", { status: "STOPPED" });
+  const r = await call("/os/agent/act", { officeId: OFFICE_A, tool: "follow_up_silent", askIds: ["ask_silent_2"] }, OWNER_A);
+  assert.equal(r.body.sent, 0);
+  assert.ok(!h.store.get(`offices/${OFFICE_A}/matchAsks/ask_silent_2`).client.remindedAt, "still remindable once the side is back");
+  h.store.patch("telegramParties/tp_silent_2", { status: "ACTIVE" });
+  const ask = h.store.get(`offices/${OFFICE_A}/matchAsks/ask_silent_2`);
+  h.store.patch(`offices/${OFFICE_A}/opportunities/${ask.offerId}`, { availabilityStatus: "SOLD" });
+  const sold = await call("/os/agent/act", { officeId: OFFICE_A, tool: "follow_up_silent", askIds: ["ask_silent_2"] }, OWNER_A);
+  assert.equal(sold.body.sent, 0, "never reminded about an offer that is no longer available");
+  h.store.patch(`offices/${OFFICE_A}/opportunities/${ask.offerId}`, { availabilityStatus: "AVAILABLE" });
 });

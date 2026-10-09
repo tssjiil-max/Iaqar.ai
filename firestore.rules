@@ -590,6 +590,9 @@ service cloud.firestore {
     match /telegramVisitors/{chatId} {
       allow read, write: if false;
     }
+    match /telegramLoginUsed/{hash} {
+      allow read, write: if false;
+    }
     match /telegramAsks/{token} {
       allow read, write: if false;
     }

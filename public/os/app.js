@@ -35,7 +35,7 @@ import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js
 import { go, noteNavigation, setRenderer } from "./core/nav.js";
 import { forgetDeal } from "./core/deal-return.js";
 import { operationIdFromParams } from "./core/deep-link.js";
-import { parseTgAuthResult } from "./domain/telegram-login-domain.js";
+import { NONCE_KEY, loginNonceMatches, parseTgAuthResult } from "./domain/telegram-login-domain.js";
 import { linkBrokerWithTelegramLogin } from "./core/bot.js";
 
 const root = document.getElementById("app");
@@ -96,10 +96,22 @@ function render() {
 function applyTelegramLogin() {
   const auth = parseTgAuthResult(location.hash);
   if (!auth && !/^#tgAuthResult=/.test(location.hash)) return false;
+  const params = new URLSearchParams(location.search);
+  const returned = params.get("tgl") || "";
   let back = "settings/notifications";
-  try { back = sessionStorage.getItem("os.tgLoginBack") || back; sessionStorage.removeItem("os.tgLoginBack"); } catch (_) { /* optional */ }
-  history.replaceState({}, "", `${location.pathname}${location.search}#/${back}`);
+  let saved = "";
+  try {
+    back = sessionStorage.getItem("os.tgLoginBack") || back;
+    saved = sessionStorage.getItem(NONCE_KEY) || "";
+    sessionStorage.removeItem("os.tgLoginBack");
+    sessionStorage.removeItem(NONCE_KEY);
+  } catch (_) { /* no storage → no nonce → refused below */ }
+  params.delete("tgl");
+  const search = params.toString();
+  history.replaceState({}, "", `${location.pathname}${search ? `?${search}` : ""}#/${back}`);
   if (!auth) { toast("تعذر قراءة بيانات تيليجرام — أعد المحاولة", "bad"); return true; }
+  // Only a sign-in this browser started (a result sent in someone else's link is ignored).
+  if (!loginNonceMatches(saved, returned)) { toast("لم يُربط شيء: ابدأ «دخول بتيليجرام» من صفحة التنبيهات", "bad"); return true; }
   linkBrokerWithTelegramLogin(session.officeId, auth).then((result) => {
     if (result?.linked) toast("تم ربط تنبيهاتك على تيليجرام", "ok");
     else if (result?.deepLink) { toast("افتح البوت واضغط «Start» لإكمال الربط", "bad"); window.open(result.deepLink, "_blank", "noopener"); }
