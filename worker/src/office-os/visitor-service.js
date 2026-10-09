@@ -13,8 +13,8 @@
  */
 
 import {
-  PERSONA, VISITOR_MODE, detectLang, isSmallTalk, kindForPersona, mergeDraft, nextMissing, personaButtons, questionFor, summaryLines,
-  toRecordInput, visitorText, wantsHuman
+  CITIES, PERSONA, VISITOR_MODE, detectLang, extractFacts, isSmallTalk, isYes, kindForPersona, mergeDraft, nextMissing, personaButtons, personaFromText,
+  questionFor, summaryLines, toRecordInput, visitorText, wantsHuman
 } from "../../../public/os/domain/visitor-domain.js";
 import { AGENT_LANGUAGE_RULES } from "../../../public/os/domain/agent-domain.js";
 import { partyCommand } from "../../../public/os/domain/bot-domain.js";
@@ -100,14 +100,14 @@ export async function handleVisitorCallback(ctx, query = {}) {
   if (data.startsWith("vp:")) {
     const persona = data.slice(3);
     const kind = kindForPersona(persona);
-    await saveState(ctx, chatId, { persona, stage: kind ? "COLLECT" : "KIND", draft: kind ? { kind } : {} });
+    await saveState(ctx, chatId, { persona, stage: kind ? "COLLECT" : "KIND", draft: kind ? { kind } : {}, asked: "", suggestedCity: "" });
     if (!kind) await say(ctx, chatId, t.brokerKind, { buttons: [[{ text: t.kinds.OFFER, callback_data: "vk:OFFER" }, { text: t.kinds.REQUEST, callback_data: "vk:REQUEST" }]] });
     else await say(ctx, chatId, kind === "OFFER" ? t.firstOwner : t.firstClient);
     return { ok: true, status: 200, persona };
   }
   if (data.startsWith("vk:")) {
     const kind = data.slice(3);
-    await saveState(ctx, chatId, { stage: "COLLECT", draft: { kind } });
+    await saveState(ctx, chatId, { stage: "COLLECT", draft: { kind }, asked: "", suggestedCity: "" });
     await say(ctx, chatId, kind === "OFFER" ? t.firstOwner : t.firstClient);
     return { ok: true, status: 200, kind };
   }
@@ -117,7 +117,7 @@ export async function handleVisitorCallback(ctx, query = {}) {
     return { ok: true, status: 200, newTransaction: true };
   }
   if (data === "vc:EDIT") {
-    await saveState(ctx, chatId, { stage: "COLLECT" });
+    await saveState(ctx, chatId, { stage: "COLLECT", asked: "", suggestedCity: "" });
     await say(ctx, chatId, t.editHint);
     return { ok: true, status: 200, editing: true };
   }
@@ -127,36 +127,62 @@ export async function handleVisitorCallback(ctx, query = {}) {
 
 // ------------------------------------------------------------------ messages
 
-async function understand(ctx, { officeId, doc, draft, body }) {
+/**
+ * What the person said, as facts. The office's own Arabic rules ALWAYS run (so a long message is understood
+ * at once even without the model); the model, when available, adds what the rules missed and other languages.
+ * `asked` = the thing just asked, so a short answer («الوبرة», «35 ألف») lands in the right place.
+ */
+async function understand(ctx, { officeId, doc, draft, body, asked = "" }) {
+  const rules = extractFacts(body, { expectNumber: asked });
+  // The platform parser only fills gaps (never the city: a district must not become a city).
+  const parsed = typeof ctx.deps.parseMessage === "function" ? (ctx.deps.parseMessage(body) || {}) : {};
+  for (const key of ["propertyType", "price", "area", "rooms", "transactionType"]) if (rules[key] === undefined && parsed[key]) rules[key] = parsed[key];
   const day = ctx.now().toISOString().slice(0, 10);
   const used = doc.aiDay === day ? Number(doc.aiCalls || 0) : 0;
   const canAi = Boolean(text(ctx.env?.GEMINI_API_KEY, 300)) && typeof ctx.deps.callGemini === "function" && used < AI_CALLS_PER_CHAT_DAY;
   if (canAi) {
     await saveState(ctx, doc.chatId, { aiDay: day, aiCalls: used + 1 });
     const system = [
-      `أنت «مدير المكتب الذكي» لمكتب عقاري (مساعد ذكاء اصطناعي، لست موظفًا بشريًا). تتحدث مع شخص يسجل ${draft.kind === "REQUEST" ? "طلب عقار" : "عرض عقار"}.`,
+      `أنت «مدير المكتب الذكي» لمكتب عقاري (مساعد ذكاء اصطناعي، لست موظفًا بشريًا). تتحدث مع شخص يسجل ${draft.kind === "REQUEST" ? "طلب عقار (يبحث عن عقار)" : "عرض عقار (يملك العقار)"}.`,
       AGENT_LANGUAGE_RULES,
-      "استخرج الحقائق من رسالة الشخص فقط. لا تخترع أي رقم أو حي أو سعر. احفظ الأرقام كما كتبها (حوّل «850 ألف» إلى 850000 فقط).",
+      "استخرج كل الحقائق المذكورة في رسالة الشخص دفعة واحدة. لا تخترع أي رقم أو حي أو مدينة أو سعر لم يُذكر. الحي ليس مدينة: «الوبرة» و«العزيزية» أحياء.",
+      asked ? `آخر سؤال سألته كان عن: ${asked}. إذا كانت الرسالة جوابًا قصيرًا فهي لهذا الحقل.` : "",
       `المسودة الحالية: ${JSON.stringify(draft)}`,
-      "بعد إضافة ما قاله، اسأل سؤالًا واحدًا قصيرًا عن أول معلومة ناقصة بالترتيب: الغرض (بيع/إيجار أو شراء/إيجار)، نوع العقار، الحي، المدينة، السعر أو الميزانية. إذا لم يبق شيء ناقص اجعل question فارغًا.",
-      "أعد JSON فقط: {\"found\": {\"propertyType\": \"\", \"city\": \"\", \"district\": \"\", \"price\": 0, \"area\": 0, \"rooms\": 0, \"transactionType\": \"sale|rent|\"}, \"lang\": \"رمز لغة الشخص مثل ar أو en أو ur\", \"question\": \"سؤالك بلغة الشخص ولهجته\"}"
-    ].join("\n");
+      "أعد JSON فقط: {\"found\": {\"propertyType\": \"\", \"city\": \"\", \"district\": \"\", \"price\": 0, \"area\": 0, \"rooms\": 0, \"halls\": 0, \"bathrooms\": 0, \"kitchen\": \"\", \"rentPeriod\": \"YEARLY|MONTHLY|\", \"transactionType\": \"sale|rent|\"}, \"lang\": \"رمز لغة الشخص مثل ar أو en أو ur\", \"question\": \"سؤال واحد قصير بلغة الشخص عن أول معلومة ناقصة، أو فارغ\"}"
+    ].filter(Boolean).join("\n");
     const result = await Promise.race([
-      ctx.deps.callGemini({ systemInstruction: system, userParts: [{ text: body.slice(0, 1500) }], generationConfig: { temperature: 0.2, maxOutputTokens: 600, responseMimeType: "application/json" } }),
+      ctx.deps.callGemini({ systemInstruction: system, userParts: [{ text: body.slice(0, 1500) }], generationConfig: { temperature: 0.2, maxOutputTokens: 700, responseMimeType: "application/json" } }),
       new Promise((resolve) => setTimeout(() => resolve({ ok: false, error: "TIMEOUT" }), 10000))
     ]).catch(() => ({ ok: false }));
     if (result?.ok && result.parsed && typeof result.parsed === "object") {
-      const found = result.parsed.found && typeof result.parsed.found === "object" ? result.parsed.found : {};
+      const ai = result.parsed.found && typeof result.parsed.found === "object" ? result.parsed.found : {};
+      const found = { ...rules };
+      for (const [key, value] of Object.entries(ai)) {
+        if (value === undefined || value === null || value === "" || value === 0) continue;
+        // The model may not move a district into the city, nor change what the rules read exactly.
+        if (key === "city" && (norm(value) === norm(rules.district || ai.district || draft.district || "") || (!CITIES.includes(String(value)) && !body.includes(String(value))))) continue;
+        if (found[key] === undefined) found[key] = value;
+      }
       return { found, lang: text(result.parsed.lang, 8).toLowerCase(), question: text(result.parsed.question, 300), source: "ai" };
     }
   }
-  // The platform's own Arabic real-estate parser.
-  const parsed = typeof ctx.deps.parseMessage === "function" ? ctx.deps.parseMessage(body) : {};
-  return {
-    found: { propertyType: parsed.propertyType, district: parsed.district, city: /المدينة|مكة|جدة|الرياض|الدمام|الخبر|الطائف|ابها|تبوك|بريدة|حائل/.test(body) ? parsed.city : "", price: parsed.price, area: parsed.area, rooms: parsed.rooms, transactionType: parsed.transactionType },
-    lang: detectLang(body), question: "", source: "rules"
-  };
+  return { found: rules, lang: detectLang(body), question: "", source: "rules" };
 }
+
+const norm = (value) => String(value || "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").trim().toLowerCase();
+
+/** The office's city, for «حي الوبرة في المدينة المنورة؟» — the office's own setting, else the city of most of its records. */
+async function officeCity(ctx, officeId) {
+  const office = (await ctx.store.get(["offices", officeId])) || {};
+  const own = text(office.city || office.officeCity || office.publicProfile?.city, 60);
+  if (own) return CITY_LIST_NORMALIZE(own);
+  const rows = await ctx.store.list(["offices", officeId, "opportunities"], 200).catch(() => []);
+  const counts = {};
+  for (const r of rows) { const c = text(r.city, 60); if (c) counts[c] = (counts[c] || 0) + 1; }
+  const [best, n] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || ["", 0];
+  return n >= 3 && n / rows.length >= 0.6 ? best : "";
+}
+const CITY_LIST_NORMALIZE = (value) => CITIES.find((c) => norm(c) === norm(value) || norm(c).startsWith(norm(value))) || value;
 
 async function forwardToOffice(ctx, { officeId, doc, chatId, body, update }) {
   if (ctx.preview) return false; // a try-out never reaches the office's inbox
@@ -233,9 +259,9 @@ export async function handleVisitorMessage(ctx, { update = {}, message = {}, act
     if (!digits) { await say(ctx, chatId, t().phoneSaudiOnly, { keyboard: { remove_keyboard: true } }); return { ok: true, status: 200, phone: "not_saudi" }; }
     const phone = `0${digits.slice(3)}`;
     await saveState(ctx, chatId, { phone, stage: "CONFIRM" });
-    await say(ctx, chatId, "✓", { keyboard: { remove_keyboard: true } });
-    await say(ctx, chatId, t().summary(summaryLines(draft, lang)), { buttons: [[{ text: t().save, callback_data: "vc:SAVE" }, { text: t().edit, callback_data: "vc:EDIT" }]] });
-    return { ok: true, status: 200, phone: "saved", stage: "CONFIRM" };
+    if (!ctx.preview) await say(ctx, chatId, "✓", { keyboard: { remove_keyboard: true } });
+    await say(ctx, chatId, t().summary(summaryLines(draft, lang), draft.kind), { buttons: [[{ text: t().save, callback_data: "vc:SAVE" }, { text: t().edit, callback_data: "vc:EDIT" }]] });
+    return { ok: true, status: 200, phone: "saved", stage: "CONFIRM", draft };
   }
   if (!body) return { ok: true, status: 200, ignored: true, reason: "no_text" };
   if (detectLang(body) === "en") lang = "en";
@@ -245,31 +271,86 @@ export async function handleVisitorMessage(ctx, { update = {}, message = {}, act
     await say(ctx, chatId, t().handedOver);
     return { ok: true, status: 200, handedOver: true };
   }
-  if (["PERSONA", "KIND", "DONE"].includes(doc.stage) || !draft.kind) {
-    // Small talk or a message before choosing: never turned into a record.
-    await say(ctx, chatId, isSmallTalk(body) ? t().smallTalk : t().welcome(await officeName(ctx, officeId) || "المكتب"), { buttons: isSmallTalk(body) && doc.stage === "DONE" ? [[{ text: t().newTx, callback_data: "vn:NEW" }]] : personaButtons(lang) });
-    return { ok: true, status: 200, stage: doc.stage, smallTalk: isSmallTalk(body) };
+  // A number typed instead of the contact button: in the app's try-out it is the test number; on Telegram the
+  // button stays required (it proves the number is the person's own).
+  if (doc.stage === "PHONE" && whatsappDigits(body)) {
+    if (ctx.preview) return handleVisitorMessage(ctx, { update: { update_id: Number(update.update_id || 0) + 1 }, message: { chat: message.chat, from: message.from, contact: { phone_number: body, user_id: message.from?.id } } });
+    await say(ctx, chatId, `${t().phone}\n${lang === "en" ? "(The button confirms the number is yours.)" : "(الزر يؤكد أن الرقم رقمك أنت.)"}`, { keyboard: { keyboard: [[{ text: t().phoneButton, request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
+    return { ok: true, status: 200, asked: "phone", typedNumber: true };
   }
-  if (isSmallTalk(body)) { await say(ctx, chatId, t().smallTalk); return { ok: true, status: 200, smallTalk: true }; }
-  const understood = await understand(ctx, { officeId, doc: { ...doc, chatId }, draft, body });
-  if (understood.lang === "en") lang = "en";
-  draft = mergeDraft(draft, understood.found);
+  let stage = String(doc.stage || "");
+  let persona = String(doc.persona || "");
+  // Who the person is, said in words («أنا مالك»، «عندي شقة للإيجار»، «أدور فيلا») instead of a button.
+  if (stage === "PERSONA" || (stage === "DONE" && !isSmallTalk(body))) {
+    const said = personaFromText(body) || (stage === "DONE" ? persona : "");
+    const facts = extractFacts(body);
+    const hasFacts = Boolean(facts.propertyType || facts.district || facts.price || facts.transactionType);
+    if (!said || (stage === "DONE" && !hasFacts)) {
+      if (stage === "DONE") { await say(ctx, chatId, t().smallTalk, { buttons: [[{ text: t().newTx, callback_data: "vn:NEW" }]] }); return { ok: true, status: 200, stage }; }
+      // Not the full welcome again: a short pointer to the same three choices.
+      await say(ctx, chatId, isSmallTalk(body) ? t().smallTalk : t().pickPersona, { buttons: personaButtons(lang) });
+      return { ok: true, status: 200, stage, smallTalk: isSmallTalk(body) };
+    }
+    persona = said;
+    const kind = kindForPersona(persona);
+    if (!kind) {
+      await saveState(ctx, chatId, { persona, stage: "KIND", draft: {} });
+      await say(ctx, chatId, t().brokerKind, { buttons: [[{ text: t().kinds.OFFER, callback_data: "vk:OFFER" }, { text: t().kinds.REQUEST, callback_data: "vk:REQUEST" }]] });
+      return { ok: true, status: 200, persona, stage: "KIND" };
+    }
+    draft = { kind };
+    stage = "COLLECT";
+    await saveState(ctx, chatId, { persona, stage, draft, asked: "" });
+    if (!hasFacts) { await say(ctx, chatId, kind === "OFFER" ? t().firstOwner : t().firstClient); return { ok: true, status: 200, persona, stage }; }
+  }
+  if (stage === "KIND") {
+    const k = /عرض|offer|listing/i.test(body) ? "OFFER" : /طلب|request/i.test(body) ? "REQUEST" : "";
+    if (!k) { await say(ctx, chatId, t().brokerKind, { buttons: [[{ text: t().kinds.OFFER, callback_data: "vk:OFFER" }, { text: t().kinds.REQUEST, callback_data: "vk:REQUEST" }]] }); return { ok: true, status: 200, stage }; }
+    draft = { kind: k };
+    stage = "COLLECT";
+    await saveState(ctx, chatId, { stage, draft, asked: "" });
+    if (!(extractFacts(body).propertyType || extractFacts(body).district)) { await say(ctx, chatId, k === "OFFER" ? t().firstOwner : t().firstClient); return { ok: true, status: 200, kind: k }; }
+  }
+  if (!draft.kind) {
+    await say(ctx, chatId, t().pickPersona, { buttons: personaButtons(lang) });
+    return { ok: true, status: 200, stage };
+  }
+  if (isSmallTalk(body) && !(doc.asked === "city" && isYes(body))) { await say(ctx, chatId, t().smallTalk); return { ok: true, status: 200, smallTalk: true }; }
+  // «حي الوبرة في المدينة المنورة؟» → «نعم»
+  let source = "rules";
+  if (doc.asked === "city" && doc.suggestedCity && isYes(body)) {
+    draft = mergeDraft(draft, { city: doc.suggestedCity });
+  } else {
+    const understood = await understand(ctx, { officeId, doc: { ...doc, chatId }, draft, body, asked: doc.asked || "" });
+    if (understood.lang === "en") lang = "en";
+    draft = mergeDraft(draft, understood.found);
+    source = understood.source;
+    doc.langCode = understood.lang || doc.langCode;
+    // The model's own wording is used only for languages the texts here do not cover, and never when it asks
+    // something other than the missing field (e.g. «who are you?» again): the question always follows the draft.
+    doc.aiQuestion = understood.source === "ai" && understood.lang && !["ar", "en"].includes(understood.lang)
+      && !/مالك|وسيط|عميل|owner|broker|client/i.test(understood.question) ? understood.question : "";
+  }
   const missing = nextMissing(draft);
   if (missing) {
-    // The model's own question (in the person's language and dialect) when it asks for the same missing thing; else ours.
-    const question = understood.source === "ai" && understood.question ? understood.question : questionFor(missing, draft, lang);
-    await saveState(ctx, chatId, { draft, stage: "COLLECT", lang, langCode: understood.lang || lang });
+    let question = doc.aiQuestion || questionFor(missing, draft, lang);
+    let suggestedCity = "";
+    if (missing === "city" && draft.district) {
+      suggestedCity = await officeCity(ctx, officeId);
+      if (suggestedCity) question = t().confirmCity(draft.district, suggestedCity);
+    }
+    await saveState(ctx, chatId, { draft, stage: "COLLECT", lang, langCode: doc.langCode || lang, asked: missing, suggestedCity });
     await say(ctx, chatId, question);
-    return { ok: true, status: 200, asked: missing, source: understood.source };
+    return { ok: true, status: 200, asked: missing, suggestedCity, draft, source };
   }
   if (!doc.phone) {
-    await saveState(ctx, chatId, { draft, stage: "PHONE", lang });
+    await saveState(ctx, chatId, { draft, stage: "PHONE", lang, asked: "phone", suggestedCity: "" });
     await say(ctx, chatId, t().phone, { keyboard: { keyboard: [[{ text: t().phoneButton, request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
-    return { ok: true, status: 200, asked: "phone" };
+    return { ok: true, status: 200, asked: "phone", draft, source };
   }
-  await saveState(ctx, chatId, { draft, stage: "CONFIRM", lang });
-  await say(ctx, chatId, t().summary(summaryLines(draft, lang)), { buttons: [[{ text: t().save, callback_data: "vc:SAVE" }, { text: t().edit, callback_data: "vc:EDIT" }]] });
-  return { ok: true, status: 200, stage: "CONFIRM" };
+  await saveState(ctx, chatId, { draft, stage: "CONFIRM", lang, asked: "", suggestedCity: "" });
+  await say(ctx, chatId, t().summary(summaryLines(draft, lang), draft.kind), { buttons: [[{ text: t().save, callback_data: "vc:SAVE" }, { text: t().edit, callback_data: "vc:EDIT" }]] });
+  return { ok: true, status: 200, stage: "CONFIRM", draft, source };
 }
 
 // ------------------------------------------------------------------ saving
@@ -288,7 +369,7 @@ async function saveVisitorRecord(ctx, { chatId, doc, officeId, lang }) {
     // A try-out: the record is checked by the office's own rules but never saved, and nobody is linked.
     const check = validateRecordInput(toRecordInput(draft, { phone: doc.phone, name: doc.name }));
     await saveState(ctx, chatId, { stage: check.ok ? "DONE" : "COLLECT", ...(check.ok ? { draft: {} } : {}) });
-    await say(ctx, chatId, check.ok ? PREVIEW_SAVED : `${Object.values(check.errors || {})[0] || t.unclear}\n${t.editHint}`, check.ok ? { buttons: [[{ text: t.newTx, callback_data: "vn:NEW" }]] } : {});
+    await say(ctx, chatId, check.ok ? PREVIEW_SAVED(draft.kind) : `${Object.values(check.errors || {})[0] || t.unclear}\n${t.editHint}`, check.ok ? { buttons: [[{ text: t.newTx, callback_data: "vn:NEW" }]] } : {});
     return { ok: true, status: 200, saved: false, preview: true, valid: check.ok };
   }
   const actor = { uid: await assigneeOf(ctx, officeId), role: "broker", isManager: false };
@@ -319,7 +400,26 @@ async function saveVisitorRecord(ctx, { chatId, doc, officeId, lang }) {
 // ------------------------------------------------------------------ «جرّب مدير مكتبك» (no Telegram needed)
 
 const PREVIEW_CHAT = "1000000001";
-const PREVIEW_SAVED = "معاينة ✅ هنا يُسجَّل الطلب في مكتبك ويصل صاحبه رقمه المرجعي ومدة صلاحيته. (في التجربة لا يُحفظ شيء ولا يُرسل شيء.)";
+
+/** Repeat where the conversation stands (the current question, the summary…) without changing anything. */
+async function resumeVisitor(ctx, { officeId, chatId }) {
+  const doc = await ctx.store.get(visitorPath(chatId));
+  if (!doc || doc.officeId !== officeId || !["PERSONA", "KIND", "COLLECT", "PHONE", "CONFIRM"].includes(doc.stage)) return false;
+  const lang = doc.lang === "en" ? "en" : "ar";
+  const t = visitorText(lang);
+  const draft = parseDraft(doc);
+  if (doc.stage === "PERSONA") await say(ctx, chatId, t.pickPersona, { buttons: personaButtons(lang) });
+  else if (doc.stage === "KIND") await say(ctx, chatId, t.brokerKind, { buttons: [[{ text: t.kinds.OFFER, callback_data: "vk:OFFER" }, { text: t.kinds.REQUEST, callback_data: "vk:REQUEST" }]] });
+  else if (doc.stage === "PHONE") await say(ctx, chatId, t.phone, { keyboard: { keyboard: [[{ text: t.phoneButton, request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
+  else if (doc.stage === "CONFIRM") await say(ctx, chatId, t.summary(summaryLines(draft, lang), draft.kind), { buttons: [[{ text: t.save, callback_data: "vc:SAVE" }, { text: t.edit, callback_data: "vc:EDIT" }]] });
+  else {
+    const missing = nextMissing(draft);
+    const known = summaryLines(draft, lang);
+    await say(ctx, chatId, [known.length > 1 ? `${lang === "en" ? "So far" : "اللي عندي لحد الآن"}:\n${known.join("\n")}` : "", missing === "city" && draft.district && doc.suggestedCity ? t.confirmCity(draft.district, doc.suggestedCity) : missing ? questionFor(missing, draft, lang) : t.unclear].filter(Boolean).join("\n\n"));
+  }
+  return true;
+}
+const PREVIEW_SAVED = (kind) => `معاينة ✅ هنا يُسجَّل ${kind === "OFFER" ? "العرض" : "الطلب"} في مكتبك ويصل صاحبه رقمه المرجعي ومدة صلاحيته. (في التجربة لا يُحفظ شيء ولا يُرسل شيء.)`;
 const PREVIEW_BLOCKED = new Set(["telegramBotChats", "telegramParties", "telegramPartyPending"]);
 
 /** The office's own store, with the conversation kept per member and every link/inbox write switched off. */
@@ -367,7 +467,13 @@ export async function previewVisitor(ctx, { actor, officeId, input = {} }) {
   const chat = { id: Number(PREVIEW_CHAT), type: "private" };
   const from = { id: Number(PREVIEW_CHAT), first_name: text(actor.name || "تجربة", 40), language_code: "ar" };
   const updateId = Date.now();
-  if (action === "start" || action === "reset") {
+  if (action === "open") {
+    // Opening the page again continues the same conversation (no new welcome, nothing lost).
+    const resumed = await resumeVisitor(pctx, { officeId, chatId: PREVIEW_CHAT });
+    if (!resumed) await startVisitor(pctx, { officeId, chat, from });
+  } else if (action === "start" || action === "reset") {
+    // A new try-out forgets the test number too (on Telegram a returning person keeps his own).
+    await pctx.store.set(visitorPath(PREVIEW_CHAT), { phone: "" });
     await startVisitor(pctx, { officeId, chat, from });
   } else if (action === "button") {
     if (!isVisitorCallback(input.data)) throw ctx.deps.appError("preview_button_invalid", 400, "زر غير معروف");

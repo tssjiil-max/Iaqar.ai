@@ -109,6 +109,9 @@ jobs:
       - name: «مدير المكتب الذكي» in a real browser (home card = Daily Tasks lanes, chat, settings)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/agent" node scripts/qa/office-os/agent.e2e.mjs
+      - name: «جرّب مدير مكتبك» — the owner's and the client's try-outs (slow network, fast presses, 320/390 px)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/agent-try" node scripts/qa/office-os/agent-try.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
