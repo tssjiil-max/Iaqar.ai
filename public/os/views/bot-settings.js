@@ -9,6 +9,11 @@ import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
 import { loadChannels } from "../core/channels.js";
 import { partyBotStatus, setBotEnabled, startBrokerBotLink, startPartyBotLink, unlinkBrokerBot } from "../core/bot.js";
+import { NONCE_KEY, telegramLoginUrl } from "../domain/telegram-login-domain.js";
+
+function canStoreNonce() {
+  try { sessionStorage.setItem("os.tgProbe", "1"); sessionStorage.removeItem("os.tgProbe"); return true; } catch (_) { return false; }
+}
 import { ASK_STATE_LABEL } from "../domain/bot-domain.js";
 
 async function copyText(value, done) {
@@ -61,6 +66,16 @@ export function brokerAlertsCard() {
     link.addEventListener("click", () => runAction(link, async () => { const result = await startBrokerBotLink(session.officeId); pending.link = result.deepLink; pending.until = new Date(result.expiresAt || Date.now() + 15 * 60000).getTime(); await refresh(); }));
     const unlink = view.brokerLinked ? h("button", { type: "button", class: "os-btn danger", "data-bot-alerts-unlink": "" }, ic("x"), "إيقاف تنبيهاتي") : null;
     if (unlink) unlink.addEventListener("click", () => runAction(unlink, async () => { await unlinkBrokerBot(session.officeId); await refresh(); }, { success: "توقفت تنبيهات تيليجرام" }));
+    // «دخول بتيليجرام»: one tap from the site (Telegram's own sign-in page); the one-time link stays as the other way.
+    // A one-time nonce proves on return that THIS browser started the sign-in (a sign-in result sent by someone
+    // else in a link is refused). Without browser storage the button is not offered; the one-time link remains.
+    const login = view.available && view.loginBotId && canStoreNonce() ? h("button", { type: "button", class: "os-btn primary", "data-bot-alerts-login": "", onClick: () => {
+      const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+      try { sessionStorage.setItem(NONCE_KEY, `${nonce}|${Date.now()}`); sessionStorage.setItem("os.tgLoginBack", "settings/notifications"); } catch (_) { return; }
+      const url = telegramLoginUrl({ botId: view.loginBotId, origin: location.origin, returnTo: `${location.origin}${location.pathname}?tgl=${nonce}` });
+      if (url) location.assign(url);
+    } }, ic("telegram"), "دخول بتيليجرام") : null;
+    if (login) link.className = "os-btn secondary";
     const copy = h("button", { type: "button", class: "os-btn secondary" }, ic("clipboard"), "نسخ الرابط");
     copy.addEventListener("click", () => copyText(pending.link, "تم نسخ الرابط"));
     append(card,
@@ -72,7 +87,7 @@ export function brokerAlertsCard() {
       view.available && pending.link ? h("div", { class: "os-chan-link", "data-bot-alerts-pending": "" },
         h("p", { class: "os-sub", text: "افتح الرابط من حسابك الشخصي في تيليجرام ثم اضغط «Start». الرابط صالح 15 دقيقة ولمرة واحدة." }),
         h("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-bot-alerts-open": "" }, ic("telegram"), "فتح تيليجرام"), copy)) : null,
-      view.available ? h("div", { class: "os-btn-row" }, link, unlink) : null);
+      view.available ? h("div", { class: "os-btn-row" }, login, link, unlink) : null);
     // While the link waits for «Start», check again so the card turns «مرتبط» by itself.
     if (pending.link && card.isConnected) timer = setTimeout(() => { if (card.isConnected) refresh().catch(() => {}); }, 4000);
   };

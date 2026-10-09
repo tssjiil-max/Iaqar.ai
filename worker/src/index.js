@@ -177,6 +177,7 @@ import { askPartiesAboutMatch } from "./office-os/bot-service.js";
 import { botOutboundConfig, callTelegram } from "./office-os/bot-notify.js";
 import { handleSupportUpdate, verifySupportSecret } from "./office-os/support-service.js";
 import { sweepAllValidity } from "./office-os/validity-service.js";
+import { validityFields, validitySettingsFrom } from "../../public/os/domain/validity-domain.js";
 import { classifyInboundMessage } from "../../public/os/domain/message-class-domain.js";
 import { createStore as createOfficeOsStore } from "./office-os/store.js";
 import { channelCleanupBoundaryGuarantees } from "./channel-boundary-domain.js";
@@ -2061,6 +2062,32 @@ async function handleActivepiecesIntake(request, env, requestId) {
 }
 
 
+/**
+ * «مدة العرض أو الطلب» from the office's public page (the page now asks it). An intake from an older
+ * page or another channel carries none → the record stays as before (no invented dates).
+ */
+function publicIntakeValidityFields(intake = {}, settings = validitySettingsFrom({})) {
+  if (!("validityDuration" in intake) && !("validityUrgent" in intake)) return {};
+  const chosen = Boolean(cleanText(intake.validityDuration, 30));
+  const base = { urgent: intake.validityUrgent === true, confirmedBy: "public-page", periodicDays: settings.periodicDays };
+  let built = validityFields({ ...base, duration: chosen ? cleanText(intake.validityDuration, 30) : settings.defaultDuration, customDate: cleanText(intake.validityCustomDate, 12), chosen });
+  if (!built.ok) built = validityFields({ ...base, duration: settings.defaultDuration, chosen: false });
+  const out = {};
+  for (const [key, value] of Object.entries(built.fields)) out[key] = jsToFirestoreValue(value);
+  return out;
+}
+
+/** The office's own validity settings (مدير المكتب الذكي ← الصلاحية); the platform defaults when unset or unreadable. */
+async function officeValidityDefaults({ projectId, officeId, accessToken }) {
+  try {
+    const doc = await getFirestoreDocument({ projectId, segments: ["offices", officeId, "agentSettings", "main"], accessToken, allowMissing: true });
+    const raw = doc ? firestoreFieldsToJs(doc.fields || {}) : {};
+    return validitySettingsFrom({ defaultDuration: raw.validityDefaultDuration, periodicDays: raw.validityPeriodicDays, remindBeforeDays: raw.validityRemindBeforeDays });
+  } catch {
+    return validitySettingsFrom({});
+  }
+}
+
 async function handlePublicIntakeMatching(request, env, requestId) {
   const body = await request.json().catch(() => ({}));
   const officeId = firestoreOfficeId(body.officeId);
@@ -2241,7 +2268,8 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     assignedBrokerId: firestoreString(responsibleBrokerId),
     mediaPaths: mediaPaths.length ? firestoreStringArray(mediaPaths) : null,
     imageCount: firestoreInteger(Number(intake.imageCount || mediaPaths.filter((p) => /image-/i.test(p)).length || 0)),
-    hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p))))
+    hasVideo: firestoreBoolean(Boolean(intake.hasVideo || mediaPaths.some((p) => /video\./i.test(p)))),
+    ...publicIntakeValidityFields(intake, await officeValidityDefaults({ projectId, officeId, accessToken }))
   }});
 
   // Photos the owner attached on the office link become the offer's own photos (best effort).
@@ -7364,6 +7392,8 @@ function officeOsDeps() {
       sendOfficePush: (args) => sendOfficePush({ projectId, accessToken, env, ...args }),
       // «بوت المكتب»: the one door to Telegram (returns «skipped» unless sending is allowed on this environment).
       telegram: (method, payload) => callTelegram(env, method, payload),
+      // «مدير المكتب الذكي» on Telegram: the platform's own Arabic real-estate parser (rules) when the model is not available.
+      parseMessage: (text) => parseRealEstateMessage(cleanText(text, 4000), "", ""),
       appOrigin: resolveAppOrigin(env),
       // Media bucket for record photos (delete on removal); absent when storage is not configured.
       mediaBucket: env.IAQAR_MEDIA || null,

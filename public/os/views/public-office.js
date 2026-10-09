@@ -8,7 +8,7 @@ import { h, ic, clear, field, setFieldError, clearFieldErrors, append } from "..
 import { db, workerBase } from "../core/runtime.js";
 import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
-import { priceStatusField } from "./record-form.js";
+import { priceStatusField, validityField } from "./record-form.js";
 import { buildWhatsAppUrl, cleanText, formatNumber, localPhone, toNumber } from "../domain/format-domain.js";
 import { imagePicker } from "./record-images.js";
 
@@ -91,6 +91,7 @@ function intakeForm(root, office, kind) {
         field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric" }), { optional: true })),
       field(kind === "owner" ? "وصف العقار ومميزاته" : "المواصفات المطلوبة", h("textarea", { class: "os-textarea", name: "notes", maxlength: "900" }), { optional: true }),
       picker ? picker.el : null,
+      validityField({}, { isNew: true }),
       field("الاسم الكامل", h("input", { class: "os-input", name: "contactName", autocomplete: "name", placeholder: "الاسم الأول واسم العائلة" })),
       field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" })),
       status, submit,
@@ -133,6 +134,10 @@ function intakeForm(root, office, kind) {
         hasVideo: false,
         source: "office_public_link",
         status: "new",
+        // «مدة العرض أو الطلب» (optional for older clients of this page): the server applies it to the record.
+        validityDuration: value("validityDuration") || "",
+        validityUrgent: value("validityUrgent") === "yes",
+        validityCustomDate: value("validityCustomDate") || "",
         createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
       });
       // Processing is retry-safe server side (already-processed intakes return duplicate).

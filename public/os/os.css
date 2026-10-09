@@ -654,6 +654,7 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-chan-fact dt { color: #4d6a72; font-size: .82rem; }
 .os-chan-fact dd { margin: 0; font-weight: 700; font-size: .88rem; overflow-wrap: anywhere; }
 .os-chan-link { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--brand-tint, #EDF5F7); }
+.os-chan-link .os-mono { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; padding: 6px 8px; border-radius: 8px; background: var(--surface, #fff); }
 .os-chan .os-sub { margin: 0; }
 
 .os-photo-card { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 14px; align-items: center; }

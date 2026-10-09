@@ -17,13 +17,16 @@
 
 import {
   AGENT_LANGUAGE_RULES, AGENT_TOOLS, FORBIDDEN_TEXT, LANE, TOOL_CATEGORY, fallbackIntent, laneOfGroup, needsYouReason, needsYouTask, parseAgentStep, priorityScore,
-  riyadhDayStart, taskLane, toolGate, visibleCards
+  riyadhDayStart, taskLane, toolGate, visibleCards, negotiationSummary, stuckReason, viewingPlan, proactiveSuggestions
 } from "../../../public/os/domain/agent-domain.js";
-import { isJourneyOpen, STAGE_LABEL } from "../../../public/os/domain/journey-domain.js";
+import { isJourneyOpen, STAGE_LABEL, suggestNextStep } from "../../../public/os/domain/journey-domain.js";
 import { visibleToActor, taskCardModel } from "../../../public/os/domain/task-domain.js";
 import { formatDateTime, formatPrice } from "../../../public/os/domain/format-domain.js";
 import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
-import { setJourneyBotPaused } from "./bot-service.js";
+import { remindSilentSides, setJourneyBotPaused, silentAsks } from "./bot-service.js";
+import { validitySettingsFrom, validityState, STATE as VALIDITY_STATE } from "../../../public/os/domain/validity-domain.js";
+import { officeBotLink } from "../../../public/os/domain/visitor-domain.js";
+import { botOutboundConfig } from "./bot-notify.js";
 
 const text = (value, max = 200) => String(value ?? "").trim().slice(0, max);
 const MAX_TURNS = 16;
@@ -42,7 +45,10 @@ function aiConfigured(env = {}) {
 
 export async function agentSettings(ctx, officeId) {
   const raw = (await ctx.store.get(settingsPath(officeId))) || {};
-  return { enabled: raw.enabled === true, instructions: text(raw.instructions, INSTRUCTIONS_MAX), updatedAt: raw.updatedAt || null, lastErrorAt: raw.lastErrorAt || null };
+  return {
+    enabled: raw.enabled === true, instructions: text(raw.instructions, INSTRUCTIONS_MAX), updatedAt: raw.updatedAt || null, lastErrorAt: raw.lastErrorAt || null,
+    validity: validitySettingsFrom({ defaultDuration: raw.validityDefaultDuration, periodicDays: raw.validityPeriodicDays, remindBeforeDays: raw.validityRemindBeforeDays })
+  };
 }
 
 /** What the office may see about its agent. Any member reads it; the numbers come from the office's own tasks. */
@@ -56,18 +62,25 @@ export async function agentStatus(ctx, { officeId, actor }) {
     aiConfigured: aiConfigured(ctx.env),
     lastErrorAt: settings.lastErrorAt,
     instructions: actor?.isManager ? settings.instructions : "",
+    validity: settings.validity,
     telegramBotOn: bot.enabled === true,
+    // The office's own link to its office manager on Telegram (owners, brokers and clients start from it).
+    officeBotLink: bot.enabled === true && settings.enabled ? officeBotLink(botOutboundConfig(ctx.env).available ? botOutboundConfig(ctx.env).botUsername : "", officeId) : "",
     aiBudgetReached: Number(stats.aiCalls || 0) >= AI_CALLS_PER_DAY,
     today: { aiCalls: Number(stats.aiCalls || 0), fallbacks: Number(stats.fallbacks || 0), errors: Number(stats.errors || 0), chats: Number(stats.chats || 0) }
   };
 }
 
-export async function saveAgentSettings(ctx, { actor, officeId, enabled, instructions }) {
+export async function saveAgentSettings(ctx, { actor, officeId, enabled, instructions, validity }) {
   if (!actor?.isManager) forbid(ctx, "إعدادات مدير المكتب الذكي لمدير المكتب فقط");
   const now = ctx.now();
   const patch = { updatedAt: now, updatedBy: actor.uid };
   if (typeof enabled === "boolean") patch.enabled = enabled;
   if (typeof instructions === "string") patch.instructions = text(instructions.replace(/\s+/g, " "), INSTRUCTIONS_MAX);
+  if (validity && typeof validity === "object") {
+    const clean = validitySettingsFrom(validity);
+    Object.assign(patch, { validityDefaultDuration: clean.defaultDuration, validityPeriodicDays: clean.periodicDays, validityRemindBeforeDays: clean.remindBeforeDays });
+  }
   await ctx.store.set(settingsPath(officeId), patch);
   if (typeof enabled === "boolean") {
     await writeAudit(ctx, { officeId, action: enabled ? AUDIT_ACTIONS.AGENT_ENABLED : AUDIT_ACTIONS.AGENT_DISABLED, actorUid: actor.uid, entityType: "agent", entityId: "main", key: now.toISOString() });
@@ -149,6 +162,31 @@ export async function runTool(ctx, { officeId, actor, name, args = {} }) {
       .filter((x) => x.hits > 0).sort((a, b) => b.hits - a.hits).map((x) => x.j);
     return { ok: true, count: list.length, items: list.slice(0, 5).map((j) => journeyItem(j, [STAGE_LABEL[j.stage], text(j.currentAction?.label, 60), formatPrice(j.offerSummary?.price)].filter(Boolean).join(" · "))) };
   }
+  if (name === "negotiation_summary" || name === "why_stuck") {
+    const open = (await visibleJourneys(ctx, officeId, actor)).filter((j) => isJourneyOpen(j));
+    const found = findJourneys(open, args);
+    // «ليش توقفت» without a named deal: the deals with no movement for 3 days, each with its reason.
+    const list = found.length ? found : name === "why_stuck" ? open.filter((j) => new Date(j.lastEvent?.at || j.updatedAt || 0).getTime() < now.getTime() - 3 * 86400000) : [];
+    if (name === "why_stuck") return { ok: true, count: list.length, named: found.length > 0, items: list.slice(0, 6).map((j) => journeyItem(j, stuckReason(j, { now }))) };
+    const journey = list[0];
+    if (!journey) return { ok: true, count: 0, items: [] };
+    const lines = negotiationSummary(journey, { now, nextStep: suggestNextStep(journey, { now }) });
+    return { ok: true, count: 1, title: journeyTitle(journey), lines, items: [journeyItem(journey, STAGE_LABEL[journey.stage] || "")], more: list.length - 1 };
+  }
+  if (name === "plan_viewings") {
+    const plan = viewingPlan((await visibleJourneys(ctx, officeId, actor)).filter((j) => isJourneyOpen(j)), { now });
+    return {
+      ok: true, count: plan.length, unconfirmed: plan.filter((p) => !p.confirmed).length, conflicts: plan.filter((p) => p.conflict).length,
+      items: plan.slice(0, 10).map((p) => journeyItem(p.journey, [formatDateTime(p.at, now), ...p.flags].join(" · ")))
+    };
+  }
+  if (name === "follow_up_silent") {
+    const silent = await silentAsks(ctx, { officeId, actor });
+    if (!silent.length) return { ok: true, count: 0, items: [] };
+    const items = silent.slice(0, 10).map((row) => ({ id: row.askId, title: `${row.role === "owner" ? "المالك" : "العميل"} لم يرد على سؤال المطابقة`, sub: `منذ ${Math.max(1, Math.floor((now - row.askedAt) / 86400000))} يوم`, route: row.matchId ? `review/${row.matchId}` : "", tag: "بانتظار رد" }));
+    const ids = silent.slice(0, 10).map((row) => row.askId);
+    return { ok: true, count: silent.length, items, pendingAction: { tool: name, askIds: ids, label: `أرسل تذكيرًا لطيفًا واحدًا لـ ${ids.length} ${ids.length === 1 ? "طرف" : "أطراف"}` } };
+  }
   if (gate.category === TOOL_CATEGORY.APPROVAL) {
     // Never run from the model's words: the agent returns a button; the broker's press calls /os/agent/act.
     const journeyId = text(args.journeyId, 120);
@@ -159,10 +197,43 @@ export async function runTool(ctx, { officeId, actor, name, args = {} }) {
   return { ok: false, text: "هذا الإجراء غير متاح.", items: [] };
 }
 
+function findJourneys(open, args = {}) {
+  const id = text(args.journeyId, 120);
+  if (id) return open.filter((j) => j.journeyId === id);
+  const words = text(args.query, 120).split(/\s+/).filter((w) => w.length >= 2);
+  return open.map((j) => ({ j, hits: words.filter((w) => `${j.offerSummary?.propertyType || ""} ${j.offerSummary?.district || ""} ${j.requestSummary?.district || ""}`.includes(w)).length }))
+    .filter((x) => x.hits > 0).sort((a, b) => b.hits - a.hits).map((x) => x.j);
+}
+
+/** Proactive suggestions for the office manager's screen (reads only; each opens a command in the chat). */
+export async function agentSuggestions(ctx, { officeId, actor }) {
+  const settings = await agentSettings(ctx, officeId);
+  if (!settings.enabled) return { ok: true, suggestions: [] };
+  const now = ctx.now();
+  const [silent, journeys, matches, records] = await Promise.all([
+    silentAsks(ctx, { officeId, actor }).catch(() => []),
+    visibleJourneys(ctx, officeId, actor),
+    ctx.store.list(["offices", officeId, "matches"], 300).catch(() => []),
+    ctx.store.list(["offices", officeId, "opportunities"], 300).catch(() => [])
+  ]);
+  const open = journeys.filter((j) => isJourneyOpen(j));
+  const soon = now.getTime() + 2 * 86400000;
+  const unconfirmedSoon = viewingPlan(open, { now }).filter((p) => !p.confirmed && p.at.getTime() <= soon).length;
+  const stuck = open.filter((j) => new Date(j.lastEvent?.at || j.updatedAt || 0).getTime() < now.getTime() - 3 * 86400000).length;
+  const newMatches = matches.filter((m) => m.isCurrent !== false && String(m.status || "active") === "active" && !m.brokerDecision && Number(m.score || 0) >= 70).length;
+  const expiringSoon = records.filter((r) => (actor.isManager || !r.brokerId || r.brokerId === actor.uid) && validityState(r, now) === VALIDITY_STATE.ACTIVE && r.validityExpiresAt
+    && new Date(r.validityExpiresAt).getTime() - now.getTime() <= 3 * 86400000).length;
+  return { ok: true, suggestions: proactiveSuggestions({ silent: silent.length, unconfirmedSoon, stuck, expiringSoon, newMatches }) };
+}
+
 /** The broker pressed the button the agent showed. The broker's own permissions apply. */
-export async function runApprovedAction(ctx, { actor, officeId, tool, journeyId }) {
+export async function runApprovedAction(ctx, { actor, officeId, tool, journeyId, askIds = [] }) {
   const gate = toolGate(tool);
   if (!gate.allowed || gate.category !== TOOL_CATEGORY.APPROVAL) forbid(ctx, FORBIDDEN_TEXT);
+  if (tool === "follow_up_silent") {
+    const result = await remindSilentSides(ctx, { actor, officeId, askIds: Array.isArray(askIds) ? askIds : [] });
+    return { ok: true, done: true, sent: result.sent, skipped: result.skipped, reason: result.reason || "" };
+  }
   const result = await setJourneyBotPaused(ctx, { actor, officeId, journeyId: text(journeyId, 120), paused: tool === "take_over_deal" });
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.AGENT_ACTION_APPROVED, actorUid: actor.uid, entityType: "journey", entityId: text(journeyId, 120), key: ctx.now().toISOString(), details: { tool } });
   return { ok: true, done: true, journeyId: result?.journeyId || journeyId };
@@ -177,9 +248,13 @@ const RULES_REPLY = {
   new_matches: (r) => (r.count ? `فيه ${r.count} ${r.count === 1 ? "مطابقة" : "مطابقات"} تنتظر قرارك، الأقوى أولًا:` : "ما فيه مطابقات جديدة تنتظر قرارك."),
   upcoming_viewings: (r) => (r.count ? `المعاينات القادمة خلال أسبوع (${r.count}):` : "ما فيه معاينات خلال الأسبوع القادم."),
   stuck_deals: (r) => (r.count ? `هذي صفقات بلا حركة من 3 أيام أو أكثر (${r.count}):` : "كل الصفقات المفتوحة فيها حركة خلال آخر 3 أيام."),
-  deal_status: (r) => (r.count ? "هذا اللي لقيته:" : "ما لقيت صفقة مفتوحة بهذا الوصف. اكتب الحي أو نوع العقار.")
+  deal_status: (r) => (r.count ? "هذا اللي لقيته:" : "ما لقيت صفقة مفتوحة بهذا الوصف. اكتب الحي أو نوع العقار."),
+  negotiation_summary: (r) => (r.count ? `ملخص التفاوض في «${r.title}»:\n${r.lines.map((line) => `• ${line}`).join("\n")}${r.more > 0 ? `\n(فيه ${r.more} صفقة ثانية بنفس الوصف — حدد الحي أو النوع أكثر)` : ""}` : "حدد الصفقة بالحي أو نوع العقار، مثل: «ملخص التفاوض في شقة الملقا»."),
+  why_stuck: (r) => (r.count ? (r.named ? "هذا سبب التوقف:" : `هذي الصفقات المتوقفة من 3 أيام أو أكثر وسبب كل وحدة (${r.count}):`) : "ما فيه صفقات متوقفة؛ كل الصفقات المفتوحة فيها حركة خلال آخر 3 أيام."),
+  plan_viewings: (r) => (r.count ? `رتبت لك المعاينات خلال أسبوع، الأقرب أولًا (${r.count})${r.unconfirmed ? ` — ${r.unconfirmed} غير مؤكدة` : ""}${r.conflicts ? ` — ${r.conflicts} متقاربة في الوقت` : ""}:` : "ما فيه معاينات خلال الأسبوع القادم."),
+  follow_up_silent: (r) => (r.count ? `فيه ${r.count} ${r.count === 1 ? "طرف ما رد" : "أطراف ما ردوا"} على سؤال المطابقة من يوم أو أكثر. أرسل لهم تذكيرًا لطيفًا واحدًا عبر البوت؟ ما يُرسل شيء قبل ضغطك.` : "ما فيه أطراف متأخرين في الرد يحتاجون تذكير حاليًا.")
 };
-const HELP = "أقدر أخبرك وش يحتاج تدخلك، ووش أتابعه، ووش انتهى اليوم، وأقوى المطابقات الجديدة، والمعاينات القادمة، والصفقات المتوقفة، وحالة صفقة معينة. وش تبي؟";
+const HELP = "أقدر أخبرك وش يحتاج تدخلك، ووش أتابعه، ووش انتهى اليوم، وأقوى المطابقات الجديدة، وأرتب المعاينات، وأوضح ليش توقفت صفقة، وأجهز ملخص المفاوضة، وأذكّر الأطراف اللي ما ردوا (بعد موافقتك). وش تبي؟";
 
 function systemPrompt(officeName, instructions) {
   const tools = Object.entries(AGENT_TOOLS).filter(([, t]) => t.category !== TOOL_CATEGORY.FORBIDDEN)
@@ -214,7 +289,7 @@ async function rulesAnswer(ctx, { officeId, actor, message }) {
   if (intent.tool === "forbidden") return { reply: FORBIDDEN_TEXT, items: [], source: "rules" };
   if (!intent.tool) return { reply: HELP, items: [], source: "rules" };
   const result = await runTool(ctx, { officeId, actor, name: intent.tool, args: intent.args || {} });
-  return { reply: RULES_REPLY[intent.tool] ? RULES_REPLY[intent.tool](result) : HELP, items: result.items || [], source: "rules", tool: intent.tool };
+  return { reply: RULES_REPLY[intent.tool] ? RULES_REPLY[intent.tool](result) : HELP, items: result.items || [], action: result.pendingAction || null, source: "rules", tool: intent.tool };
 }
 
 /**

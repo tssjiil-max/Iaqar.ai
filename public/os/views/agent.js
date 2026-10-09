@@ -9,12 +9,13 @@ import { h, ic, clear, append } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction, toast } from "../core/ui.js";
-import { agentAct, agentChat, agentHistory, loadAgentStatus, saveAgentSettings } from "../core/agent.js";
+import { agentAct, agentChat, agentHistory, agentSuggestions, loadAgentStatus, saveAgentSettings } from "../core/agent.js";
 import { listAuditLog } from "../core/live.js";
 import { agentStatusView } from "../domain/agent-domain.js";
 import { relativeAgo } from "../domain/format-domain.js";
+import { DURATION, DURATION_OPTIONS } from "../domain/validity-domain.js";
 
-const SUGGESTIONS = ["وش يحتاج تدخلي اليوم؟", "عطني أقوى المطابقات الجديدة", "وش المعاينات القادمة؟", "أي صفقة متوقفة؟", "وش أُنجز اليوم؟"];
+const SUGGESTIONS = ["وش يحتاج تدخلي اليوم؟", "عطني أقوى المطابقات الجديدة", "رتب المعاينات", "ليش توقفت الصفقات", "تابع العملاء اللي ما ردوا", "وش أُنجز اليوم؟"];
 
 function head(title, backTo) {
   return h("div", { class: "os-page-head" },
@@ -51,7 +52,15 @@ export function renderAgent(container) {
   const send = h("button", { type: "button", class: "os-btn primary", "data-agent-send": "" }, ic("send"), "إرسال");
   const chips = h("div", { class: "os-chips", role: "group", "aria-label": "اقتراحات" },
     ...SUGGESTIONS.map((text) => h("button", { type: "button", class: "os-chip", "data-agent-suggest": "", onClick: () => { input.value = text; submit(); } }, text)));
-  append(container, head("مدير المكتب الذكي"), status, list, chips, h("div", { class: "os-agent-compose" }, input, send));
+  // Proactive: what the office manager noticed (counts from the office's own data); pressing one only asks.
+  const noticed = h("div", { class: "os-center-list", "data-agent-noticed": "" });
+  append(container, head("مدير المكتب الذكي"), status, noticed, list, chips, h("div", { class: "os-agent-compose" }, input, send));
+  agentSuggestions(session.officeId).then((r) => {
+    for (const s of (r.suggestions || [])) {
+      append(noticed, h("button", { type: "button", class: "os-card os-center-row", "data-agent-noticed-item": s.id, onClick: () => { input.value = s.prompt; submit(); } },
+        h("span", { class: "os-set-text" }, h("b", { text: s.text, dir: "auto" })), ic("chev-left")));
+    }
+  }).catch(() => {});
   let turns = [];
   const draw = () => {
     clear(list);
@@ -60,9 +69,13 @@ export function renderAgent(container) {
     list.lastElementChild?.scrollIntoView({ block: "end" });
   };
   const onAct = (action, button) => runAction(button, async () => {
-    await agentAct(session.officeId, action.tool, action.journeyId);
+    const result = await agentAct(session.officeId, action);
     button.disabled = true;
-  }, { success: action.tool === "take_over_deal" ? "استلمت الصفقة — توقف البوت عن مراسلة الطرفين فيها" : "عادت الصفقة إلى البوت" });
+    if (action.tool === "follow_up_silent") {
+      const sent = Number(result?.sent || 0);
+      toast(sent ? `أُرسل التذكير لـ ${sent}` : result?.reason === "office_switch_off" || result?.reason === "bot_unavailable" ? "البوت متوقف — ما أُرسل شيء" : "ما أُرسل شيء: الأطراف ردوا أو سبق تذكيرهم", sent ? "ok" : "bad");
+    }
+  }, { success: action.tool === "take_over_deal" ? "استلمت الصفقة — توقف البوت عن مراسلة الطرفين فيها" : action.tool === "hand_back_deal" ? "عادت الصفقة إلى البوت" : "" });
   function submit() {
     const message = input.value.trim();
     if (!message) return;
@@ -82,6 +95,39 @@ export function renderAgent(container) {
   agentHistory(session.officeId).then((r) => { turns = Array.isArray(r.turns) ? r.turns : []; draw(); }).catch(() => draw());
   draw();
   return null;
+}
+
+/** The office's own Telegram link: whoever opens it talks to this office's manager (owner / broker / client). */
+function officeLinkBox(link) {
+  const copy = h("button", { type: "button", class: "os-btn secondary", "data-agent-office-link-copy": "" }, ic("clipboard"), "نسخ الرابط");
+  copy.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(link); toast("تم نسخ رابط مكتبك على تيليجرام"); } catch (_) { toast("تعذر النسخ — انسخ الرابط يدويًا", "bad"); }
+  });
+  return h("div", { class: "os-chan-link", "data-agent-office-link": "on" },
+    h("p", { class: "os-sub", text: "شارك هذا الرابط مع الملاك والوسطاء والعملاء: يفتح محادثة مع مدير مكتبك الذكي، ويسجل العرض أو الطلب بعد موافقتهم، ويصلك كل سجل في مكتبك." }),
+    h("code", { class: "os-mono", dir: "ltr", text: link }),
+    h("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: link, target: "_blank", rel: "noopener" }, ic("telegram"), "فتح"), copy));
+}
+
+/** «صلاحية العروض والطلبات» for this office: default duration, periodic confirmation, reminder timing (platform limits apply). */
+function validityCard(s, redraw) {
+  const v = s.validity || {};
+  const select = h("select", { class: "os-select", "data-validity-default": "" },
+    ...DURATION_OPTIONS.filter((o) => o.id !== DURATION.CUSTOM).map((o) => h("option", { value: o.id, text: o.label, selected: o.id === v.defaultDuration ? true : null })));
+  const periodic = h("input", { class: "os-input", type: "number", min: "7", max: "90", inputmode: "numeric", value: String(v.periodicDays || 30), "data-validity-periodic": "" });
+  const remind = h("input", { class: "os-input", type: "number", min: "1", max: "7", inputmode: "numeric", value: String(v.remindBeforeDays || 3), "data-validity-remind": "" });
+  const save = h("button", { type: "button", class: "os-btn secondary", "data-validity-save": "" }, ic("check"), "حفظ إعدادات الصلاحية");
+  save.addEventListener("click", () => runAction(save, async () => {
+    redraw({ ...(await saveAgentSettings(session.officeId, { validity: { defaultDuration: select.value, periodicDays: Number(periodic.value), remindBeforeDays: Number(remind.value) } })), loaded: true });
+  }, { success: "تم حفظ إعدادات الصلاحية" }));
+  const row = (label, control, hint) => h("label", { class: "os-field" }, h("span", { text: label }), control, hint ? h("small", { text: hint }) : null);
+  return h("section", { class: "os-card", "data-validity-settings": "" },
+    h("h2", { class: "os-h2", text: "صلاحية العروض والطلبات" }),
+    h("p", { class: "os-sub", text: "تطبق على سجلات مكتبك فقط. لا يُحذف أي سجل؛ المنتهي يتوقف عن المطابقات الجديدة حتى يُجدد." }),
+    row("المدة الافتراضية إذا لم يختر صاحب السجل", select),
+    row("التأكيد الدوري لـ «حتى ألغيه» (بالأيام)", periodic, "من 7 إلى 90 يومًا"),
+    row("التذكير قبل الانتهاء (بالأيام)", remind, "من يوم إلى 7 أيام"),
+    save);
 }
 
 export function renderAgentSettings(container) {
@@ -110,9 +156,11 @@ export function renderAgentSettings(container) {
         h("h2", { class: "os-h2", text: "تعليمات المكتب" }),
         h("p", { class: "os-sub", text: "نبرة التواصل وما يركز عليه، ضمن قواعد الخصوصية والصلاحيات التي لا تتغير." }),
         area, save),
+      validityCard(s, draw),
       h("section", { class: "os-card" },
         h("h2", { class: "os-h2", text: "القنوات" }),
         h("p", { class: "os-sub", "data-agent-telegram": "", text: s.telegramBotOn ? "بوت تيليجرام مفعّل في مكتبك: يسأل الطرفين عن المطابقات ويفتح الصفقة عند موافقتهما." : "بوت تيليجرام متوقف في مكتبك." }),
+        s.officeBotLink ? officeLinkBox(s.officeBotLink) : h("p", { class: "os-sub", "data-agent-office-link": "off", text: "رابط مكتبك على تيليجرام يظهر هنا بعد تشغيل البوت ومدير المكتب الذكي." }),
         h("button", { type: "button", class: "os-btn secondary", onClick: () => go("settings/channels") }, ic("link"), "قنوات المكتب")),
       h("section", { class: "os-card" }, h("h2", { class: "os-h2", text: "آخر الإجراءات" }), actions));
     listAuditLog(session.officeId, 60).then((rows) => {
