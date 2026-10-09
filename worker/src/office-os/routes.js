@@ -17,6 +17,7 @@ import { suggestForJourney } from "./assist-service.js";
 import { arrangeRecordImages } from "./record-media-service.js";
 import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
 import { convertInboxMessage } from "./inbox-service.js";
+import { createOfficeTicket, supportStatus } from "./support-service.js";
 import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker } from "./bot-service.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
@@ -82,7 +83,10 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/channels/telegram/link": (ctx, b, actor) => startTelegramLink(ctx, { actor, officeId: ctx.officeId }),
   "/os/channels/telegram/unlink": (ctx, b, actor) => unlinkTelegram(ctx, { actor, officeId: ctx.officeId }),
   "/os/channels/whatsapp/disconnect": (ctx, b, actor) => disconnectWhatsapp(ctx, { actor, officeId: ctx.officeId }),
-  "/os/inbox/convert": (ctx, b, actor) => convertInboxMessage(ctx, { actor, officeId: ctx.officeId, inboxId: text(b.inboxId) })
+  "/os/inbox/convert": (ctx, b, actor) => convertInboxMessage(ctx, { actor, officeId: ctx.officeId, inboxId: text(b.inboxId) }),
+  // «مركز التواصل والدعم»: platform support (Telegram Business). Any member may read the state and send a question or report.
+  "/os/support/status": (ctx) => supportStatus(ctx),
+  "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } })
 });
 
 function text(value) {

@@ -377,7 +377,7 @@ function telegramCard(view, reload, pending) {
     showLink ? h("div", { class: "os-chan-link", "data-telegram-pending": "" },
       h("p", { class: "os-sub", text: "افتح الرابط من حساب تيليجرام الذي تستقبل عليه رسائل المكتب ثم اضغط «ابدأ». الرابط صالح 15 دقيقة ولمرة واحدة." }),
       h("div", { class: "os-btn-row" },
-        h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-telegram-open": "" }, ic("send"), "فتح تيليجرام"),
+        h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-telegram-open": "" }, ic("telegram"), "فتح تيليجرام"),
         copy)) : null,
     view.linkWaiting && !pending.link ? h("p", { class: "os-sub", "data-telegram-pending": "", text: "رابط ربط سابق ما زال بانتظار الإتمام. أنشئ رابطًا جديدًا إن لم يعد لديك." }) : null,
     view.note ? h("p", { class: "os-sub", "data-channel-note": "", text: view.note }) : null,

@@ -24,7 +24,7 @@ export const LINK_STATE_LABEL = Object.freeze({
 export const CHANNEL_REGISTRY = Object.freeze({
   whatsapp: Object.freeze({ id: "whatsapp", name: "واتساب للأعمال", icon: "whatsapp", linkMethod: "embedded_signup", perOffice: true, inbound: true, outbound: false,
     hint: "كل مكتب يربط رقم واتساب للأعمال الخاص به. تصل الرسائل الواردة إلى مكتبك فقط." }),
-  telegram: Object.freeze({ id: "telegram", name: "تيليجرام", icon: "send", linkMethod: "bot_deep_link", perOffice: true, inbound: true, outbound: false,
+  telegram: Object.freeze({ id: "telegram", name: "تيليجرام", icon: "telegram", linkMethod: "bot_deep_link", perOffice: true, inbound: true, outbound: false,
     hint: "بوت واحد للمنصة، وكل مكتب يربط محادثته به. تصل رسائل المحادثة المرتبطة إلى مكتبك فقط." })
 });
 

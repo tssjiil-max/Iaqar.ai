@@ -294,7 +294,7 @@ export function renderTasks(container, { filter = "all", step = null } = {}) {
       append(list, h("div", { class: "os-card" }, emptyState("check-circle",
         active === "waiting" ? "لا شيء بانتظار رد" : "لا توجد مهام الآن",
         active === "waiting" ? "المقترحات المرسلة تظهر هنا حتى يصل الرد." : "أضف عروضًا وطلبات، وعند ظهور مطابقة ستصلك مهمة المراجعة هنا.",
-        h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus"), "إضافة عرض أو طلب"))));
+        h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus-circle"), "إضافة عرض أو طلب"))));
       return;
     }
     for (const group of shown) append(list, group.kind === "deal" ? dealCard(group, now) : taskCard(group.task, now));

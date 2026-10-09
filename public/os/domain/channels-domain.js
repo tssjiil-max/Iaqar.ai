@@ -2,7 +2,7 @@
 
 export const CHANNEL_LABELS = Object.freeze({
   whatsapp: { name: "واتساب للأعمال", icon: "whatsapp", hint: "استقبال رسائل العملاء ومالكي العقارات داخل مكتبك" },
-  telegram: { name: "تيليجرام", icon: "send", hint: "استقبال الرسائل عبر بوت المكتب" }
+  telegram: { name: "تيليجرام", icon: "telegram", hint: "استقبال الرسائل عبر بوت المكتب" }
 });
 
 export const CHANNEL_STATUS_LABELS = Object.freeze({

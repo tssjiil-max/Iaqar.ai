@@ -71,7 +71,7 @@ export function brokerAlertsCard() {
       !view.available ? h("p", { class: "os-sub", "data-bot-alerts-note": "", text: "بوت المنصة غير مفعّل للإرسال على هذه البيئة بعد." }) : null,
       view.available && pending.link ? h("div", { class: "os-chan-link", "data-bot-alerts-pending": "" },
         h("p", { class: "os-sub", text: "افتح الرابط من حسابك الشخصي في تيليجرام ثم اضغط «Start». الرابط صالح 15 دقيقة ولمرة واحدة." }),
-        h("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-bot-alerts-open": "" }, ic("send"), "فتح تيليجرام"), copy)) : null,
+        h("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-bot-alerts-open": "" }, ic("telegram"), "فتح تيليجرام"), copy)) : null,
       view.available ? h("div", { class: "os-btn-row" }, link, unlink) : null);
     // While the link waits for «Start», check again so the card turns «مرتبط» by itself.
     if (pending.link && card.isConnected) timer = setTimeout(() => { if (card.isConnected) refresh().catch(() => {}); }, 4000);
@@ -106,7 +106,7 @@ export function partyBotRow(record = {}, { who = "العميل" } = {}) {
     const copy = h("button", { type: "button", class: "os-btn secondary", "data-bot-party-copy": "" }, ic("clipboard"), "نسخ الرسالة");
     if (link) copy.addEventListener("click", () => copyText(link.text, "تم نسخ الرسالة مع الرابط"));
     append(row,
-      h("div", { class: "os-bot-party-head" }, ic("send"),
+      h("div", { class: "os-bot-party-head" }, ic("telegram"),
         h("span", { class: `os-chan-status is-${state.tone}`, "data-bot-party-state": status.state, text: state.label })),
       status.state === "NO_PHONE" ? null : link
         ? h("div", { class: "os-chan-link", "data-bot-party-pending": "" },
@@ -124,5 +124,5 @@ export function partyBotRow(record = {}, { who = "العميل" } = {}) {
 export function botAskLine(match = {}) {
   const label = ASK_STATE_LABEL[String(match.botAskState || "")];
   if (!label) return null;
-  return h("div", { class: "os-alert info os-bot-ask", "data-bot-ask": String(match.botAskState) }, ic("send"), h("span", { text: `${label}. يمكنك اتخاذ القرار بنفسك في أي وقت، فيتوقف سؤال البوت.` }));
+  return h("div", { class: "os-alert info os-bot-ask", "data-bot-ask": String(match.botAskState) }, ic("telegram"), h("span", { text: `${label}. يمكنك اتخاذ القرار بنفسك في أي وقت، فيتوقف سؤال البوت.` }));
 }

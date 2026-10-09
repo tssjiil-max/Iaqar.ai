@@ -101,6 +101,20 @@ test("assignment and deal-permission settings: managers only", async () => {
   assert.ok(true);
 });
 
+test("platform support (Telegram Business): connections, chats, tickets and limits are closed to every client (Worker only)", async () => {
+  const paths = ["supportConnections/bc_1", "supportChats/bc_1__7", "supportTickets/st_1", "supportSettings/telegram", "supportRate/owner-a__2026-10-09", "supportResume/abc"];
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    for (const path of paths) await setDoc(doc(db, path), { officeId: "office-a", status: "OPEN" });
+  });
+  for (const db of [as("owner-a"), as("broker-a"), as("owner-b"), anon()]) {
+    for (const path of paths) {
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), { officeId: "office-a", status: "OPEN" }));
+    }
+  }
+});
+
 test("the office bot: its switch, its questions and its routing are closed to every client (Worker only)", async () => {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();

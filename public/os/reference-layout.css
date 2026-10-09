@@ -72,8 +72,8 @@
 
 /* Brand: white pages, white cards with a light border and a very soft shadow. */
 html,body{background:var(--surface)}
-.os-app .os-card{background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
-.ref-bottom{background:var(--surface);border-color:var(--line)}
+.os-app .os-card{background:var(--surface);border:1px solid var(--frame);box-shadow:var(--shadow)}
+.ref-bottom{background:var(--surface);border-color:var(--frame)}
 .ref-bottom button{color:var(--faint)}.ref-bottom button .os-ico{color:var(--faint)}
 .ref-bottom button[aria-current="page"]{color:var(--brand-primary);background:var(--brand-tint)}.ref-bottom button[aria-current="page"] .os-ico{color:var(--brand-primary)}
 .ref-bottom button[aria-current="page"]:before{background:var(--brand-primary)}

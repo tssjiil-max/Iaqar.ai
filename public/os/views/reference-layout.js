@@ -13,6 +13,10 @@ import { filterTasks, sortTasks, visibleToActor, taskCardModel, parseMeta, dealR
 import { recordView } from "../domain/records-domain.js";
 import { formatDateTime, formatDay, toDate } from "../domain/format-domain.js";
 import { officeToolByLabel } from "../domain/office-tools-domain.js";
+import { loadChannels } from "../core/channels.js";
+import { loadSupportStatus, sendSupportTicket } from "../core/support.js";
+import { supportCardView, TICKET_KIND, TICKET_KIND_LABEL, validateOfficeTicket } from "../domain/support-domain.js";
+import { openSheet, runAction, toast } from "../core/ui.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){return taskPathStep(task);}
@@ -99,6 +103,70 @@ function officeToolCard([label, iconName]) {
   return card;
 }
 
+/** «بلاغ أو استفسار»: one short form; the support manager receives it (and on Telegram when the assistant is linked). */
+function openSupportTicket() {
+  let kind = TICKET_KIND.QUESTION;
+  const kinds = h("div", { class: "os-seg", role: "group", "aria-label": "نوع الرسالة" },
+    ...[TICKET_KIND.QUESTION, TICKET_KIND.REPORT].map((value) => {
+      const b = h("button", { type: "button", "aria-pressed": String(value === kind), "data-support-kind": value, text: TICKET_KIND_LABEL[value] });
+      b.addEventListener("click", () => { kind = value; kinds.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); });
+      return b;
+    }));
+  const area = h("textarea", { class: "os-textarea", rows: "4", maxlength: "1000", "data-support-text": "", placeholder: "اكتب سؤالك أو صف المشكلة: ماذا كنت تفعل وما الذي ظهر لك؟" });
+  const admin = h("input", { type: "checkbox", "data-support-admin": "" });
+  const error = h("small", { class: "os-field-error", role: "alert" });
+  const send = h("button", { type: "button", class: "os-btn primary block", "data-support-send": "" }, ic("send"), "إرسال");
+  const sheet = openSheet("بلاغ أو استفسار", h("div", { class: "os-support-form" },
+    kinds,
+    h("label", { class: "os-field" }, h("span", { text: "التفاصيل" }), area, error),
+    h("label", { class: "os-support-admin" }, admin, h("span", { text: "أحتاج تدخل المسؤول" })),
+    send));
+  send.addEventListener("click", () => {
+    const checked = validateOfficeTicket({ kind, text: area.value, needsAdmin: admin.checked });
+    error.textContent = checked.ok ? "" : checked.error;
+    if (!checked.ok) return;
+    runAction(send, async () => {
+      const result = await sendSupportTicket(session.officeId, checked);
+      sheet.close();
+      toast(`وصلت رسالتك (رقم ${result.ticketRef || "—"}) وسيتابعها المسؤول.`, "ok");
+    });
+  });
+}
+
+/**
+ * «مركز التواصل والدعم»: the office inbox entry, the office's channels that are really linked,
+ * the platform support account (only when configured) and «بلاغ أو استفسار». The assistant line
+ * shows only while the assistant is connected — nothing here claims a connection that is not there.
+ */
+function supportCard() {
+  const channels = h("div", { class: "ref-support-channels", "data-support-channels": "" });
+  const assistant = h("p", { class: "ref-support-assistant", "data-support-assistant": "", hidden: true }, ic("robot"), h("span", { text: "دعم ذكي مع تحويل للمسؤول عند الحاجة" }));
+  const report = h("button", { type: "button", class: "ref-support-chip is-action", "data-support-report": "", onClick: openSupportTicket }, ic("mail"), h("span", { text: "بلاغ أو استفسار" }));
+  // One row of chips: the office's linked channels, then the platform support line and «بلاغ أو استفسار».
+  const actions = channels;
+  channels.append(report);
+  const card = h("section", { class: "os-card ref-office-section ref-support-card", "data-support-card": "" },
+    h("button", { type: "button", class: "os-home-community", "data-inbox-entry": "", onClick: () => go("inbox") },
+      h("span", { class: "os-set-icon" }, ic("support")),
+      h("span", {}, h("b", { text: "مركز التواصل والدعم" }), h("small", { text: "الرسائل الواردة من قنوات المكتب مصنّفة" }), h("span", { class: "os-coop-badge", "data-inbox-summary": "" })),
+      ic("chev-left")),
+    channels, assistant);
+  card.fill = ({ channels: officeChannels = [], support = {} } = {}) => {
+    const view = supportCardView({ channels: officeChannels, support });
+    channels.querySelectorAll("[data-support-channel]").forEach((chip) => chip.remove());
+    for (const channel of [...view.channels].reverse()) {
+      channels.prepend(h("button", { type: "button", class: "ref-support-chip", "data-support-channel": channel.id, onClick: () => go("inbox") }, ic(channel.id), h("span", { text: channel.label })));
+    }
+    actions.querySelector("[data-support-telegram]")?.remove();
+    if (view.telegramBusiness) {
+      actions.insertBefore(h("a", { class: "ref-support-chip", href: view.telegramBusiness.url, target: "_blank", rel: "noopener", "data-support-telegram": "" }, ic("telegram"), h("span", { text: view.telegramBusiness.label })), report);
+    }
+    report.hidden = !view.canReport;
+    assistant.hidden = !view.assistantActive;
+  };
+  return card;
+}
+
 export function renderOffice(container){
   clear(container);
   const office = session.office || {};
@@ -122,9 +190,14 @@ export function renderOffice(container){
         h("div", { class: "ref-office-profile-head" },
           h("h2", { class: nameSize, text: officeName })),
         profileRow("user", "الوسيط", broker),
-        profileRow("note", "ترخيص فال", license, { ltr: true }),
+        profileRow("license", "ترخيص فال", license, { ltr: true }),
         profileRow("pin", "", city)),
       h("div", { class: "ref-office-profile-logo" }, h("div", { class: "ref-office-logo-box" }, brokerAvatar(office) || officeLogo(office)))),
+
+    // Order (approved): office card → office tools → التعاون → مركز التواصل والدعم; the bottom bar stays fixed.
+    h("section", { class: "os-card ref-office-section" },
+      h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
+      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard))),
 
     h("section", { class: "os-card ref-office-section" },
       h("button", { type: "button", class: "os-home-community", "data-community-entry": "", onClick: () => go("community") },
@@ -132,15 +205,7 @@ export function renderOffice(container){
         h("span", {}, h("b", { text: "التعاون" }), h("small", { text: "تعاون مباشر بين وسيط العرض ووسيط الطلب" }), h("span", { class: "os-coop-badge", "data-coop-summary": "" })),
         ic("chev-left"))),
 
-    h("section", { class: "os-card ref-office-section" },
-      h("button", { type: "button", class: "os-home-community", "data-inbox-entry": "", onClick: () => go("inbox") },
-        h("span", { class: "os-set-icon" }, ic("inbox-in")),
-        h("span", {}, h("b", { text: "مركز التواصل" }), h("small", { text: "الرسائل الواردة من قنوات المكتب مصنّفة" }), h("span", { class: "os-coop-badge", "data-inbox-summary": "" })),
-        ic("chev-left"))),
-
-    h("section", { class: "os-card ref-office-section" },
-      h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
-      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)))
+    supportCard()
   );
 
   // «التعاون»: a light summary only («2 نشط · 1 بانتظار الرد»); the actions live in Daily Tasks and on the cooperation page.
@@ -151,8 +216,15 @@ export function renderOffice(container){
     const waiting = rows.map(inboxItemView).filter((view) => view.canConvert).length;
     if (inboxBadge) inboxBadge.textContent = waiting === 0 ? "" : waiting === 1 ? "رسالة واحدة تنتظرك" : waiting === 2 ? "رسالتان تنتظرانك" : `${waiting} رسائل تنتظرك`;
   }, () => {});
+  // Real states only: the office's linked channels and the platform support line; a failure just leaves them hidden.
+  const card = container.querySelector("[data-support-card]");
+  let alive = true;
+  Promise.allSettled([loadChannels(session.officeId), loadSupportStatus(session.officeId)]).then(([channels, support]) => {
+    if (!alive || !card?.fill) return;
+    card.fill({ channels: channels.status === "fulfilled" ? channels.value?.channels || [] : [], support: support.status === "fulfilled" ? support.value || {} : {} });
+  });
   const offCoop = watchCooperation(session.officeId, (rows) => { if (badge) badge.textContent = communitySummary(communityViews(rows, session.officeId)); }, () => {});
-  return () => { try { offInbox(); } catch (_) { /* ignore */ } try { offCoop(); } catch (_) { /* ignore */ } };
+  return () => { alive = false; try { offInbox(); } catch (_) { /* ignore */ } try { offCoop(); } catch (_) { /* ignore */ } };
 }
 
 export function renderTaskDetail(container,{taskId}){const draw=()=>{clear(container);const task=state.tasks.find(t=>t.id===taskId);if(!task){append(container,h("p",{class:"os-sub",text:state.tasksReady?"المهمة غير متاحة":"جارٍ التحميل…"}));return;}const model=taskCardModel(task),record=taskRecord(task)||{},v=recordView(record),step=taskStep(task);

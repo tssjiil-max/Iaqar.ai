@@ -597,6 +597,25 @@ service cloud.firestore {
     match /telegramPartyPending/{chatId} {
       allow read, write: if false;
     }
+    // دعم المنصة عبر Telegram Business: اتصال الحساب، محادثات العملاء، البلاغات وحدودها — للـ Worker فقط.
+    match /supportConnections/{connectionId} {
+      allow read, write: if false;
+    }
+    match /supportChats/{chatKey} {
+      allow read, write: if false;
+    }
+    match /supportTickets/{ticketId} {
+      allow read, write: if false;
+    }
+    match /supportSettings/{settingId} {
+      allow read, write: if false;
+    }
+    match /supportRate/{rateKey} {
+      allow read, write: if false;
+    }
+    match /supportResume/{token} {
+      allow read, write: if false;
+    }
     match /partySessionTokens/{tokenHash} {
       allow read, write: if false;
     }

@@ -170,7 +170,7 @@
   direction: rtl;
 }
 .ref-office-tool {
-  border: 1px solid var(--brand-tint);
+  border: 1px solid var(--frame-soft);
   min-width: 0;
   min-height: 102px;
   padding: 12px 6px 10px;
@@ -241,7 +241,7 @@
   direction: rtl;
 }
 .ref-office-extra {
-  border: 1px solid var(--brand-tint);
+  border: 1px solid var(--frame-soft);
   min-width: 0;
   min-height: 86px;
   padding: 9px 3px 8px;
@@ -386,3 +386,23 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-inbox-meta svg { width: 16px; height: 16px; }
 .os-inbox-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .os-inbox-foot { display: grid; gap: 2px; }
+
+/* «مركز التواصل والدعم» — channel chips and support actions inside the card (real states only). */
+.ref-support-card { display: grid; gap: 10px; }
+.ref-support-channels { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+.ref-support-channels[hidden], .ref-support-assistant[hidden], .ref-support-chip[hidden] { display: none; }
+.ref-support-chip {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 6px 12px;
+  border: 1px solid var(--frame-soft); border-radius: 12px; background: var(--surface);
+  color: var(--brand-dark); font: inherit; font-size: 13.5px; font-weight: 600; text-decoration: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ref-support-chip svg { width: 22px; height: 22px; flex: none; }
+.ref-support-chip span { direction: ltr; unicode-bidi: isolate; }
+.ref-support-chip.is-action span { direction: rtl; }
+.ref-support-chip:active { background: var(--brand-tint-2); }
+.ref-support-assistant { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 13.5px; }
+.ref-support-assistant svg { width: 22px; height: 22px; flex: none; padding: 3px; border-radius: 8px; background: var(--brand-tint); }
+.os-support-form { display: grid; gap: 12px; }
+.os-support-admin { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; color: var(--brand-dark); }
+.os-support-admin input { width: 20px; height: 20px; accent-color: var(--brand-primary); }

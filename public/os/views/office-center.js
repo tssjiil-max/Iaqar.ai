@@ -57,7 +57,7 @@ export function renderInbox(container) {
     return h("article", { class: "os-card os-inbox-card", "data-inbox-item": view.id, "data-message-class": view.messageClass, "data-inbox-state": view.state },
       h("header", { class: "os-inbox-head" },
         h("span", { class: `os-inbox-class is-${view.messageClass.toLowerCase()}`, text: view.classLabel }),
-        h("span", { class: "os-inbox-meta" }, ic(view.channel === "telegram" ? "send" : view.channel === "whatsapp" ? "whatsapp" : "mail"), view.channelLabel),
+        h("span", { class: "os-inbox-meta" }, ic(view.channel === "telegram" ? "telegram" : view.channel === "whatsapp" ? "whatsapp" : "mail"), view.channelLabel),
         h("small", { class: "os-sub", text: relativeAgo(view.receivedAt) || "" })),
       h("p", { class: "os-inbox-text", dir: "auto", text: view.hasText ? view.text : "رسالة وسائط بلا نص" }),
       h("footer", { class: "os-inbox-foot" },

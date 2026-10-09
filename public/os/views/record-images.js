@@ -28,7 +28,7 @@ export function imagePicker({ existing = [], max = MAX_RECORD_IMAGES, hint = "" 
   const message = h("small", { class: "os-field-error", role: "alert", "data-photo-error": "" });
   const counter = h("small", { class: "os-sub", "data-photo-count": "" });
   const input = h("input", { type: "file", accept: RECORD_IMAGE_ACCEPT, multiple: true, class: "os-file-hidden", "data-photo-files": "", "aria-label": "اختيار صور العقار" });
-  const add = h("button", { type: "button", class: "os-btn secondary", "data-photo-add": "" }, ic("plus"), "إضافة صور");
+  const add = h("button", { type: "button", class: "os-btn secondary", "data-photo-add": "" }, ic("photos"), "إضافة صور");
   add.addEventListener("click", () => input.click());
 
   const draw = () => {
