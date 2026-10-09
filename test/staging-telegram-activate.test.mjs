@@ -84,7 +84,12 @@ test("prepare: checks the token with Telegram and writes three private files; pr
 test("register: points the bot at Staging, receive-only, and proves Telegram and the Worker agree", async () => {
   const lines = [];
   const { state, fetchImpl } = world({ previousUrl: "https://old.example/telegram/webhook/some-office" });
-  const result = await register({ env: { TELEGRAM_BOT_TOKEN: TOKEN, STAGING_WORKER_URL: WORKER }, fetchImpl, log: (line) => lines.push(line), wait: async () => {} });
+  // A webhook in use elsewhere is moved only with the owner's explicit approval for this bot.
+  const kept = await register({ env: { TELEGRAM_BOT_TOKEN: TOKEN, STAGING_WORKER_URL: WORKER }, fetchImpl, log: (line) => lines.push(line), wait: async () => {} });
+  assert.equal(kept.kept, true);
+  assert.equal(state.webhook.url, "https://old.example/telegram/webhook/some-office", "not moved without approval");
+  assert.ok(!state.calls.includes("setWebhook"));
+  const result = await register({ env: { TELEGRAM_BOT_TOKEN: TOKEN, STAGING_WORKER_URL: WORKER, TELEGRAM_WEBHOOK_MOVE_APPROVED: "@iaqar_test_bot" }, fetchImpl, log: (line) => lines.push(line), wait: async () => {} });
   assert.equal(result.url, `${WORKER}/telegram/webhook`);
   assert.equal(state.webhook.url, `${WORKER}/telegram/webhook`);
   assert.equal(state.webhook.secret, webhookSecretFor(TOKEN));
@@ -106,6 +111,17 @@ test("register: points the bot at Staging, receive-only, and proves Telegram and
   assert.ok(!prod.state.calls.includes("setWebhook"), "nothing was changed at Telegram");
 });
 
+test("the central bot @iaqar_intake_bot keeps its Production webhook: a Staging deploy never moves it", async () => {
+  const central = world({ me: { is_bot: true, id: 9, username: "iaqar_intake_bot" }, previousUrl: "https://production.example/telegram/webhook" });
+  const lines = [];
+  const result = await register({ env: { TELEGRAM_BOT_TOKEN: TOKEN, STAGING_WORKER_URL: WORKER, TELEGRAM_WEBHOOK_MOVE_APPROVED: "@another_bot" }, fetchImpl: central.fetchImpl, log: (l) => lines.push(l), wait: async () => {} });
+  assert.equal(result.kept, true);
+  assert.equal(result.reason, "central_bot_protected");
+  assert.ok(!central.state.calls.includes("setWebhook"), "nothing changed at Telegram");
+  assert.match(lines.join("\n"), /^KEEP: @iaqar_intake_bot/m);
+  assert.ok(!lines.join("\n").includes("production.example/telegram"), "only the host is printed");
+});
+
 test("a token never survives in a message", () => {
   assert.equal(redact(`x ${TOKEN} y`, TOKEN), "x <token> y");
   assert.equal(redact(`https://api.telegram.org/bot${TOKEN}/getMe`, ""), "https://api.telegram.org/bot<token>/getMe");
@@ -118,9 +134,10 @@ test("the deploy treats the bot as optional and never deploys it outside Staging
   for (const name of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_BOT_USERNAME"]) {
     assert.match(script, new RegExp(`wrangler secret put ${name} --env staging`), `${name} goes to the staging Worker only`);
   }
-  // The intake bot's three settings; the separate support bot (TELEGRAM_SUPPORT_*) has its own two.
+  // The intake bot's three settings + the «webhook kept» switch (set, then cleared only after a real move); the support bot has its own two.
   const puts = script.split("\n").filter((line) => line.includes("wrangler secret put TELEGRAM_") && !line.includes("TELEGRAM_SUPPORT_"));
-  assert.equal(puts.length, 3);
+  assert.equal(puts.filter((line) => !line.includes("TELEGRAM_WEBHOOK_KEPT")).length, 3);
+  assert.equal(puts.filter((line) => line.includes("TELEGRAM_WEBHOOK_KEPT")).length, 2);
   const supportPuts = script.split("\n").filter((line) => line.includes("wrangler secret put TELEGRAM_SUPPORT_"));
   assert.equal(supportPuts.length, 2);
   assert.ok(supportPuts.every((line) => line.includes("--env staging")));

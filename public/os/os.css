@@ -986,3 +986,7 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-bot-ask { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
 .os-bot-ask span { overflow-wrap: anywhere; }
 .os-follow-bot { border-inline-start: 3px solid var(--blue); }
+.os-try-contact { display: grid; gap: 8px; margin: 8px 0; padding: 12px; border-radius: 12px; background: var(--tint); }
+.os-try-contact[hidden] { display: none; }
+.os-try-thread .os-btn-row { flex-wrap: wrap; margin-top: 8px; }
+.os-try-thread .os-chip { min-height: 40px; }

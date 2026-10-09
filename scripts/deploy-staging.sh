@@ -149,8 +149,10 @@ if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
       cd worker \
         && npx wrangler secret put TELEGRAM_BOT_TOKEN --env staging < "$TELEGRAM_SECRET_DIR/TELEGRAM_BOT_TOKEN" \
         && npx wrangler secret put TELEGRAM_WEBHOOK_SECRET --env staging < "$TELEGRAM_SECRET_DIR/TELEGRAM_WEBHOOK_SECRET" \
-        && npx wrangler secret put TELEGRAM_BOT_USERNAME --env staging < "$TELEGRAM_SECRET_DIR/TELEGRAM_BOT_USERNAME"
+        && npx wrangler secret put TELEGRAM_BOT_USERNAME --env staging < "$TELEGRAM_SECRET_DIR/TELEGRAM_BOT_USERNAME" \
+        && printf 'yes' | npx wrangler secret put TELEGRAM_WEBHOOK_KEPT --env staging
     ); then # // pragma: allowlist secret
+      # TELEGRAM_WEBHOOK_KEPT=yes until the webhook is really pointed at Staging: until then Staging sends nothing through this bot.
       TELEGRAM_READY="@$(cat "$TELEGRAM_SECRET_DIR/TELEGRAM_BOT_USERNAME")"
       echo "Telegram bot settings synced to staging Worker (values not printed)."
     else
@@ -272,8 +274,14 @@ console.log("Staging health OK (full-functional backendReady)");
 if [[ -n "$TELEGRAM_READY" ]]; then
   echo "--- Telegram: point the bot at the Staging Worker and check the chain ---"
   CURRENT_STAGE="telegram-register"
-  if STAGING_WORKER_URL="$STAGING_WORKER_URL" node scripts/staging-telegram-activate.mjs register; then
-    echo "::notice title=Telegram bot (Staging)::${TELEGRAM_READY} receives on the Staging Worker; offices can link from «قنوات المكتب»."
+  if REGISTER_OUT=$(STAGING_WORKER_URL="$STAGING_WORKER_URL" node scripts/staging-telegram-activate.mjs register); then
+    echo "$REGISTER_OUT"
+    if grep -q "^KEEP:" <<<"$REGISTER_OUT"; then
+      echo "::notice title=Telegram bot (Staging)::${TELEGRAM_READY} keeps its current webhook (not moved). Staging can verify «دخول بتيليجرام» but does not receive this bot's messages."
+    else
+      ( cd worker && printf 'no' | npx wrangler secret put TELEGRAM_WEBHOOK_KEPT --env staging ) || echo "::warning title=Telegram bot (Staging)::the bot receives on Staging but sending stays paused (TELEGRAM_WEBHOOK_KEPT not cleared)." # // pragma: allowlist secret
+      echo "::notice title=Telegram bot (Staging)::${TELEGRAM_READY} receives on the Staging Worker; offices can link from «قنوات المكتب»."
+    fi
   else
     echo "::warning title=Telegram bot (Staging)::the bot settings were saved but pointing it at Staging failed — see the deploy log."
   fi

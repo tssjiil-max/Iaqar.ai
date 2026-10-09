@@ -45,7 +45,7 @@ service cloud.firestore {
         // بوت المكتب: مفتاح التشغيل وأسئلة المطابقة — للـ Worker فقط (المدير يغيّر المفتاح عبر الـ Worker).
         'botSettings', 'matchAsks',
         // مدير المكتب الذكي — للـ Worker فقط.
-        'agentSettings', 'agentChats', 'agentStats'
+        'agentSettings', 'agentChats', 'agentStats', 'agentPreview'
       ];
     }
     function validOfficeProfile() {
@@ -610,6 +610,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /offices/{officeId}/agentStats/{day} {
+      allow read, write: if false;
+    }
+    // «جرّب مدير مكتبك»: محادثة تجريبية لكل عضو، بلا إرسال ولا حفظ سجلات — للـ Worker فقط.
+    match /offices/{officeId}/agentPreview/{uid} {
       allow read, write: if false;
     }
     match /telegramPartyPending/{chatId} {

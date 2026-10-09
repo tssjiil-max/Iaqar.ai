@@ -39,3 +39,8 @@ export function agentAct(officeId, action = {}) {
 export function agentSuggestions(officeId) {
   return api("/os/agent/suggestions", { officeId });
 }
+
+/** «جرّب مدير مكتبك»: the Telegram conversation as an owner/broker/client would have it — nothing sent or saved. */
+export function agentPreview(officeId, input = {}) {
+  return api("/os/agent/preview", { officeId, ...input });
+}

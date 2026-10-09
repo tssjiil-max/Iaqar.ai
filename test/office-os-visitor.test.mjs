@@ -416,3 +416,48 @@ test("review fixes: a reminder is not used up when it cannot be delivered (side 
   assert.equal(sold.body.sent, 0, "never reminded about an offer that is no longer available");
   h.store.patch(`offices/${OFFICE_A}/opportunities/${ask.offerId}`, { availabilityStatus: "AVAILABLE" });
 });
+
+test("«جرّب مدير مكتبك» (no Telegram): the same conversation in the app — nothing sent, nothing saved, nobody linked", async () => {
+  const sentBefore = sent.length;
+  const recordsBefore = recordsOf(OFFICE_A).length;
+  const parties = h.store.list("telegramParties").length;
+  const tg = async (input) => (await call("/os/agent/preview", { officeId: OFFICE_A, ...input }, OWNER_A)).body;
+  const start = await tg({ action: "start" });
+  assert.match(start.replies[0].text, /مدير المكتب الذكي/);
+  assert.deepEqual(start.replies[0].buttons.map((row) => row[0].data), ["vp:OWNER", "vp:BROKER", "vp:CLIENT"]);
+  await tg({ action: "button", data: "vp:OWNER" });
+  let r = await tg({ action: "text", text: "عندي أرض للبيع" });
+  for (let i = 0; i < 6 && !r.replies.some((x) => x.askContact); i += 1) {
+    const q = r.replies.at(-1).text;
+    const answer = /بيع|إيجار/.test(q) ? "للبيع" : /نوع/.test(q) ? "أرض" : /حي/.test(q) ? "حي الراية" : /مدينة/.test(q) ? "المدينة المنورة" : "880000";
+    r = await tg({ action: "text", text: answer });
+  }
+  assert.ok(r.replies.some((x) => x.askContact), JSON.stringify(r));
+  const summary = await tg({ action: "contact", phone: "+966556733333" });
+  assert.match(summary.replies.at(-1).text, /أسجله؟/);
+  const done = await tg({ action: "button", data: "vc:SAVE" });
+  assert.match(done.replies.at(-1).text, /معاينة/);
+  assert.equal(sent.length, sentBefore, "nothing went to Telegram");
+  assert.equal(recordsOf(OFFICE_A).length, recordsBefore, "no record saved");
+  assert.equal(h.store.list("telegramParties").length, parties, "nobody linked");
+  assert.equal(h.store.list(`offices/${OFFICE_A}/inbox`).filter((m) => m.source === "telegram_bot_visitor" && /الراية/.test(m.messageText || "")).length, 0);
+  // Members of other offices cannot use office A's preview; office B's manager is off → told so.
+  assert.equal((await call("/os/agent/preview", { officeId: OFFICE_A, action: "start" }, OWNER_B)).status, 403);
+  assert.equal((await call("/os/agent/preview", { officeId: OFFICE_B, action: "start" }, OWNER_B)).body.off, true);
+});
+
+test("the central bot kept elsewhere (TELEGRAM_WEBHOOK_KEPT): this environment sends nothing, yet «دخول بتيليجرام» is verified and saved", async () => {
+  h.env.TELEGRAM_WEBHOOK_KEPT = "yes";
+  try {
+    const before = sent.length;
+    const fresh = String(Math.floor(Date.now() / 1000) - 30);
+    const ok = await call("/os/bot/broker/telegram-login", { officeId: OFFICE_A, auth: signed({ id: "7409", first_name: "سعد", auth_date: fresh }) }, OWNER_A);
+    assert.equal(ok.body.linked, true, JSON.stringify(ok.body));
+    assert.equal(ok.body.confirmationSent, false);
+    const r = await says(5606, `/start of_${OFFICE_A}`);
+    assert.notEqual(r.body.visitor, "started");
+    assert.equal(sent.length, before, "nothing sent through the kept bot");
+  } finally {
+    delete h.env.TELEGRAM_WEBHOOK_KEPT;
+  }
+});

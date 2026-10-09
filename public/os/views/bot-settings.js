@@ -69,7 +69,7 @@ export function brokerAlertsCard() {
     // «دخول بتيليجرام»: one tap from the site (Telegram's own sign-in page); the one-time link stays as the other way.
     // A one-time nonce proves on return that THIS browser started the sign-in (a sign-in result sent by someone
     // else in a link is refused). Without browser storage the button is not offered; the one-time link remains.
-    const login = view.available && view.loginBotId && canStoreNonce() ? h("button", { type: "button", class: "os-btn primary", "data-bot-alerts-login": "", onClick: () => {
+    const login = view.loginBotId && canStoreNonce() ? h("button", { type: "button", class: "os-btn primary", "data-bot-alerts-login": "", onClick: () => {
       const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
       try { sessionStorage.setItem(NONCE_KEY, `${nonce}|${Date.now()}`); sessionStorage.setItem("os.tgLoginBack", "settings/notifications"); } catch (_) { return; }
       const url = telegramLoginUrl({ botId: view.loginBotId, origin: location.origin, returnTo: `${location.origin}${location.pathname}?tgl=${nonce}` });
@@ -87,7 +87,7 @@ export function brokerAlertsCard() {
       view.available && pending.link ? h("div", { class: "os-chan-link", "data-bot-alerts-pending": "" },
         h("p", { class: "os-sub", text: "افتح الرابط من حسابك الشخصي في تيليجرام ثم اضغط «Start». الرابط صالح 15 دقيقة ولمرة واحدة." }),
         h("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-bot-alerts-open": "" }, ic("telegram"), "فتح تيليجرام"), copy)) : null,
-      view.available ? h("div", { class: "os-btn-row" }, login, link, unlink) : null);
+      view.available ? h("div", { class: "os-btn-row" }, login, link, unlink) : login ? h("div", { class: "os-btn-row" }, login) : null);
     // While the link waits for «Start», check again so the card turns «مرتبط» by itself.
     if (pending.link && card.isConnected) timer = setTimeout(() => { if (card.isConnected) refresh().catch(() => {}); }, 4000);
   };
