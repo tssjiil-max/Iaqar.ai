@@ -19,6 +19,7 @@ import {
 } from "../../../public/os/domain/channel-link-domain.js";
 
 import { botStatus, completeBotLink, handleBotCallback, handleBotChatMessage } from "./bot-service.js";
+import { handleValidityCallback, isValidityCallback } from "./validity-service.js";
 
 const text = (value) => String(value ?? "").trim();
 
@@ -216,7 +217,7 @@ export async function handleCentralTelegramWebhook({ request, env, store, deps, 
   // «بوت المكتب»: a side pressed «مناسب / غير مناسب». A failure is logged, never sent back to Telegram as an error (it would retry forever).
   if (update.callback_query) {
     if (!bot) return { ok: true, status: 200, ignored: true, reason: "bot_off" };
-    try { return await handleBotCallback(bot, update.callback_query); } catch (error) {
+    try { return isValidityCallback(update.callback_query.data) ? await handleValidityCallback(bot, update.callback_query) : await handleBotCallback(bot, update.callback_query); } catch (error) {
       console.error("[office-os] bot callback failed", error?.code || error?.message);
       return { ok: true, status: 200, ignored: true, reason: "bot_error" };
     }

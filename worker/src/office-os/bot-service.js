@@ -14,6 +14,7 @@
 
 import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
 import { buildMatchReviewDedupKey, operationDocumentId } from "../operations-domain.js";
+import { availabilityFresh, hasValidity, isOpenForMatching } from "../../../public/os/domain/validity-domain.js";
 import { assertCanActOn, forbidden } from "./permissions.js";
 import { applyJourneyChange, decideMatchReview, loadJourney } from "./journey-service.js";
 import { journeyTitle } from "./task-service.js";
@@ -323,6 +324,16 @@ export async function askPartiesAboutMatch(ctx, { officeId, matchId }) {
   const pair = await loadPair(ctx, officeId, match);
   if (!pair) return { asked: false, reason: "match_incomplete" };
   if (lifecycleOf(pair.offer) !== LIFECYCLE.ACTIVE || lifecycleOf(pair.request) !== LIFECYCLE.ACTIVE) return { asked: false, reason: "record_inactive" };
+  // Checked again at send time: the records may have expired or been sold since the match was found.
+  const now0 = ctx.now();
+  if (!isOpenForMatching(pair.offer, now0) || !isOpenForMatching(pair.request, now0)) return { asked: false, reason: "record_not_valid" };
+  // A client is told about an offer only when its availability was confirmed recently; otherwise the owner is asked first.
+  // (Older records and records from other channels carry no validity fields: unchanged behaviour.)
+  if (hasValidity(pair.offer) && !availabilityFresh(pair.offer, now0)) {
+    const { askOwnerBeforeMatch } = await import("./validity-service.js");
+    const owner = await askOwnerBeforeMatch(ctx, { officeId, offer: { ...pair.offer, id: pair.offerId } }).catch(() => ({ asked: false }));
+    return { asked: false, reason: "availability_check_first", ownerAsked: owner.asked === true };
+  }
   const client = await partyLinkFor(ctx.store, ctx.deps, officeId, pair.request, { includeStopped: true });
   const today = riyadhDayId(ctx.now());
   const blocker = askBlocker({ match, settings, clientLinked: Boolean(client), clientStopped: Boolean(client) && client.status !== "ACTIVE", asksToday: asksTodayOf(client, today) });
@@ -575,6 +586,16 @@ export async function handleBotChatMessage(ctx, { update = {}, message = {} }) {
   const target = mine.find((entry) => deps.officeIdsEquivalent(entry.officeId, known.lastOfficeId))
     || [...mine].sort((a, b) => String(b.party.linkedAt || "").localeCompare(String(a.party.linkedAt || "")))[0];
   const { officeId, party } = target;
+  // «الأرض انباعت» / «still available»: with the office manager on, the side gets a confirmation button
+  // for the exact record (or is asked which one) — the words alone never change a record.
+  if ((await store.get(["offices", officeId, "agentSettings", "main"]))?.enabled === true) {
+    // Short messages only: a longer one is a conversation and goes to the broker as before.
+    if (body.length <= 60) {
+      const { handleAvailabilityWords } = await import("./validity-service.js");
+      const handled = await handleAvailabilityWords(ctx, { officeId, link: { ...party, key: target.key }, body });
+      if (handled) return handled;
+    }
+  }
   const inboxId = `tgp_${String(update.update_id).replace(/[^0-9A-Za-z_-]/g, "").slice(0, 40)}`;
   const created = await store.create(["offices", officeId, "inbox", inboxId], {
     schemaVersion: 3, officeId, direction: "inbound", source: "telegram_bot_party", channel: "telegram",

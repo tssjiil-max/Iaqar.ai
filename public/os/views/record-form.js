@@ -10,6 +10,7 @@ import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, kindOf, priceOf, validateRecordI
 import { formatNumber } from "../domain/format-domain.js";
 import { recordImages } from "../domain/record-media-domain.js";
 import { imagePicker } from "./record-images.js";
+import { DEFAULT_DURATION, DURATION, DURATION_OPTIONS, VALIDITY_HINT, customExpiry } from "../domain/validity-domain.js";
 
 /** «حالة السعر» for offers: the owner's decision, asked once here (default: قابل للتفاوض). */
 export function priceStatusField(value = "NEGOTIABLE") {
@@ -24,6 +25,37 @@ export function priceStatusField(value = "NEGOTIABLE") {
     seg.append(b);
   }
   return h("div", { class: "os-field os-price-status" }, h("span", { text: "حالة السعر" }), seg, hidden);
+}
+
+/**
+ * «مدة العرض أو الطلب»: two quick questions. A new record without a choice gets the announced default (a month);
+ * an edit changes the duration only when the broker touches it here.
+ */
+export function validityField(values = {}, { isNew = true } = {}) {
+  const urgent = h("input", { type: "hidden", name: "validityUrgent", value: values.validityUrgent === true ? "yes" : "no" });
+  // Empty until a duration is pressed: an edit that only changes the urgency keeps the duration running as it was.
+  const duration = h("input", { type: "hidden", name: "validityDuration", value: "" });
+  const touched = h("input", { type: "hidden", name: "validityTouched", value: isNew ? "1" : "" });
+  const custom = h("input", { class: "os-input", type: "date", name: "validityCustomDate", dir: "ltr", hidden: true, "aria-label": "تاريخ الانتهاء" });
+  const current = values.validityDuration || DEFAULT_DURATION;
+  const seg = (options, input, selected, onPick) => {
+    const box = h("div", { class: "os-seg os-validity-seg", role: "group" });
+    for (const option of options) {
+      const b = h("button", { type: "button", "aria-pressed": String(option.id === selected), "data-validity-option": option.id, text: option.label });
+      b.addEventListener("click", () => { input.value = option.id; box.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); touched.value = "1"; onPick?.(option.id); });
+      box.append(b);
+    }
+    return box;
+  };
+  const urgentSeg = seg([{ id: "yes", label: "نعم، مستعجل" }, { id: "no", label: "لا، على راحتي" }], urgent, urgent.value);
+  const durationSeg = seg(DURATION_OPTIONS, duration, current, (id) => { custom.hidden = id !== DURATION.CUSTOM; });
+  return h("div", { class: "os-field os-validity", "data-validity": "" },
+    h("span", { text: "مدة العرض أو الطلب" }),
+    h("small", { class: "os-sub", text: "هل أنت مستعجل؟" }), urgentSeg,
+    h("small", { class: "os-sub", text: "كم تبي يستمر العرض أو الطلب؟" }), durationSeg, custom,
+    h("small", { class: "os-field-note", text: VALIDITY_HINT }),
+    h("span", { class: "os-error", role: "alert", "data-error": "validity" }),
+    urgent, duration, touched);
 }
 
 export function recordFormFields({ kind, values = {}, lockKind = false, onKindChange }) {
@@ -72,7 +104,8 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
       field(kind === RECORD_KIND.REQUEST ? "اسم العميل" : "اسم المالك", h("input", { class: "os-input", name: "contactName", value: values.contactName || "", autocomplete: "name" }), { optional: true }),
       field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", value: values.contactPhone || "", placeholder: "05XXXXXXXX", autocomplete: "tel" }))
     ),
-    field("مواصفات وملاحظات", h("textarea", { class: "os-textarea", name: "notes", maxlength: "1000", placeholder: "المواصفات المطلوبة أو المميزات…", text: values.notes || "" }), { optional: true })
+    field("مواصفات وملاحظات", h("textarea", { class: "os-textarea", name: "notes", maxlength: "1000", placeholder: "المواصفات المطلوبة أو المميزات…", text: values.notes || "" }), { optional: true }),
+    validityField(values, { isNew: !values.id })
   );
   drawPurposes();
   return { form, getKind: () => kind };
@@ -92,13 +125,15 @@ export function readRecordForm(root, kind) {
     contactName: value("contactName"),
     contactPhone: value("contactPhone"),
     notes: value("notes"),
-    priceStatus: value("priceStatus")
+    priceStatus: value("priceStatus"),
+    // Sent only for a new record or when the broker touched the duration (an edit keeps the current one).
+    validity: value("validityTouched") ? { urgent: value("validityUrgent") === "yes", duration: value("validityDuration"), customDate: value("validityCustomDate") } : undefined
   };
 }
 
 export function showRecordErrors(root, errors = {}) {
   clearFieldErrors(root);
-  const map = { kind: "purpose" };
+  const map = { kind: "purpose", validity: "validityCustomDate" };
   let first = null;
   for (const [key, message] of Object.entries(errors)) {
     const name = map[key] || key;
@@ -139,7 +174,8 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
       event.preventDefault();
       const input = readRecordForm(formEl, getKind());
       const local = validateRecordInput(input);
-      if (!local.ok) { showRecordErrors(formEl, local.errors); return; }
+      if (input.validity?.duration === DURATION.CUSTOM && !customExpiry(input.validity.customDate)) local.errors.validity = "اختر تاريخًا صالحًا في المستقبل (خلال سنة)";
+      if (!local.ok || local.errors.validity) { showRecordErrors(formEl, local.errors); return; }
       clearFieldErrors(formEl);
       let photos = { uploaded: 0, failed: 0 };
       const result = await runAction(saveBtn, async () => {

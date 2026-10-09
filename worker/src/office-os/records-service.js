@@ -19,6 +19,7 @@ import { isJourneyOpen } from "../../../public/os/domain/journey-domain.js";
 import { counterpartsEligible, opportunityToMatchInput, scoreMatch, MATCH_THRESHOLD } from "../matching-engine.js";
 import { recordFailure } from "./journey-service.js";
 import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
+import { DEFAULT_DURATION, validityFields } from "../../../public/os/domain/validity-domain.js";
 
 async function runMatchingSafely(ctx, officeId, opportunityId) {
   if (typeof ctx.deps.runMatching !== "function") return { matchingPending: true, matches: 0 };
@@ -64,6 +65,25 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
     officeId, brokerId: actor.uid, sourceType: "BROKER_DIRECT", sourceReference: `office-os:${actor.uid}`, existing, now
   });
   if (!existing) fields.deduplicationFingerprint = recordFingerprint(check.value, officeId);
+  // «مدة العرض أو الطلب»: a new record always gets one (the person's choice, or the announced default of a
+  // month, marked as not chosen); an edit changes it only when the form sends a choice. Saving it is a
+  // confirmation of availability by the broker who entered it.
+  const validityInput = input && typeof input.validity === "object" && input.validity ? input.validity : null;
+  if (existing && validityInput && !validityInput.duration) {
+    // Only the urgency changed: the duration keeps running as it was.
+    fields.validityUrgent = validityInput.urgent === true;
+  } else if (!existing || validityInput) {
+    const built = validityFields({
+      duration: validityInput?.duration || DEFAULT_DURATION, customDate: String(validityInput?.customDate || ""),
+      urgent: validityInput?.urgent === true, chosen: Boolean(validityInput?.duration), now, confirmedBy: `broker:${actor.uid}`
+    });
+    if (!built.ok) throw ctx.deps.appError("validity_invalid", 400, built.error);
+    Object.assign(fields, built.fields, { validityAskedFor: "", validityNotedFor: "" });
+    // An edit never changes availability (sold stays sold); only the explicit answers and «إعادة تفعيل» do.
+    if (existing && existing.availabilityStatus) {
+      Object.assign(fields, { availabilityStatus: existing.availabilityStatus, availabilityConfirmedAt: existing.availabilityConfirmedAt || null, availabilityConfirmedBy: existing.availabilityConfirmedBy || "", validityReason: existing.validityReason || "" });
+    }
+  }
   await ctx.store.set(["offices", officeId, "opportunities", id], fields);
   await writeAudit(ctx, {
     officeId, action: existing ? AUDIT_ACTIONS.RECORD_UPDATED : AUDIT_ACTIONS.RECORD_CREATED, actorUid: actor.uid,

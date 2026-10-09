@@ -441,3 +441,8 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-agent-msg .os-btn { margin-top: 8px; }
 .os-agent-compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; position: sticky; bottom: 0; padding: 8px 0; background: var(--bg); }
 .os-agent-input { min-height: 48px; }
+
+/* «مدة العرض أو الطلب» in the record form: quick choices that wrap on small phones. */
+.os-validity { display: grid; gap: 6px; }
+.os-validity-seg { flex-wrap: wrap; }
+.os-validity-seg button { flex: 1 1 auto; min-width: 30%; }

@@ -55,6 +55,7 @@ export function needsYouReason(task = {}) {
   if (/VIEWING/.test(type)) return "موعد معاينة يحتاج تأكيدك";
   if (type === "DEAL_ACTION") return "إجراءات اتفاق تحتاج متابعتك";
   if (type === "MISSING_DATA") return "بيانات ناقصة تحتاج استكمالًا";
+  if (type === "AVAILABILITY_ATTENTION") return String(task.summaryText || "تغيرت صلاحية سجل داخل صفقة مفتوحة");
   return taskTypeOf(task).badge;
 }
 
