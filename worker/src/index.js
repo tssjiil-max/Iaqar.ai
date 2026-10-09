@@ -175,6 +175,7 @@ import {
 import { handleCentralTelegramWebhook } from "./office-os/channels-service.js";
 import { askPartiesAboutMatch } from "./office-os/bot-service.js";
 import { botOutboundConfig, callTelegram } from "./office-os/bot-notify.js";
+import { handleSupportUpdate, verifySupportSecret } from "./office-os/support-service.js";
 import { classifyInboundMessage } from "../../public/os/domain/message-class-domain.js";
 import { createStore as createOfficeOsStore } from "./office-os/store.js";
 import { channelCleanupBoundaryGuarantees } from "./channel-boundary-domain.js";
@@ -551,6 +552,11 @@ export default {
       // Central platform bot: one address for every office; the linked chat decides the office.
       if (request.method === "POST" && url.pathname === "/telegram/webhook") {
         return await handleCentralTelegramRoute(request, env, requestId);
+      }
+
+      // Platform support assistant (Telegram Business): its own bot and address, separate from the intake bot.
+      if (request.method === "POST" && url.pathname === "/telegram/support/webhook") {
+        return await handleSupportTelegramRoute(request, env, requestId);
       }
 
       if (request.method === "POST" && /^\/telegram\/webhook\/[^/]+$/.test(url.pathname)) {
@@ -1807,6 +1813,26 @@ async function handleTelegramWebhookRoute(request, env, requestId) {
     }
   });
   return jsonResponse({ ...result, requestId }, Number(result.status || 200));
+}
+
+async function handleSupportTelegramRoute(request, env, requestId) {
+  // The secret is checked before anything is read or any credential is used.
+  const secret = verifySupportSecret(request, env);
+  if (!secret.ok) return jsonResponse({ ...secret, requestId }, Number(secret.status || 401));
+  const update = await request.json().catch(() => ({}));
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const supportDeps = officeOsDeps().bind({ env, projectId, accessToken });
+  const ctx = { deps: supportDeps, store: createOfficeOsStore(supportDeps, { projectId, accessToken }), env, now: () => new Date() };
+  try {
+    const result = await handleSupportUpdate(ctx, update);
+    return jsonResponse({ ...result, requestId }, 200);
+  } catch (error) {
+    // Telegram retries a failed delivery; a stored-state problem is logged and acknowledged once.
+    console.error("[iaqar-support] update failed", error?.code || error?.message);
+    return jsonResponse({ ok: false, error: "support_update_failed", requestId }, 200);
+  }
 }
 
 async function handleCentralTelegramRoute(request, env, requestId) {

@@ -2,10 +2,13 @@
    White + very light blue surfaces, navy headings, blue→sky gradient actions,
    rounded cards with soft shadows. Mobile first, RTL native. */
 
-@font-face { font-family: "Tajawal"; src: url("/fonts/tajawal/tajawal-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Tajawal"; src: url("/fonts/tajawal/tajawal-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
-@font-face { font-family: "Tajawal"; src: url("/fonts/tajawal/tajawal-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
-@font-face { font-family: "Tajawal"; src: url("/fonts/tajawal/tajawal-800.woff2") format("woff2"); font-weight: 800; font-display: swap; }
+/* IBM Plex Sans Arabic — the approved platform font (IBM, SIL OFL 1.1, self-hosted from the official
+   IBM/plex release; licence in /fonts/ibm-plex-sans-arabic/LICENSE.txt). It carries Arabic and Latin,
+   so Arabic and Western digits share one face. 800 maps to Bold: Plex has no heavier cut. */
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("/fonts/ibm-plex-sans-arabic/ibm-plex-sans-arabic-400.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("/fonts/ibm-plex-sans-arabic/ibm-plex-sans-arabic-500.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("/fonts/ibm-plex-sans-arabic/ibm-plex-sans-arabic-600.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans Arabic"; src: url("/fonts/ibm-plex-sans-arabic/ibm-plex-sans-arabic-700.woff2") format("woff2"); font-weight: 700 900; font-style: normal; font-display: swap; }
 
 :root {
   /* iAqar.ai brand palette (approved): one petrol identity for the whole app. */
@@ -24,6 +27,9 @@
   --tint-strong: #D5E8EC;
   --line: #E3ECEE;
   --line-strong: #C9DDE2;
+  /* Light petrol frames («إطارات مكحّلة خفيفة»): one thin line for every card, a softer one for tiles inside cards. */
+  --frame: #B4D3DA;
+  --frame-soft: #D3E5E9;
   --navy: var(--brand-dark);
   --text: #1C3A44;
   --muted: #5F7780;
@@ -53,7 +59,7 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  font-family: "Tajawal", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "IBM Plex Sans Arabic", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
   font-size: 16px;
   line-height: 1.55;
   color: var(--text);
@@ -113,7 +119,7 @@ a { color: var(--blue); }
 .os-badge.muted { background: var(--brand-tint); color: var(--muted); }
 
 /* ---------- Cards ---------- */
-.os-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; margin-bottom: 10px; border: 1px solid rgba(155, 202, 210, .7); }
+.os-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; margin-bottom: 10px; border: 1px solid var(--frame); }
 .os-card.tight { padding: 12px; }
 .os-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .os-sub { margin: 0; color: var(--muted); font-size: .93rem; }
@@ -534,6 +540,10 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 /* Icons: petrol teal of the approved iAqar.ai icon sheet and logo. On blue/filled
    controls the icon stays white (inherits); status/alert areas keep their meaning colour. */
 .os-ico { color: var(--ico); }
+/* Brand marks keep their official colours on light surfaces; inside a filled button they follow the button text. */
+.os-ico.os-brand-whatsapp { color: #25D366; }
+.os-ico.os-brand-telegram { color: #26A5E4; }
+.os-btn.primary .os-ico.os-brand, .os-btn.whatsapp .os-ico.os-brand, .os-btn.danger .os-ico.os-brand { color: inherit; }
 .os-btn.primary, .os-btn.whatsapp, .os-btn.danger, .os-chip[aria-pressed="true"], .os-seg button[aria-pressed="true"],
 .os-section-tab[aria-selected="true"], .os-step.done .dot, .os-toast, .os-session-secondary .os-btn[aria-expanded="true"],
 .ref-steps .active span, .ref-stage-dot, .ref-detail-tabs button[aria-pressed="true"], .ref-repo-tools .os-seg button[aria-pressed="true"],

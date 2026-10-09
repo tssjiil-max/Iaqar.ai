@@ -163,6 +163,40 @@ else
   echo "NOTE: TELEGRAM_BOT_TOKEN not set — «قنوات المكتب» shows the platform bot as not enabled."
 fi
 
+# «مركز التواصل والدعم» — the platform support assistant (Telegram Business), optional.
+# A separate bot from the intake bot; a problem here never fails the deploy (the card simply hides it).
+SUPPORT_READY=""
+if [[ -n "${TELEGRAM_SUPPORT_BOT_TOKEN:-}" ]]; then
+  echo "--- Telegram Business support bot for Staging (values not printed) ---"
+  CURRENT_STAGE="support-prepare"
+  SUPPORT_SECRET_DIR="$NORMALIZED_SECRET_DIR/telegram-support"
+  if node scripts/staging-telegram-support-activate.mjs prepare "$SUPPORT_SECRET_DIR"; then
+    CURRENT_STAGE="wrangler-secret-support"
+    if (
+      cd worker \
+        && npx wrangler secret put TELEGRAM_SUPPORT_BOT_TOKEN --env staging < "$SUPPORT_SECRET_DIR/TELEGRAM_SUPPORT_BOT_TOKEN" \
+        && npx wrangler secret put TELEGRAM_SUPPORT_WEBHOOK_SECRET --env staging < "$SUPPORT_SECRET_DIR/TELEGRAM_SUPPORT_WEBHOOK_SECRET"
+    ); then # // pragma: allowlist secret
+      SUPPORT_READY="yes"
+      echo "Support bot settings synced to staging Worker (values not printed)."
+    else
+      echo "::warning title=Support bot (Staging)::the support bot settings could not be saved to the Staging Worker — the assistant stays off."
+    fi
+  else
+    echo "::warning title=Support bot (Staging)::TELEGRAM_SUPPORT_BOT_TOKEN was not accepted — the assistant stays off on Staging."
+  fi
+else
+  echo "NOTE: TELEGRAM_SUPPORT_BOT_TOKEN not set — the support assistant is off; the card shows no assistant."
+fi
+if [[ -n "${SUPPORT_TELEGRAM_BUSINESS_USERNAME:-}" ]]; then
+  CURRENT_STAGE="wrangler-var-support-username"
+  if ( cd worker && printf '%s' "$SUPPORT_TELEGRAM_BUSINESS_USERNAME" | npx wrangler secret put SUPPORT_TELEGRAM_BUSINESS_USERNAME --env staging ); then
+    echo "Support business account username synced to the staging Worker."
+  else
+    echo "::warning title=Support account (Staging)::the business account username could not be saved — the Telegram Business chip stays hidden."
+  fi
+fi
+
 echo "--- Generate public/version.json from current Git commit ---"
 CURRENT_STAGE="write-staging-version"
 node scripts/write-staging-version.mjs
@@ -242,6 +276,16 @@ if [[ -n "$TELEGRAM_READY" ]]; then
     echo "::notice title=Telegram bot (Staging)::${TELEGRAM_READY} receives on the Staging Worker; offices can link from «قنوات المكتب»."
   else
     echo "::warning title=Telegram bot (Staging)::the bot settings were saved but pointing it at Staging failed — see the deploy log."
+  fi
+fi
+
+if [[ -n "$SUPPORT_READY" ]]; then
+  echo "--- Support bot: point it at the Staging Worker and check the chain ---"
+  CURRENT_STAGE="support-register"
+  if STAGING_WORKER_URL="$STAGING_WORKER_URL" node scripts/staging-telegram-support-activate.mjs register; then
+    echo "::notice title=Support bot (Staging)::the support assistant receives on the Staging Worker; link it to the business account in Telegram (Settings → Business → Chatbots)."
+  else
+    echo "::warning title=Support bot (Staging)::the support bot settings were saved but pointing it at Staging failed — see the deploy log."
   fi
 fi
 

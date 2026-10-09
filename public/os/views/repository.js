@@ -126,7 +126,7 @@ export function renderRepository(container, { query } = {}) {
   const options = h("details", { class: "ref-filters", "data-repo-filters": "" }, h("summary", {}, ic("search"), "خيارات البحث", activeHint, summary), filterPanel);
   // A deep link that already narrows the list opens the options so the choice is visible.
   if (filters.kind || filters.unmatched) options.open = true;
-  append(container,h("div",{class:"ref-repo-tools"},h("div",{class:"os-card tight ref-search-card"},h("div",{class:"os-search"},search,ic("search"))),options),list,h("button",{type:"button",class:"os-btn primary block ref-add-record",onClick:()=>openSheet("إضافة سجل جديد",h("div",{class:"os-btn-row"},h("button",{type:"button",class:"os-btn primary",onClick:()=>{closeAllSheets();go("record/new?kind=OFFER");}},"إضافة عرض"),h("button",{type:"button",class:"os-btn secondary",onClick:()=>{closeAllSheets();go("record/new?kind=REQUEST");}},"إضافة طلب")))},ic("plus"),"إضافة سجل جديد"));
+  append(container,h("div",{class:"ref-repo-tools"},h("div",{class:"os-card tight ref-search-card"},h("div",{class:"os-search"},search,ic("search"))),options),list,h("button",{type:"button",class:"os-btn primary block ref-add-record",onClick:()=>openSheet("إضافة سجل جديد",h("div",{class:"os-btn-row"},h("button",{type:"button",class:"os-btn primary",onClick:()=>{closeAllSheets();go("record/new?kind=OFFER");}},"إضافة عرض"),h("button",{type:"button",class:"os-btn secondary",onClick:()=>{closeAllSheets();go("record/new?kind=REQUEST");}},"إضافة طلب")))},ic("plus-circle"),"إضافة سجل جديد"));
   draw();
   const off = subscribe((kind) => { if (kind === "records" || kind === "tasks") draw(); });
   return () => off();

@@ -30,8 +30,9 @@ test("office tool labels and order stay exact", () => {
 });
 
 test("office tool cards use the same light boundary token as daily tasks", () => {
-  assert.match(css, /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-tint\)/s, "primary tools must use the same task-page boundary token");
-  assert.match(css, /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-tint\)/s, "secondary tools must use the same task-page boundary token");
+  // Approved frames (light petrol): tiles inside a card use the softer frame token shared by the whole app.
+  assert.match(css, /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--frame-soft\)/s, "primary tools must use the shared tile frame token");
+  assert.match(css, /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--frame-soft\)/s, "secondary tools must use the shared tile frame token");
 });
 
 test("bare office names are presented as a complete real-estate office title", () => {
@@ -82,13 +83,13 @@ test("office visual weight follows the daily-tasks page without redesign", () =>
   );
   assert.match(
     css,
-    /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-tint\)[^}]*box-shadow\s*:\s*none/s,
-    "primary tool cards must use the exact task-page light boundary token"
+    /\.ref-office-tool\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--frame-soft\)[^}]*box-shadow\s*:\s*none/s,
+    "primary tool cards must use the shared light tile frame"
   );
   assert.match(
     css,
-    /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-tint\)[^}]*box-shadow\s*:\s*none/s,
-    "secondary tool cards must use the exact task-page light boundary token"
+    /\.ref-office-extra\s*\{[^}]*border\s*:\s*1px\s+solid\s+var\(--frame-soft\)[^}]*box-shadow\s*:\s*none/s,
+    "secondary tool cards must use the shared light tile frame"
   );
 });
 
@@ -110,7 +111,7 @@ test("office identity rows follow the reference: icon, then label and value toge
   assert.match(name, /white-space\s*:\s*normal/, "the office name may wrap");
   assert.doesNotMatch(name, /ellipsis|nowrap|line-clamp/, "the office name is never clipped");
   assert.match(office, /profileRow\("user", "الوسيط", broker\)/);
-  assert.match(office, /profileRow\("note", "ترخيص فال", license, \{ ltr: true \}\)/);
+  assert.match(office, /profileRow\("license", "ترخيص فال", license, \{ ltr: true \}\)/);
   assert.match(office, /profileRow\("pin", "", city\)/);
 });
 

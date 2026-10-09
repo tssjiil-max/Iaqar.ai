@@ -92,7 +92,7 @@ function openNotifications() {
 function openMenu() {
   const filters = document.querySelector(".os-app[data-view=tasks] .ref-filters");
   const items = [
-    filters ? h("button", { type: "button", onClick: () => { sheet.close(); filters.open = true; } }, ic("search"), "تصفية المهام") : null,
+    filters ? h("button", { type: "button", onClick: () => { sheet.close(); filters.open = true; } }, ic("filter"), "تصفية المهام") : null,
     h("button", { type: "button", "data-menu": "search", onClick: () => { sheet.close(); go("search"); } }, ic("search"), "البحث الشامل"),
     h("button", { type: "button", "data-menu": "inbox", onClick: () => { sheet.close(); go("inbox"); } }, ic("inbox-in"), "مركز التواصل"),
     h("button", { type: "button", onClick: () => { sheet.close(); shareOfficeLink(); } }, ic("link"), "مشاركة رابط المكتب"),

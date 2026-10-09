@@ -167,7 +167,7 @@ function renderMarket(container) {
     const snap = marketSnapshot(state.records);
     if (!snap.total) {
       append(body, h("div", { class: "os-card" }, emptyState("chart-up", "لا توجد بيانات بعد", "أضف عروضًا وطلبات لتظهر مؤشرات مكتبك هنا.",
-        h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus"), "إضافة عرض أو طلب"))));
+        h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus-circle"), "إضافة عرض أو طلب"))));
       return;
     }
     append(body,

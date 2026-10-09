@@ -118,8 +118,12 @@ test("the deploy treats the bot as optional and never deploys it outside Staging
   for (const name of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "TELEGRAM_BOT_USERNAME"]) {
     assert.match(script, new RegExp(`wrangler secret put ${name} --env staging`), `${name} goes to the staging Worker only`);
   }
-  const puts = script.split("\n").filter((line) => line.includes("wrangler secret put TELEGRAM_"));
+  // The intake bot's three settings; the separate support bot (TELEGRAM_SUPPORT_*) has its own two.
+  const puts = script.split("\n").filter((line) => line.includes("wrangler secret put TELEGRAM_") && !line.includes("TELEGRAM_SUPPORT_"));
   assert.equal(puts.length, 3);
+  const supportPuts = script.split("\n").filter((line) => line.includes("wrangler secret put TELEGRAM_SUPPORT_"));
+  assert.equal(supportPuts.length, 2);
+  assert.ok(supportPuts.every((line) => line.includes("--env staging")));
   assert.ok(puts.every((line) => line.includes("--env staging")));
   assert.match(script, /staging-telegram-activate\.mjs register/);
   const production = fs.readFileSync(new URL("../worker/wrangler.toml", import.meta.url), "utf8");
