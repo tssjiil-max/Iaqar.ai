@@ -18,6 +18,7 @@ import { arrangeRecordImages } from "./record-media-service.js";
 import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
 import { convertInboxMessage } from "./inbox-service.js";
 import { createOfficeTicket, supportStatus } from "./support-service.js";
+import { agentChat, agentHistory, agentStatus, runApprovedAction, saveAgentSettings } from "./agent-service.js";
 import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker } from "./bot-service.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
@@ -85,6 +86,12 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/channels/whatsapp/disconnect": (ctx, b, actor) => disconnectWhatsapp(ctx, { actor, officeId: ctx.officeId }),
   "/os/inbox/convert": (ctx, b, actor) => convertInboxMessage(ctx, { actor, officeId: ctx.officeId, inboxId: text(b.inboxId) }),
   // «مركز التواصل والدعم»: platform support (Telegram Business). Any member may read the state and send a question or report.
+  // «مدير المكتب الذكي»: every member reads its state and talks to it; switching it and its instructions are the manager's.
+  "/os/agent/status": (ctx, b, actor) => agentStatus(ctx, { officeId: ctx.officeId, actor }),
+  "/os/agent/settings": (ctx, b, actor) => saveAgentSettings(ctx, { actor, officeId: ctx.officeId, enabled: typeof b.enabled === "boolean" ? b.enabled : undefined, instructions: typeof b.instructions === "string" ? b.instructions : undefined }),
+  "/os/agent/chat": (ctx, b, actor) => agentChat(ctx, { actor, officeId: ctx.officeId, message: typeof b.message === "string" ? b.message : "", requestKey: text(b.requestKey) }),
+  "/os/agent/history": (ctx, b, actor) => agentHistory(ctx, { officeId: ctx.officeId, actor }),
+  "/os/agent/act": (ctx, b, actor) => runApprovedAction(ctx, { actor, officeId: ctx.officeId, tool: text(b.tool), journeyId: text(b.journeyId) }),
   "/os/support/status": (ctx) => supportStatus(ctx),
   "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } })
 });

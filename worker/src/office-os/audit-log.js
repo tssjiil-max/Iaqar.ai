@@ -19,7 +19,10 @@ export const AUDIT_ACTIONS = Object.freeze({
   CHANNEL_UNLINKED: "CHANNEL_UNLINKED",
   INBOX_CONVERTED: "INBOX_CONVERTED",
   BOT_ENABLED: "BOT_ENABLED",
-  BOT_DISABLED: "BOT_DISABLED"
+  BOT_DISABLED: "BOT_DISABLED",
+  AGENT_ENABLED: "AGENT_ENABLED",
+  AGENT_DISABLED: "AGENT_DISABLED",
+  AGENT_ACTION_APPROVED: "AGENT_ACTION_APPROVED"
 });
 
 export async function writeAudit(ctx, { officeId, action, actorUid = "", entityType = "", entityId = "", details = {}, key = "" }) {

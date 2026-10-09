@@ -13,6 +13,7 @@
  */
 
 import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
+import { buildMatchReviewDedupKey, operationDocumentId } from "../operations-domain.js";
 import { assertCanActOn, forbidden } from "./permissions.js";
 import { applyJourneyChange, decideMatchReview, loadJourney } from "./journey-service.js";
 import { journeyTitle } from "./task-service.js";
@@ -267,6 +268,15 @@ async function mirrorOnMatch(ctx, officeId, matchId, state) {
   if (!matchId) return;
   await ctx.store.set(["offices", officeId, "matches", matchId], { botAskState: state, botAskAt: ctx.now() })
     .catch((error) => console.warn("[office-os] bot state not mirrored", error?.message));
+  // The same state on the match's review task, so Daily Tasks shows who is waiting (the office manager or the broker).
+  try {
+    const match = await ctx.store.get(["offices", officeId, "matches", matchId]);
+    const reviewId = await operationDocumentId(buildMatchReviewDedupKey({ officeId, matchId, dataVersion: match?.dataVersion || "" }));
+    const review = await ctx.store.get(["offices", officeId, "operations", reviewId]);
+    if (review) await ctx.store.set(["offices", officeId, "operations", reviewId], { agentState: state, agentStateAt: ctx.now() });
+  } catch (error) {
+    console.warn("[office-os] bot state not mirrored on the task", error?.message);
+  }
 }
 
 async function loadPair(ctx, officeId, match) {

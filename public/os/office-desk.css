@@ -406,3 +406,38 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-support-form { display: grid; gap: 12px; }
 .os-support-admin { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; color: var(--brand-dark); }
 .os-support-admin input { width: 20px; height: 20px; accent-color: var(--brand-primary); }
+
+/* «مدير المكتب» — compact card at the start of «أدوات المكتب». */
+.ref-agent-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--frame-soft); border-radius: 15px; background: var(--surface); }
+.ref-agent-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.ref-agent-head .os-set-icon { width: 36px; height: 36px; }
+.ref-agent-head .os-set-icon svg { width: 21px; height: 21px; }
+.ref-agent-head b { font-size: 16px; color: var(--brand-dark); }
+.ref-agent-status { margin-inline-start: auto; font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--brand-tint); color: var(--muted); max-width: 100%; }
+.ref-agent-status.is-ok { background: var(--ok-tint); color: var(--ok); }
+.ref-agent-status.is-warn { background: var(--warn-tint); color: var(--warn); }
+.ref-agent-status.is-bad { background: var(--bad-tint); color: var(--bad); }
+.ref-agent-needs { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 12px; background: var(--brand-tint); color: var(--brand-dark); font: inherit; font-weight: 600; text-align: start; cursor: pointer; }
+.ref-agent-needs strong { font-size: 22px; color: var(--brand-primary); }
+.ref-agent-needs svg { width: 18px; height: 18px; margin-inline-start: auto; color: var(--brand-primary); }
+.ref-agent-facts { color: var(--muted); font-size: 13px; }
+.ref-agent-chat { display: inline-flex; align-items: center; gap: 8px; justify-self: start; min-height: 40px; padding: 6px 12px; border: 1px solid var(--frame-soft); border-radius: 12px; background: var(--surface); color: var(--brand-primary); font: inherit; font-weight: 600; cursor: pointer; }
+.ref-agent-chat svg { width: 20px; height: 20px; }
+
+/* Daily Tasks lanes: تحتاج تدخلك · يتابعها مدير المكتب · تم إنجازها اليوم (same cards, same ids). */
+.ref-lane-head { display: flex; align-items: center; gap: 8px; margin: 14px 2px 8px; font-size: 16px; color: var(--brand-dark); }
+.ref-lane-head:first-child { margin-top: 2px; }
+.ref-lane-reason { display: block; margin-bottom: 6px; color: var(--warn); font-weight: 600; font-size: 13px; }
+.ref-lane-done > summary { cursor: pointer; list-style: none; }
+.ref-lane-done > summary::-webkit-details-marker { display: none; }
+
+/* #/agent conversation */
+.os-agent-thread { display: grid; gap: 10px; margin: 10px 0; }
+.os-agent-msg { max-width: 92%; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--frame-soft); background: var(--surface); }
+.os-agent-msg p { margin: 0; white-space: pre-wrap; }
+.os-agent-msg.is-mine { justify-self: start; background: var(--brand-tint); }
+.os-agent-msg.is-agent { justify-self: end; }
+.os-agent-msg .os-center-list { margin-top: 8px; }
+.os-agent-msg .os-btn { margin-top: 8px; }
+.os-agent-compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; position: sticky; bottom: 0; padding: 8px 0; background: var(--bg); }
+.os-agent-input { min-height: 48px; }

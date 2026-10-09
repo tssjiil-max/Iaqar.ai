@@ -242,12 +242,12 @@ export async function decideMatchReview(ctx, { actor, officeId, matchId, decisio
   if (!created) {
     existing = await ctx.store.get(segments);
     if (existing && isJourneyOpen(existing)) {
-      await finishTasks(ctx.store, { officeId, taskIds: [reviewTaskId], status: "COMPLETED", now });
+      await finishTasks(ctx.store, { officeId, taskIds: [reviewTaskId], status: "COMPLETED", completedBy: viaBot ? "AGENT" : actor.uid, now });
       return { ok: true, decision, journeyId, duplicate: true };
     }
   }
   await ctx.store.set(matchSegments, { brokerDecision: "APPROVED", brokerDecisionAt: now, brokerDecisionBy: actor.uid, journeyId, attentionRequired: false, status: "negotiation", updatedAt: now });
-  await finishTasks(ctx.store, { officeId, taskIds: [reviewTaskId], status: "COMPLETED", now });
+  await finishTasks(ctx.store, { officeId, taskIds: [reviewTaskId], status: "COMPLETED", completedBy: viaBot ? "AGENT" : actor.uid, now });
   await applyJourneyChange(ctx, {
     officeId, journeyId, actor,
     mutate: () => existing

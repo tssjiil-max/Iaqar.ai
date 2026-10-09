@@ -122,7 +122,8 @@ try {
   await shot("02-follow-hub");
   // Two calls existed before this work and are not caused by the new screens: the app's own start-up
   // «/os/reconcile» and the room page asking for the two party links it shows. Neither sends anything.
-  const caused = writes.filter((w) => !/\/os\/(reconcile|session\/links)$/.test(w));
+  // «/os/agent/status» and «/os/support/status» are read-only state the office cards show.
+  const caused = writes.filter((w) => !/\/os\/(reconcile|session\/links|agent\/status|support\/status)$/.test(w));
   check("opening the card, the room and «متابعة الصفقة» changed nothing in the deal (stage, session, viewing, documents, tasks, log)", snapshot() === before, snapshot() === before ? "" : `before ${before.length} after ${snapshot().length}`);
   check("…and no action was sent by merely opening them", caused.length === 0, caused.join(","));
 

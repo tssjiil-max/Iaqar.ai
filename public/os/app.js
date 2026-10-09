@@ -16,6 +16,7 @@ import { renderLogin } from "./views/login.js";
 import { renderShellHeader, renderBottomNav } from "./views/shell.js";
 import { renderOffice, renderTaskDetail } from "./views/reference-layout.js";
 import { renderTasks } from "./views/tasks.js";
+import { renderAgent, renderAgentSettings } from "./views/agent.js";
 import { renderRepository } from "./views/repository.js";
 import { renderRecordDetail } from "./views/record-detail.js";
 import { renderRecordForm } from "./views/record-form.js";
@@ -62,13 +63,14 @@ function view() {
   if (section === "library") return { name: "library", run: renderLibrary };
   if (section === "tools") return { name: "tool", run: (el) => renderOfficeTool(el, { tool: id }) };
   if (section === "inbox") return { name: "tool", run: renderInbox };
+  if (section === "agent") return { name: "tool", run: renderAgent };
   if (section === "search") return { name: "tool", run: (el) => renderSearch(el, { query: query.get("q") || "" }) };
   if (section === "audit") return { name: "tool", run: renderAudit };
   if (section === "settings") {
-    const page = { profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, channels: renderChannelSettings, notifications: renderNotificationSettings, brokers: renderSettings }[id] || renderSettingsHub;
+    const page = { profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, channels: renderChannelSettings, agent: renderAgentSettings, notifications: renderNotificationSettings, brokers: renderSettings }[id] || renderSettingsHub;
     return { name: "settings", run: (el) => page(el) };
   }
-  return { name: "tasks", main: true, deal: true, run: (el) => renderTasks(el, { filter: query.get("filter") || "all", step: query.get("step") }) };
+  return { name: "tasks", main: true, deal: true, run: (el) => renderTasks(el, { filter: query.get("filter") || "all", step: query.get("step"), lane: query.get("lane") }) };
 }
 
 function render() {
