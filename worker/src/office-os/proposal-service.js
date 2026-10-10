@@ -19,6 +19,7 @@ import { buildWhatsAppUrl, cleanText, localPhone, whatsappDigits } from "../../.
 import { applyJourneyChange, journeySegments, loadJourney } from "./journey-service.js";
 import { assertCanActOn } from "./permissions.js";
 import { finishTasks } from "./task-service.js";
+import { assertOfficeMediatedJourney } from "./external-broker-service.js";
 import { buildMatchReviewDedupKey, operationDocumentId } from "../operations-domain.js";
 
 function base64Url(bytes) {
@@ -89,6 +90,7 @@ export async function createProposals(ctx, { actor, officeId, journeyId = "", ma
   const roles = [...new Set(recipients.filter((role) => role === RECIPIENT.CLIENT || role === RECIPIENT.OWNER))];
   if (!roles.length) throw ctx.deps.appError("recipient_required", 400, "اختر المستلم");
   const context = await loadContext(ctx, { actor, officeId, journeyId, matchId });
+  await assertOfficeMediatedJourney(ctx, officeId, context);
   if (context.type === "match" && template.kind !== "INFO_REQUEST") {
     throw ctx.deps.appError("template_not_allowed", 409, "قبل الاعتماد يمكن طلب معلومات فقط");
   }

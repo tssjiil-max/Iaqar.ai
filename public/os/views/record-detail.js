@@ -1,6 +1,8 @@
 /** Record details + linked opportunities + manual search for suitable options. */
 
 import { partyBotRow } from "./bot-settings.js";
+import { externalCooperationPanel } from "./external-cooperation.js";
+import { isExternalBroker } from "../domain/external-broker-domain.js";
 import { h, ic, clear, emptyState, append } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
@@ -99,6 +101,7 @@ export function renderRecordDetail(container, { recordId }) {
     append(container, h("div", { class: "os-card" },
       h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "6px" } },
         h("span", { class: `os-badge${isRequest ? "" : " ok"}`, text: `${view.kindLabel} · ${view.purposeLabel}` }),
+        isExternalBroker(record) ? h("span", { class: "os-badge", text: "وسيط متعاون" }) : null,
         h("span", { class: `os-badge${view.state === "ACTIVE" ? "" : " muted"}`, "data-record-state": view.state, text: view.lifecycleLabel })),
       h("h2", { class: "os-task-title", text: view.title }),
       isRequest ? h("p", { class: "os-sub", text: "احتياج العميل ومواصفاته وميزانيته." }) : imageGallery(record),
@@ -119,9 +122,10 @@ export function renderRecordDetail(container, { recordId }) {
         wa ? h("a", { class: "os-btn whatsapp", href: wa, target: "_blank", rel: "noopener" }, ic("whatsapp"), "واتساب") : null) : null,
       // «بوت المكتب»: is this person on the bot, and the link to give him (hidden where the bot is not available).
       // …but a changed mobile is a different person to the bot, so the row is rebuilt then.
-      (botRow = botRow && botRowFor === String(view.contactPhone || "") ? botRow : ((botRowFor = String(view.contactPhone || "")), partyBotRow(record, { who: isRequest ? "العميل" : "المالك" }))),
+      isExternalBroker(record) ? null : (botRow = botRow && botRowFor === String(view.contactPhone || "") ? botRow : ((botRowFor = String(view.contactPhone || "")), partyBotRow(record, { who: isRequest ? "العميل" : "المالك" }))),
       h("div", { style: { marginTop: "12px" } }, actions)
     ));
+    append(container, externalCooperationPanel(record));
 
     // «الصلاحية والتوفر»: the record's own facts and one-tap answers (same record; nothing is deleted).
     if (view.state !== "DELETED") {

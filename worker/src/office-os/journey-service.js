@@ -12,6 +12,7 @@
 
 import { buildMatchReviewDedupKey, operationDocumentId } from "../operations-domain.js";
 import { compatibilityLevel } from "../../../public/os/domain/match-review-domain.js";
+import { cooperationEligible, isExternalBroker } from "../../../public/os/domain/external-broker-domain.js";
 import {
   ACTION, EVENT_SOURCE, JOURNEY_STATUS, STAGE, STAGE_LABEL, VIEWING_STATE,
   effectOfViewingResult, isJourneyOpen, viewingResultOf, canMoveStage
@@ -205,6 +206,7 @@ export async function decideMatchReview(ctx, { actor, officeId, matchId, decisio
   }
 
   if (decision !== "approve") throw ctx.deps.appError("decision_invalid", 400, "قرار غير معروف");
+  if (![offer, request].every(cooperationEligible)) throw ctx.deps.appError("cooperation_review_required", 409, "راجع التمثيل واقبل التعاون قبل اعتماد المطابقة");
   if (lifecycleOf(offer) !== LIFECYCLE.ACTIVE || lifecycleOf(request) !== LIFECYCLE.ACTIVE) {
     throw ctx.deps.appError("record_inactive", 409, "أحد السجلين لم يعد نشطًا");
   }
@@ -223,6 +225,8 @@ export async function decideMatchReview(ctx, { actor, officeId, matchId, decisio
     offerId,
     requestId,
     assignedBrokerId,
+    ...(isExternalBroker(offer) ? { offerParticipantRole: "EXTERNAL_BROKER", offerRepresentationClaim: offer.representationClaim } : {}),
+    ...(isExternalBroker(request) ? { requestParticipantRole: "EXTERNAL_BROKER", requestRepresentationClaim: request.representationClaim } : {}),
     stage: STAGE.NEGOTIATION,
     status: JOURNEY_STATUS.ACTIVE,
     offerSummary: summaryOf(offer),

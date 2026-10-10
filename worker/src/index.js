@@ -1,4 +1,7 @@
 import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
+import { externalBrokerClaim, isExternalBroker } from "../../public/os/domain/external-broker-domain.js";
+import { notifyOffice as notifyExternalIntakeOffice } from "./office-os/bot-notify.js";
+import { createStore as createExternalIntakeStore } from "./office-os/store.js";
 import { runCooperationBrokerAction } from "./cooperation-brokers-service.js";
 import { buildChannelStatuses } from "./office-channels-service.js";
 import { buildOrchestratorEventId, dispatchOrchestratorEvent } from "./central-orchestrator-service.js";
@@ -1358,7 +1361,7 @@ function evaluatePublicIntakeReadiness(intake = {}, parsed = {}) {
   if (!isOwner && intake.kind !== "client") missing.push("advertiserRole");
   const phone = normalizeSaudiPhone(intake.phone || parsed.phone);
   if (!phone) missing.push("contactPhone");
-  const roleOk = isOwner ? "OWNER" : "CLIENT";
+  const roleOk = isExternalBroker(intake) ? "BROKER" : (isOwner ? "OWNER" : "CLIENT");
   if (!roleOk) missing.push("advertiserRole");
   return {
     matchingReadiness: missing.length === 0 ? "READY_FOR_MATCHING" : "NEEDS_COMPLETION",
@@ -2113,6 +2116,8 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   const intake = firestoreFieldsToJs(intakeDoc.fields || {});
   if (!officeIdsEquivalent(intake.officeId, officeId)) throw appError("office_mismatch", 403, "الطلب لا يتبع هذا المكتب");
   if (!["client", "owner"].includes(intake.kind)) throw appError("invalid_intake_kind", 400, "نوع الطلب غير صالح");
+  const cooperation = externalBrokerClaim(intake);
+  if (!cooperation.ok) throw appError("external_broker_invalid", 400, Object.values(cooperation.errors)[0]);
   if (intake.status === "processed" && intake.processedRecordId) {
     return jsonResponse({
       ok: true, duplicate: true, officeId, intakeId,
@@ -2132,11 +2137,11 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     opportunityDocs.map((doc) => ({
       id: decodeURIComponent(String(doc.name || "").split("/").pop() || ""),
       data: firestoreFieldsToJs(doc.fields || {})
-    })),
+    })).filter(row => isExternalBroker(row.data) === isExternalBroker(intake)),
     {
       officeId,
       phone: parsed.phone || intake.phone,
-      contactType: intake.kind === "owner" ? "owner" : "buyer",
+      contactType: isExternalBroker(intake) ? "broker" : (intake.kind === "owner" ? "owner" : "buyer"),
       kind: intake.kind,
       purpose: readiness.purpose,
       transactionType: parsed.transactionType,
@@ -2204,6 +2209,8 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     senderName: parsed.senderName, senderPhone: parsed.phone,
     receivedAt: now, source: intake.source || "office_public_link", now
   });
+  for (const [key, value] of Object.entries(cooperation.value)) commonFields[key] = firestoreString(value);
+  if (isExternalBroker(intake)) commonFields.matchingReadiness = firestoreString("NEEDS_COMPLETION");
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, targetCollection, recordId], accessToken, fields: {
     ...commonFields,
@@ -2248,7 +2255,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     advertiserPhoneNormalized: firestoreOptionalString(parsed.phone),
     contactPhone: firestoreOptionalString(parsed.phone),
     contactName: firestoreOptionalString(parsed.senderName),
-    matchingReadiness: firestoreString(readiness.matchingReadiness),
+    matchingReadiness: firestoreString(isExternalBroker(intake) ? "NEEDS_COMPLETION" : readiness.matchingReadiness),
     matchingReadinessMissingJson: firestoreString(JSON.stringify(readiness.matchingReadinessMissing || [])),
     opportunityKind: firestoreString(opportunityKind),
     originSourceType: firestoreString(origin.type),
@@ -2284,7 +2291,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     await setFirestoreDocument({ projectId, segments: ["offices", officeId, "contacts", contactId], accessToken, fields: {
       officeId: firestoreString(officeId), fullName: firestoreOptionalString(parsed.senderName),
       name: firestoreOptionalString(parsed.senderName), phone: firestoreOptionalString(parsed.phone),
-      lastRecordId: firestoreString(recordId), lastRecordType: firestoreString(targetCollection === "owners" ? "owner" : "client"),
+      lastRecordId: firestoreString(recordId), lastRecordType: firestoreString(isExternalBroker(intake) ? "broker" : (targetCollection === "owners" ? "owner" : "client")),
       updatedAt: firestoreTimestamp(now)
     }});
   }
@@ -2311,6 +2318,14 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   });
 
   let matches = [];
+  if (isExternalBroker(intake)) {
+    const deps = officeOsDeps().bind({ env, projectId, accessToken });
+    await notifyExternalIntakeOffice(createExternalIntakeStore(deps, { projectId, accessToken }), deps, {
+      officeId, brokerId: responsibleBrokerId, key: `external-intake-${intakeId}`,
+      title: "مشاركة جديدة من وسيط متعاون", body: "راجع صفة التمثيل واتفاق التعاون قبل المطابقة والتفاوض.",
+      route: `record/${opportunityId}`, opportunityId, now
+    });
+  }
   if (origin.type !== ORIGIN_SOURCE_TYPE.PLATFORM_PUBLIC) {
     matches = await runCanonicalMatchingAfterOpportunityPersist({
       projectId, officeId, opportunityId, accessToken, env

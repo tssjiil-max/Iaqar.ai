@@ -913,6 +913,15 @@
       <h2>${owner ? "إضافة عرض عقاري" : "إضافة طلب عقاري"}</h2>
       <p>لا يحتاج هذا النموذج إلى إنشاء حساب.</p>
       <form class="access-form" id="intakeForm" novalidate>
+        ${targetOffice !== "platform" ? `<label class="full"><span>صفة مقدم المشاركة</span><select name="submitterRole" id="externalSubmitterRole">
+          <option value="${owner ? "OWNER" : "CLIENT"}">${owner ? "مالك العقار" : "عميل يبحث عن عقار"}</option><option value="EXTERNAL_BROKER">وسيط عقاري متعاون</option></select></label>
+        <section class="access-form-section full" id="externalBrokerFields" hidden>
+          <label><span>المكتب العقاري (إن وجد)</span><input name="externalBrokerOffice" maxlength="100"></label>
+          <label><span>رخصة فال عند انطباق متطلبات الترخيص</span><input name="externalBrokerLicense" inputmode="numeric" maxlength="40"></label>
+          <label><span>صفة التمثيل</span><select name="representationClaim"><option value="">اختر</option>${owner ? '<option value="OWNER">أمثل المالك بموجب تفويض</option><option value="NOT_AUTHORIZED">التفويض غير مكتمل</option>' : '<option value="BUYER">أمثل مشتريًا</option><option value="TENANT">أمثل مستأجرًا</option>'}</select></label>
+          <label><span>مرجع إثبات التمثيل (اختياري)</span><input name="representationReference" maxlength="240"></label>
+          <p>تخضع الصفة والرخصة والتفويض لمراجعة المكتب. إرسال المشاركة لا ينشئ اتفاق عمولة.</p>
+        </section>` : ""}
         <section class="access-form-section full" aria-label="${owner ? "بيانات العقار" : "العقار المطلوب"}">
         <h3 class="access-section-title">${gateIcon("section")}${owner ? "بيانات العقار" : "العقار المطلوب"}</h3>
         <div class="access-chip-section full">
@@ -974,6 +983,10 @@
     const requestKindInput = gate.querySelector("#requestKindInput");
     const dynamicFields = gate.querySelector("#clientDynamicFields");
     const clientApi = clientIntakeApi();
+    const externalRole = gate.querySelector("#externalSubmitterRole");
+    if (externalRole) externalRole.addEventListener("change", () => {
+      gate.querySelector("#externalBrokerFields").hidden = externalRole.value !== "EXTERNAL_BROKER";
+    });
     const refreshClientDynamic = () => {
       if (owner || !dynamicFields) return;
       const requestKind = clientApi?.normalizeRequestKind
@@ -1136,6 +1149,12 @@
           };
           if (targetOffice === "platform") api.rememberLastCity(city);
         }
+        if (fields.get("submitterRole") === "EXTERNAL_BROKER") {
+          const { externalBrokerClaim } = await import("../os/domain/external-broker-domain.js");
+          const claim = externalBrokerClaim({ kind, purpose: intakePayload.purpose, submitterRole: "EXTERNAL_BROKER", externalBrokerOffice: fields.get("externalBrokerOffice"), externalBrokerLicense: fields.get("externalBrokerLicense"), representationClaim: fields.get("representationClaim"), representationReference: fields.get("representationReference") });
+          if (!claim.ok) throw new Error(Object.values(claim.errors)[0]);
+          for (const key of ["submitterRole", "externalBrokerOffice", "externalBrokerLicense", "representationClaim", "representationReference"]) intakePayload[key] = claim.value[key];
+        }
         await ref.set(intakePayload);
         let matchingResult = null;
         try { matchingResult = await triggerPublicIntakeMatching(targetOffice, ref.id); }
@@ -1145,7 +1164,7 @@
         if (matchingResult && Number(matchingResult.matches || 0) > 0) {
           showStatus(`تم الإرسال واكتشاف ${matchingResult.matches} مطابقة مناسبة.`, true);
         } else {
-          showStatus(owner ? "تم رفع عرض العقار وتشغيل المطابقة." : "تم إرسال الطلب وتشغيل المطابقة.", true);
+          showStatus(intakePayload.submitterRole === "EXTERNAL_BROKER" ? "تم استلام المشاركة؛ يراجع المكتب صفة التمثيل والتعاون قبل المطابقة." : (owner ? "تم رفع عرض العقار وتشغيل المطابقة." : "تم إرسال الطلب وتشغيل المطابقة."), true);
         }
       } catch (error) {
         console.warn("[iaqar] intake submit", error);
