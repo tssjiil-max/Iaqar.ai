@@ -47,3 +47,30 @@ const status = unsigned?.status || 0;
 const body = unsigned ? await unsigned.json().catch(() => ({})) : {};
 note("Kapso endpoint", `${WORKER}/integrations/kapso/webhook → unsigned POST answered ${status} (${body.error || ""}${body.reason ? ` · ${body.reason}` : ""})`);
 if (![401, 503].includes(status)) { console.log("::error title=Kapso endpoint::an unsigned request was not refused"); process.exit(1); }
+
+// With the secret on this run: signed deliveries that must be accepted and then ignored — nothing written, nothing sent
+// (another sandbox number, a sender that is not allowed, another event). Proves the real secret is in place.
+const SECRET = String(process.env.KAPSO_WEBHOOK_SECRET || "").replace(/[\r\n]/g, "");
+if (SECRET) {
+  const post = async (obj, event = "whatsapp.message.received", secret = SECRET) => {
+    const raw = JSON.stringify(obj);
+    const res = await fetch(`${WORKER}/integrations/kapso/webhook`, { method: "POST", headers: { "content-type": "application/json", "x-webhook-event": event, "x-webhook-signature": crypto.createHmac("sha256", secret).update(raw).digest("hex"), "x-idempotency-key": crypto.randomUUID(), "x-webhook-payload-version": "v2" }, body: raw }).catch(() => null);
+    return { status: res?.status || 0, body: res ? await res.json().catch(() => ({})) : {} };
+  };
+  const msg = (from, phoneId) => ({ message: { id: `wamid.setup.${crypto.randomUUID()}`, type: "text", from, text: { body: "فحص" }, kapso: { direction: "inbound" } }, conversation: { phone_number: from, phone_number_id: phoneId }, phone_number_id: phoneId });
+  const wrongSecret = await post(msg("966500000000", "597907523413541"), undefined, "not-the-secret");
+  const otherNumber = await post(msg("966552019909", "100000000000000"));
+  const stranger = await post(msg("966500000000", "597907523413541"));
+  const otherEvent = await post(msg("966552019909", "597907523413541"), "whatsapp.message.sent");
+  const ok = wrongSecret.status === 401 && otherNumber.status === 200 && otherNumber.body.results?.[0]?.status === "other_number"
+    && stranger.status === 200 && stranger.body.results?.[0]?.status === "sender_not_allowed" && otherEvent.status === 200 && otherEvent.body.ignored === "event";
+  note("Kapso signature (real secret)", `wrong secret → ${wrongSecret.status} · signed, other number → ${otherNumber.status} ${otherNumber.body.results?.[0]?.status || otherNumber.body.error || ""} · signed, sender not allowed → ${stranger.status} ${stranger.body.results?.[0]?.status || stranger.body.error || ""} · signed, other event → ${otherEvent.status} ${otherEvent.body.ignored || otherEvent.body.error || ""}`);
+  if (!ok) { console.log("::error title=Kapso signature::the Staging Worker did not accept the real secret as expected"); process.exit(1); }
+}
+
+// With the API key: one read-only call to Kapso (the sandbox number's details) — no message is sent.
+const KEY = String(process.env.KAPSO_API_KEY || "").replace(/[\r\n]/g, "");
+if (KEY) {
+  const res = await fetch("https://api.kapso.ai/meta/whatsapp/v24.0/597907523413541", { headers: { "X-API-Key": KEY } }).catch(() => null);
+  note("Kapso API key", `read-only check of the sandbox number → HTTP ${res?.status || 0}${res?.ok ? " (key accepted)" : ""}`);
+}
