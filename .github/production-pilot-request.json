@@ -1,0 +1,5 @@
+{
+  "mode": "preflight",
+  "confirm": "",
+  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>."
+}
