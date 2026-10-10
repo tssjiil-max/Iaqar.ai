@@ -1,0 +1,160 @@
+name: Production pilot (iaqar.ai)
+
+# Manual only. Two modes:
+#   preflight — read-only: credentials, live rollback point, full data snapshot to the production bucket,
+#               compatibility of production offices with the new app. Deploys nothing.
+#   deploy    — the same checks, then Worker + Firestore rules/indexes + Hosting for ONE approved commit,
+#               then the live journey on iaqar.ai with isolated QA offices (removed afterwards).
+#               Any failure after the deploy puts the recorded Hosting version, rules and Worker back.
+# No DNS change: iaqar.ai is already served by Firebase Hosting (aqar-b5d76).
+# Staging secrets are never used here.
+
+# Started by a push to release/production-pilot whose last commit only edits
+# .github/production-pilot-request.json  { "mode": "preflight" | "deploy", "confirm": "DEPLOY-<parent short sha>" }
+# The deployed tree is that commit's parent: a commit already merged on the tested staging lineage.
+on:
+  push:
+    branches:
+      - release/production-pilot
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iaqar-production-pilot
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
+    env:
+      FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON || secrets.FIREBASE_SERVICE_ACCOUNT_JSON_PRODUCTION }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_PRODUCTION || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      OUT_DIR: ${{ runner.temp }}/production-pilot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard — tested commit, request, confirmation, production credentials
+        run: |
+          set -euo pipefail
+          REQ=.github/production-pilot-request.json
+          MODE="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mode||"")' "$REQ")"
+          CONFIRM="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).confirm||"")' "$REQ")"
+          [ "$MODE" = "preflight" ] || [ "$MODE" = "deploy" ] || { echo "::error title=refused::mode must be preflight or deploy"; exit 1; }
+          # The last commit may change ONLY the request file; its parent must be on the tested staging lineage.
+          CHANGED="$(git diff --name-only HEAD^ HEAD)"
+          [ "$CHANGED" = "$REQ" ] || { echo "::error title=refused::the release commit must change only $REQ (changed: $CHANGED)"; exit 1; }
+          PARENT="$(git rev-parse HEAD^)"
+          git fetch -q origin codex/unified-staging-lineage-2026-08-29
+          git merge-base --is-ancestor "$PARENT" FETCH_HEAD || { echo "::error title=refused::$PARENT is not on the tested staging lineage"; exit 1; }
+          SHORT="$(git rev-parse --short=7 "$PARENT")"
+          if [ "$MODE" = "deploy" ] && [ "$CONFIRM" != "DEPLOY-$SHORT" ]; then echo "::error title=refused::deploy needs confirm = DEPLOY-$SHORT"; exit 1; fi
+          [ -n "${FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON:-}" ] || { echo "::error title=missing secret::FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON (service account of aqar-b5d76) is not set"; exit 1; }
+          node -e 'const sa=JSON.parse(process.env.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON);if(sa.project_id!=="aqar-b5d76"){console.log("::error title=refused::the production secret is not a service account of aqar-b5d76");process.exit(1)}console.log("production service account: project aqar-b5d76 (values not printed)")'
+          if [ "$MODE" = "deploy" ]; then
+            [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ] || { echo "::error title=missing secret::Cloudflare token/account for the production Worker"; exit 1; }
+          fi
+          git checkout -q "$PARENT"
+          echo "MODE=$MODE" >> "$GITHUB_ENV"
+          echo "sha=$PARENT" >> "$GITHUB_ENV"
+          echo "::notice title=production pilot::$MODE · commit $SHORT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci && npm ci --prefix worker
+
+      - name: Live before the change (read-only)
+        run: |
+          curl -fsS https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/health | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s);console.log(`::notice title=production Worker before::${h.deploymentEnvironment} · ${h.projectId} · backendReady=${h.backendReady}`)})'
+          curl -fsS -o /dev/null -w "iaqar.ai HTTP %{http_code}\n" https://iaqar.ai/
+
+      - name: Rollback point (live Hosting version + live rules)
+        run: node scripts/production-pilot-rollback.mjs record "$OUT_DIR"
+
+      - name: Data snapshot to the production bucket + compatibility of production offices
+        run: node scripts/production-pilot-backup.mjs
+
+      - name: Existing production preflight (informational)
+        continue-on-error: true
+        run: node scripts/preflight-production-blockers.mjs
+
+      - name: Record the live Worker version
+        if: env.MODE == 'deploy'
+        working-directory: worker
+        run: |
+          set -euo pipefail
+          npx wrangler deployments list --json > "$OUT_DIR/worker-deployments.json"
+          PREV="$(node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const list=Array.isArray(d)?d:(d.deployments||[]);const last=list[list.length-1]||list[0]||{};const v=(last.versions||[])[0]||{};console.log(v.version_id||"")' "$OUT_DIR/worker-deployments.json")"
+          [ -n "$PREV" ] || { echo "::error title=refused::could not record the live Worker version"; exit 1; }
+          echo "WORKER_PREVIOUS=$PREV" >> "$GITHUB_ENV"
+          echo "::notice title=Worker rollback point::$PREV"
+
+      - name: Gate — syntax, Worker tests, visitor/agent tests
+        if: env.MODE == 'deploy'
+        run: |
+          npm run check
+          npm test --prefix worker
+          node --test test/office-os-visitor.test.mjs test/office-os-visitor-conversation.test.mjs test/office-os-agent.test.mjs test/office-os-validity.test.mjs test/office-os-security.test.mjs
+
+      - name: Deploy — Worker, Firestore rules/indexes, Hosting (aqar-b5d76)
+        id: deploy
+        if: env.MODE == 'deploy'
+        run: |
+          set -euo pipefail
+          node scripts/write-staging-version.mjs --channel=production
+          (cd worker && npx wrangler deploy)
+          GAC="$(mktemp /tmp/iaqar-prod-gac.XXXXXX)"
+          trap 'rm -f "$GAC"' EXIT
+          node -e 'require("fs").writeFileSync(process.argv[1], process.env.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON, { mode: 0o600 })' "$GAC"
+          GOOGLE_APPLICATION_CREDENTIALS="$GAC" npx firebase-tools deploy --only firestore:rules,firestore:indexes,hosting --project aqar-b5d76 --non-interactive
+          echo "::notice title=deployed::$sha to iaqar.ai"
+
+      - name: Smoke iaqar.ai
+        if: env.MODE == 'deploy'
+        run: |
+          set -euo pipefail
+          sleep 20
+          curl -fsS https://iaqar.ai/ >/dev/null
+          curl -fsS https://iaqar.ai/version.json | tee "$OUT_DIR/version.json"
+          grep -q "${sha:0:7}" "$OUT_DIR/version.json"
+          curl -fsS https://iaqar.ai/os/app.js >/dev/null
+          curl -fsS https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/health | grep -q '"backendReady":true'
+
+      - name: Live journey on iaqar.ai (isolated QA offices, removed afterwards)
+        if: env.MODE == 'deploy'
+        env:
+          LIVE_TARGET: production
+          PREVIEW_URL: https://iaqar.ai
+          PREVIEW_WORKER_URL: https://iaqar-macrodroid-intake.iaqar-ai.workers.dev
+        run: |
+          npx playwright install --with-deps chromium >/dev/null
+          node scripts/qa/office-os/live-preview.e2e.mjs
+
+      - name: Roll back on failure (Hosting version, rules, Worker)
+        if: failure() && env.MODE == 'deploy' && steps.deploy.outcome != 'skipped'
+        run: |
+          node scripts/production-pilot-rollback.mjs restore "$OUT_DIR" || echo "::error title=rollback::Hosting/rules restore failed — restore from the Firebase console using $OUT_DIR/rollback-point.json"
+          if [ -n "${WORKER_PREVIOUS:-}" ]; then (cd worker && yes | npx wrangler rollback "$WORKER_PREVIOUS" --message "pilot rollback") || echo "::error title=rollback::Worker rollback failed — use Cloudflare dashboard, version $WORKER_PREVIOUS"; fi
+          echo "::error title=pilot rolled back::the previous production version is back"
+
+      - name: Upload evidence (no customer data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-pilot-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/production-pilot/*.json
+            ${{ runner.temp }}/production-pilot/*.png
+            ${{ runner.temp }}/production-pilot/*.rules
+          if-no-files-found: warn
+          retention-days: 30

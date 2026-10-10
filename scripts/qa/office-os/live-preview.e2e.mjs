@@ -23,9 +23,12 @@ const PREVIEW_URL = String(process.env.PREVIEW_URL || "").replace(/\/+$/, "");
 const WORKER_URL = String(process.env.PREVIEW_WORKER_URL || "").replace(/\/+$/, "");
 const OUT = process.env.OUT_DIR || "qa-live";
 fs.mkdirSync(OUT, { recursive: true });
-const PROJECT = "iaqar-ai-staging";
-const OFFICE = "qa-office-os-preview";
-const OFFICE_B = "qa-office-os-preview-b";
+// LIVE_TARGET=production: the same journey on iaqar.ai (production pilot) with its own isolated QA offices,
+// which are removed completely at the end. Only with the production service account and the production hosts.
+const ON_PRODUCTION = String(process.env.LIVE_TARGET || "") === "production";
+const PROJECT = ON_PRODUCTION ? "aqar-b5d76" : "iaqar-ai-staging";
+const OFFICE = ON_PRODUCTION ? "qa-office-os-pilot" : "qa-office-os-preview";
+const OFFICE_B = ON_PRODUCTION ? "qa-office-os-pilot-b" : "qa-office-os-preview-b";
 const RUN = String(process.env.GITHUB_RUN_ID || Date.now()).replace(/[^0-9A-Za-z]/g, "");
 
 const checks = [];
@@ -37,9 +40,10 @@ const report = { at: new Date().toISOString(), previewUrl: PREVIEW_URL, workerUr
 const HOST = new URL(PREVIEW_URL).hostname;
 const onPreview = HOST.startsWith(`${PROJECT}--office-os-preview`) && /^https:\/\/iaqar-intake-os-preview\./.test(WORKER_URL);
 const onStaging = HOST === `${PROJECT}--staging-9c4b0k7h.web.app` && /^https:\/\/iaqar-intake-staging\./.test(WORKER_URL);
-if (!onPreview && !onStaging) throw new Error(`refusing: ${PREVIEW_URL} + ${WORKER_URL} is not preview or Staging`);
-const { serviceAccount } = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT);
-if (serviceAccount?.project_id !== PROJECT) throw new Error("refusing: service account is not Staging");
+const onProduction = ON_PRODUCTION && HOST === "iaqar.ai" && WORKER_URL === "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev";
+if (ON_PRODUCTION ? !onProduction : (!onPreview && !onStaging)) throw new Error(`refusing: ${PREVIEW_URL} + ${WORKER_URL} is not the allowed target`);
+const { serviceAccount } = parseFirebaseServiceAccountJson(ON_PRODUCTION ? process.env.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON : process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT);
+if (serviceAccount?.project_id !== PROJECT) throw new Error(`refusing: service account is not ${PROJECT}`);
 initializeApp({ credential: cert(serviceAccount), projectId: PROJECT });
 const db = getFirestore();
 const auth = getAuth();
@@ -47,7 +51,8 @@ const auth = getAuth();
 const sha = (v) => crypto.createHash("sha256").update(v).digest("hex");
 const phoneFor = () => `05999${String(crypto.randomInt(0, 99999)).padStart(5, "0")}`;
 const intl = (p) => `+966${p.slice(1)}`;
-const assertQa = (ref) => { if (!/^offices\/qa-office-os-preview(-b)?(\/|$)/.test(ref.path) && !ref.path.startsWith("replyLinks/")) throw new Error(`refusing path ${ref.path}`); return ref; };
+const QA_PATH = ON_PRODUCTION ? /^offices\/qa-office-os-pilot(-b)?(\/|$)/ : /^offices\/qa-office-os-preview(-b)?(\/|$)/;
+const assertQa = (ref) => { if (!QA_PATH.test(ref.path) && !ref.path.startsWith("replyLinks/")) throw new Error(`refusing path ${ref.path}`); return ref; };
 
 async function resetOffice(officeId, ownerUid, name, slug) {
   const office = assertQa(db.collection("offices").doc(officeId));
@@ -99,12 +104,12 @@ const mobile = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, lo
 try {
   const owner = await makeUser("owner", OFFICE); users.push(owner);
   const ownerB = await makeUser("ownerb", OFFICE_B); users.push(ownerB);
-  await resetOffice(OFFICE, owner.uid, "مكتب اختبار المعاينة", "qa-os-preview");
-  await resetOffice(OFFICE_B, ownerB.uid, "مكتب اختبار العزل", "qa-os-preview-b");
+  await resetOffice(OFFICE, owner.uid, "مكتب اختبار المعاينة", ON_PRODUCTION ? "qa-os-pilot" : "qa-os-preview");
+  await resetOffice(OFFICE_B, ownerB.uid, "مكتب اختبار العزل", ON_PRODUCTION ? "qa-os-pilot-b" : "qa-os-preview-b");
   const office = db.collection("offices").doc(OFFICE);
 
   const health = await (await fetch(`${WORKER_URL}/health`)).json();
-  check("preview Worker healthy on Staging project", health.backendReady === true && health.deploymentEnvironment === "staging", JSON.stringify({ projectId: health.projectId, env: health.deploymentEnvironment }));
+  check(`Worker healthy on ${PROJECT}`, health.backendReady === true && health.deploymentEnvironment === (ON_PRODUCTION ? "production" : "staging") && health.projectId === PROJECT, JSON.stringify({ projectId: health.projectId, env: health.deploymentEnvironment }));
 
   // 1 visitor → office link (no account)
   const visitorCtx = await browser.newContext(mobile);
@@ -410,6 +415,18 @@ try {
     await db.collection("offices").doc(u === users[0] ? OFFICE : OFFICE_B).collection("members").doc(u.uid).delete().catch(() => {});
   }
   await db.collection("offices").doc(OFFICE).collection("devices").doc(`qa-invalid-${RUN}`).delete().catch(() => {});
+  if (ON_PRODUCTION) {
+    // Production: the QA offices leave no trace (no public profile, no records, no links).
+    for (const id of [OFFICE, OFFICE_B]) {
+      const ref = assertQa(db.collection("offices").doc(id));
+      if ((await ref.get().catch(() => null))?.data()?.isTestFixture === true) await db.recursiveDelete(ref).catch((e) => check(`cleanup ${id}`, false, e.message));
+      const pub = db.collection("publicOffices").doc(id);
+      if ((await pub.get().catch(() => null))?.data()?.isTestFixture === true) await pub.delete().catch(() => {});
+      const links = await db.collection("replyLinks").where("officeId", "==", id).get().catch(() => ({ docs: [] }));
+      for (const d of links.docs) await d.ref.delete().catch(() => {});
+    }
+    check("production: QA offices removed after the run", !(await db.collection("offices").doc(OFFICE).get()).exists && !(await db.collection("publicOffices").doc(OFFICE).get()).exists);
+  }
   fs.writeFileSync(path.join(OUT, "live-report.json"), JSON.stringify(report, null, 2));
   const failed = checks.filter((c) => !c.ok);
   console.log(`\n${checks.length - failed.length}/${checks.length} live checks passed`);
