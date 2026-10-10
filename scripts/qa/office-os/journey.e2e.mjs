@@ -55,6 +55,8 @@ try {
   await visitor.getByText("مكتب سلطان العقاري").first().waitFor();
   await shot(visitor, "01-public-office");
   await visitor.getByRole("button", { name: /لدي عقار/ }).click();
+  // «تعبئة يدوية»: this journey fills the form field by field (the smart fill has its own test).
+  await visitor.locator('[data-fill-mode="manual"]').click();
   await visitor.getByRole("button", { name: "بيع" }).click();
   await visitor.fill('input[name="propertyType"]', "شقة");
   await visitor.fill('input[name="district"]', "الملقا");
@@ -87,6 +89,7 @@ try {
   await owner.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
   await owner.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await owner.getByRole("button", { name: "إضافة طلب", exact: true }).click();
+  await owner.locator('[data-fill-mode="manual"]').click();
   await owner.getByRole("button", { name: "شراء" }).click();
   await owner.fill('input[name="propertyType"]', "شقة");
   await owner.fill('input[name="district"]', "الملقا");

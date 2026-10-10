@@ -58,7 +58,7 @@ const NEW = [
   { name: "push link with only ?openDailyTask (match review) → review page", url: `/?officeId=${OFFICE_A}&openDailyTask=${s.reviewTaskId}`, expect: `#/review/${s.review.matchId}`, wait: "text=أسباب التوافق" },
   { name: "?openOpportunity → record page", url: `/?officeId=${OFFICE_A}&openOpportunity=${s.review.offerId}`, expect: `#/record/${s.review.offerId}`, wait: "text=تفاصيل السجل" },
   { name: "?openMatch → review page", url: `/?officeId=${OFFICE_A}&openMatch=${s.review.matchId}`, expect: `#/review/${s.review.matchId}`, wait: "text=أسباب التوافق" },
-  { name: "PWA shortcut ?open=add-opportunity → add form", url: "/?source=pwa&open=add-opportunity", expect: "#/record/new", wait: 'input[name="district"]' },
+  { name: "PWA shortcut ?open=add-opportunity → add form", url: "/?source=pwa&open=add-opportunity", expect: "#/record/new", wait: '[data-fill-mode="smart"]' },
   { name: "PWA shortcut ?open=operations → daily tasks", url: "/?source=pwa&open=operations", expect: "#/tasks", wait: ".ref-path" }
 ];
 for (const t of NEW) {

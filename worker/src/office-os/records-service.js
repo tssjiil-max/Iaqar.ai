@@ -11,6 +11,7 @@
  * archive. «استئناف / إعادة للنشطة» puts it back and re-runs matching. Nothing is deleted.
  */
 
+import { EXTERNAL_BROKER_PENDING, intakeOriginFrom } from "../../../public/os/domain/smart-fill-domain.js";
 import {
   LIFECYCLE, lifecycleOf, recordFields, recordFingerprint, validateRecordInput, kindOf
 } from "../../../public/os/domain/records-domain.js";
@@ -102,6 +103,12 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
       fields.commissionStatus = "NONE"; fields.commissionValue = 0;
       fields.matchingReadiness = "NEEDS_COMPLETION";
     }
+  }
+  // «إضافة سريعة»: the source, who wrote the ad and the original text (new records only; never changes an existing one).
+  const origin = existing ? null : intakeOriginFrom(input?.intakeOrigin, { now });
+  if (origin) {
+    fields.intakeOrigin = origin;
+    if (origin.role === "EXTERNAL_BROKER") Object.assign(fields, EXTERNAL_BROKER_PENDING);
   }
   await ctx.store.set(["offices", officeId, "opportunities", id], fields);
   await writeAudit(ctx, {

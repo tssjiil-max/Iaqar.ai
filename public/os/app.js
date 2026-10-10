@@ -20,6 +20,7 @@ import { renderAgent, renderAgentSettings, renderAgentTry } from "./views/agent.
 import { renderRepository } from "./views/repository.js";
 import { renderRecordDetail } from "./views/record-detail.js";
 import { renderRecordForm } from "./views/record-form.js";
+import { renderQuickAdd } from "./views/quick-add.js";
 import { renderReview } from "./views/review.js";
 import { renderWorkspace } from "./views/workspace.js";
 import { renderSession } from "./views/session-view.js";
@@ -54,6 +55,7 @@ function view() {
   if (section === "office") return { name: "office", main: true, run: renderOffice };
   if (section === "task" && id) return { name: "task", deal: true, run: (el) => renderTaskDetail(el, { taskId: id }) };
   if (section === "repo") return { name: "repo", main: true, run: (el) => renderRepository(el, { query }) };
+  if (section === "quick-add") return { name: "form", run: (el) => renderQuickAdd(el) };
   if (section === "record" && id === "new") return { name: "form", run: (el) => renderRecordForm(el, { kind: query.get("kind") || "OFFER" }) };
   if (section === "record" && sub === "edit") return { name: "form", run: (el) => renderRecordForm(el, { recordId: id }) };
   if (section === "record" && id) return { name: "record", run: (el) => renderRecordDetail(el, { recordId: id }) };

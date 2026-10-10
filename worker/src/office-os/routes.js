@@ -21,11 +21,14 @@ import { convertInboxMessage } from "./inbox-service.js";
 import { createOfficeTicket, supportStatus } from "./support-service.js";
 import { agentChat, agentHistory, agentStatus, agentSuggestions, runApprovedAction, saveAgentSettings } from "./agent-service.js";
 import { previewVisitor } from "./visitor-service.js";
+import { analyzeOfficeText, analyzePublicText } from "./smart-fill-service.js";
 import { applyAvailabilityAnswer, reactivateRecord, setRecordValidity, sweepValidityNow } from "./validity-service.js";
 import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker, linkBrokerWithTelegramLogin } from "./bot-service.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
+  // «تعبئة ذكية» on the office's public page: the text is analysed, nothing is saved.
+  "/os/public/smart-fill": (ctx, body, meta) => analyzePublicText(ctx, { officeId: body.officeId, text: typeof body.text === "string" ? body.text : "", ip: meta.ip }),
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),
   "/os/reply/submit": (ctx, body, meta) => submitReply(ctx, { token: body.token, optionId: body.optionId, text: body.text, submissionId: body.submissionId, ip: meta.ip }),
   "/os/session/view": (ctx, body, meta) => viewSession(ctx, { token: body.token, ip: meta.ip }),
@@ -37,6 +40,8 @@ const PUBLIC_ROUTES = Object.freeze({
 
 const OFFICE_ROUTES = Object.freeze({
   "/os/records/cooperation": (ctx, b, actor) => reviewExternalCooperation(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), input: b }),
+  // «تعبئة ذكية» / «إضافة سريعة»: analysis only — the record is saved later through /os/records/save after review.
+  "/os/smart-fill": (ctx, b, actor) => analyzeOfficeText(ctx, { officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", multi: b.multi !== false, ip: actor.uid }),
   "/os/records/save": (ctx, b, actor) => saveRecord(ctx, { actor, officeId: ctx.officeId, recordId: b.recordId, input: b.record || {}, requestKey: b.requestKey }),
   "/os/records/remove": (ctx, b, actor) => removeRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), reason: b.reason }),
   "/os/records/restore": (ctx, b, actor) => restoreRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),

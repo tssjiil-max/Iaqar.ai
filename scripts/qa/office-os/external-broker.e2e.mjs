@@ -11,6 +11,7 @@ try {
  for(const [kind,purpose,claim,idx] of [['owner','بيع','OWNER',1],['owner','إيجار','OWNER',2],['client','شراء','BUYER',3],['client','استئجار','TENANT',4]]) {
   await page.goto(h.origin+'/o/sultan');
   await page.getByRole('button',{name:kind==='owner'?'لدي عقار':'أبحث عن عقار',exact:false}).click();
+  await page.locator('[data-fill-mode="manual"]').click();
   assert.equal(await page.locator('input[name="contactPhone"]').count(),1);
   await page.locator('[name="submitterRole"]').selectOption('EXTERNAL_BROKER');
   await page.locator('[name="externalBrokerOffice"]').fill('مكتب تعاون مستقل');
@@ -29,6 +30,7 @@ try {
  assert.equal(h.store.list(`offices/${OFFICE_A}/members`).length,2);
  await page.goto(h.origin+'/o/sultan');
  await page.getByRole('button',{name:'لدي عقار',exact:false}).click();
+ await page.locator('[data-fill-mode="manual"]').click();
  assert.equal(await page.locator('[data-external-broker-fields]').isVisible(),false);
  assert.equal(await page.locator('input[name="contactPhone"]').count(),1);
  await page.addInitScript(([u,o])=>{localStorage.setItem('harness.uid',u);localStorage.setItem('iaqar.officeId',o);},[OWNER_A,OFFICE_A]);

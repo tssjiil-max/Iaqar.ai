@@ -19,6 +19,7 @@ import {
 import { AGENT_LANGUAGE_RULES } from "../../../public/os/domain/agent-domain.js";
 import { partyCommand } from "../../../public/os/domain/bot-domain.js";
 import { DURATION_OPTIONS } from "../../../public/os/domain/validity-domain.js";
+import { amountFrom, districtsFrom } from "../../../public/os/domain/smart-fill-domain.js";
 import { recordView, validateRecordInput } from "../../../public/os/domain/records-domain.js";
 import { whatsappDigits } from "../../../public/os/domain/format-domain.js";
 import { botOutboundConfig, botSettings, notifyOffice, partyKey, sendToChat } from "./bot-notify.js";
@@ -134,6 +135,12 @@ export async function handleVisitorCallback(ctx, query = {}) {
  */
 async function understand(ctx, { officeId, doc, draft, body, asked = "" }) {
   const rules = extractFacts(body, { expectNumber: asked });
+  // The shared «تعبئة ذكية» understanding fills what the chat rules missed: «مليونين»، «1.5 مليون»، several districts.
+  if (!rules.price && (asked === "price" || /مليون|ملايين|الف|ألف|ميزاني|سعر|ريال/.test(body))) { const amount = amountFrom(body); if (amount) rules.price = amount; }
+  if (!rules.district) {
+    const many = districtsFrom(body);
+    if (many.length) { rules.district = many[0]; if (many.length > 1) rules.notes = `أحياء مقبولة أيضًا: ${many.slice(1).join("، ")}`; }
+  }
   // The platform parser only fills gaps (never the city: a district must not become a city).
   const parsed = typeof ctx.deps.parseMessage === "function" ? (ctx.deps.parseMessage(body) || {}) : {};
   for (const key of ["propertyType", "price", "area", "rooms", "transactionType"]) if (rules[key] === undefined && parsed[key]) rules[key] = parsed[key];
