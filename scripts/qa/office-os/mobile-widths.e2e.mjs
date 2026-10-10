@@ -35,7 +35,7 @@ await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), 
 
 const SCREENS = [
   { name: "public-office", url: "/o/sultan", wait: "text=لدي عقار", auth: false },
-  { name: "public-form", url: "/o/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.getByRole("button", { name: /لدي عقار/ }).click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
+  { name: "public-form", url: "/o/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.getByRole("button", { name: /لدي عقار/ }).click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
   { name: "login", url: "/", wait: 'input[name="phone"]', auth: false },
   { name: "register", url: "/#/register", wait: "[data-broker-form]", auth: false },
   { name: "register-states", url: "/#/register", wait: "[data-broker-form]", auth: false, act: async (p) => { await p.fill('input[name="email"]', "x"); await p.fill('input[name="password"]', "short"); await p.fill('input[name="phone"]', "0512345678"); await p.locator('input[name="brokerName"]').focus(); await p.locator('[data-field="password"].invalid').waitFor(); } },

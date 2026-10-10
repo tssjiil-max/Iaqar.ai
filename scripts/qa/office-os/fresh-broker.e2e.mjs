@@ -119,6 +119,7 @@ try {
   await page.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
   await page.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await page.getByRole("button", { name: "إضافة عرض", exact: true }).click();
+  await page.locator('[data-fill-mode="manual"]').click();
   await page.getByRole("button", { name: "بيع" }).click();
   await page.fill('input[name="propertyType"]', "شقة");
   await page.fill('input[name="district"]', "الشاطئ");
@@ -136,6 +137,7 @@ try {
   await page.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
   await page.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await page.getByRole("button", { name: "إضافة طلب", exact: true }).click();
+  await page.locator('[data-fill-mode="manual"]').click();
   await page.getByRole("button", { name: "شراء" }).click();
   await page.fill('input[name="propertyType"]', "شقة");
   await page.fill('input[name="district"]', "الشاطئ");

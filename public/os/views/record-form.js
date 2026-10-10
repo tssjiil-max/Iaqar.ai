@@ -10,6 +10,9 @@ import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, kindOf, priceOf, validateRecordI
 import { formatNumber } from "../domain/format-domain.js";
 import { recordImages } from "../domain/record-media-domain.js";
 import { imagePicker } from "./record-images.js";
+import { FILL_MODE, INTAKE_CHANNELS, INTAKE_ROLES, notesWithDistricts, splitDistrictInput } from "../domain/smart-fill-domain.js";
+import { applyListing, fillModes } from "./smart-fill.js";
+import { URGENCY_LABEL } from "../domain/smart-fill-domain.js";
 import { DEFAULT_DURATION, DURATION, DURATION_OPTIONS, VALIDITY_HINT, customExpiry } from "../domain/validity-domain.js";
 
 /** «حالة السعر» for offers: the owner's decision, asked once here (default: قابل للتفاوض). */
@@ -47,13 +50,16 @@ export function validityField(values = {}, { isNew = true } = {}) {
     }
     return box;
   };
-  const urgentSeg = seg([{ id: "yes", label: "نعم، مستعجل" }, { id: "no", label: "لا، على راحتي" }], urgent, urgent.value);
+  // Urgency = priority of the follow-up only; the duration = how long the offer/request stays open. Two separate questions.
+  const urgentSeg = seg([{ id: "yes", label: URGENCY_LABEL.yes }, { id: "no", label: URGENCY_LABEL.no }], urgent, urgent.value);
   const durationSeg = seg(DURATION_OPTIONS, duration, current, (id) => { custom.hidden = id !== DURATION.CUSTOM; });
   return h("div", { class: "os-field os-validity", "data-validity": "" },
-    h("span", { text: "مدة العرض أو الطلب" }),
-    h("small", { class: "os-sub", text: "هل أنت مستعجل؟" }), urgentSeg,
-    h("small", { class: "os-sub", text: "كم تبي يستمر العرض أو الطلب؟" }), durationSeg, custom,
-    h("small", { class: "os-field-note", text: VALIDITY_HINT }),
+    h("div", { class: "os-validity-part", "data-urgency": "" },
+      h("span", { text: "درجة الاستعجال" }), urgentSeg,
+      h("small", { class: "os-field-note", text: "تحدد أولوية المتابعة فقط، ولا تغيّر مدة العرض أو الطلب." })),
+    h("div", { class: "os-validity-part", "data-duration": "" },
+      h("span", { text: "مدة العرض أو الطلب" }), durationSeg, custom,
+      h("small", { class: "os-field-note", text: VALIDITY_HINT })),
     h("span", { class: "os-error", role: "alert", "data-error": "validity" }),
     urgent, duration, touched);
 }
@@ -92,7 +98,7 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
     field("نوع العقار", h("div", {}, typeInput, types)),
     h("div", { class: "os-row2" },
       field("المدينة", h("input", { class: "os-input", name: "city", value: values.city || session.office?.city || "", autocomplete: "address-level2" })),
-      field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "اسم الحي" }))
+      field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "حي أو أكثر: الملقا، النرجس" }))
     ),
     priceLabel,
     priceStatusBox,
@@ -111,20 +117,27 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
   return { form, getKind: () => kind };
 }
 
+/** «إضافة سريعة» → the record form: one analysed ad waiting to be reviewed (kept in memory only). */
+let pendingDraft = null;
+export function openDraftInForm(draft) { pendingDraft = draft; }
+function takeDraft() { const d = pendingDraft; pendingDraft = null; return d; }
+
 export function readRecordForm(root, kind) {
   const value = (name) => root.querySelector(`[name="${name}"]`)?.value ?? "";
+  // Several districts in one box: the first is the record's district; the others stay in the description.
+  const districts = splitDistrictInput(value("district"));
   return {
     kind,
     purpose: value("purpose"),
     propertyType: value("propertyType"),
     city: value("city"),
-    district: value("district"),
+    district: districts.district,
     price: value("price"),
     area: value("area"),
     rooms: value("rooms"),
     contactName: value("contactName"),
     contactPhone: value("contactPhone"),
-    notes: value("notes"),
+    notes: notesWithDistricts(value("notes"), districts.others),
     priceStatus: value("priceStatus"),
     // Sent only for a new record or when the broker touched the duration (an edit keeps the current one).
     validity: value("validityTouched") ? { urgent: value("validityUrgent") === "yes", duration: value("validityDuration"), customDate: value("validityCustomDate") } : undefined
@@ -168,11 +181,42 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
       onKindChange: (k) => { titleEl.textContent = k === RECORD_KIND.REQUEST ? "إضافة طلب" : "إضافة عرض"; picker.el.hidden = k !== RECORD_KIND.OFFER; }
     });
     form.append(picker.el);
+    // New records: «تعبئة ذكية | تعبئة يدوية» above the same form (smart by default). Edits keep the form only.
+    const draft = existing ? null : takeDraft();
+    const originBox = h("div", { class: "os-row2 os-intake-origin", hidden: !draft, "data-intake-origin": "" },
+      field("مصدر البيانات", h("select", { class: "os-input", name: "intakeChannel" }, h("option", { value: "", text: "اختر" }), INTAKE_CHANNELS.map((c) => h("option", { value: c.id, text: c.label, selected: draft?.origin?.channel === c.id }))), { optional: true }),
+      field("صفة صاحب الإعلان", h("select", { class: "os-input", name: "intakeRole" }, INTAKE_ROLES.map((r) => h("option", { value: r.id, text: r.label, selected: (draft?.origin?.role || "OFFICE") === r.id }))), { hint: "إعلان الوسيط المتعاون لا يُعد تفويضًا ولا إثبات ملكية — يراجعه المكتب قبل التعاون." }));
+    let smartUsed = false;
+    const fill = existing ? null : fillModes({
+      formBox: form,
+      initialText: draft?.listing?.original || "",
+      analyze: (text) => (draft && text === draft.listing.original ? Promise.resolve({ ok: true, listings: [draft.listing] }) : api("/os/smart-fill", { officeId: session.officeId, text, multi: false })),
+      several: "النص فيه أكثر من إعلان — رتبنا الأول هنا. استخدم «إضافة سريعة» لإضافتها كلها.",
+      onListing: (listing) => {
+        smartUsed = true;
+        let notice = "";
+        if (listing.kind && listing.kind !== getKind()) {
+          form.querySelectorAll('[aria-label="نوع السجل"] button')[listing.kind === RECORD_KIND.OFFER ? 0 : 1]?.click();
+          notice = listing.kind === RECORD_KIND.REQUEST ? "النص طلب عقار — حوّلنا النموذج إلى «طلب»." : "النص عرض عقار — حوّلنا النموذج إلى «عرض».";
+        }
+        applyListing(form, listing, { officeCity: session.office?.city || "" });
+        const role = INTAKE_ROLES.find((r) => r.id === (formEl.querySelector('[name="intakeRole"]')?.value || ""));
+        return { notice, roleLabel: draft ? role?.label || "" : "المكتب", cityFromOffice: !listing.city && Boolean(session.office?.city) };
+      }
+    });
+    if (fill) form.prepend(originBox);
     const saveBtn = h("button", { type: "submit", class: "os-btn primary block" }, ic("check"), existing ? "حفظ التعديلات" : "حفظ وفحص المطابقات");
-    const formEl = h("form", { class: "os-card", novalidate: true }, form, h("div", { style: { marginTop: "14px" } }, saveBtn));
+    const formEl = h("form", { class: "os-card", novalidate: true }, fill ? fill.el : null, form, h("div", { class: "os-form-actions" }, saveBtn));
+    const syncSave = () => { saveBtn.closest(".os-form-actions").hidden = form.hidden; };
+    if (fill) new MutationObserver(syncSave).observe(form, { attributes: true, attributeFilter: ["hidden"] });
     formEl.addEventListener("submit", async (event) => {
       event.preventDefault();
       const input = readRecordForm(formEl, getKind());
+      if (fill) {
+        const channel = formEl.querySelector('[name="intakeChannel"]')?.value || "";
+        const role = draft ? formEl.querySelector('[name="intakeRole"]')?.value || "" : "";
+        input.intakeOrigin = { channel: channel || (smartUsed ? "PASTE" : ""), role: role === "OFFICE" ? "" : role, method: smartUsed ? "SMART_FILL" : "MANUAL", text: smartUsed ? fill.text() : "" };
+      }
       const local = validateRecordInput(input);
       if (input.validity?.duration === DURATION.CUSTOM && !customExpiry(input.validity.customDate)) local.errors.validity = "اختر تاريخًا صالحًا في المستقبل (خلال سنة)";
       if (!local.ok || local.errors.validity) { showRecordErrors(formEl, local.errors); return; }
@@ -194,18 +238,21 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
       else if (result.matchingPending) toast("تم الحفظ، وسيُستكمل فحص المطابقة تلقائيًا", "ok");
       else if (result.matches > 0) toast(result.matches === 1 ? "تم الحفظ — ظهرت مطابقة للمراجعة في المهام اليومية" : `تم الحفظ — ظهرت ${result.matches} مطابقات للمراجعة`, "ok");
       else if (!photos.failed) toast(existing ? "تم حفظ التعديلات" : "تم الحفظ — سيُعاد فحص السجل عند وصول بيانات مناسبة", "ok");
+      if (draft?.onSaved) { draft.onSaved(result.recordId, result.duplicate === true); go("quick-add"); return; }
       go(`record/${result.recordId}`);
     });
     clear(container);
     append(container, 
       h("div", { class: "os-page-head" },
-        h("button", { type: "button", class: "os-back", onClick: () => back(existing ? `record/${recordId}` : "repo") }, ic("chev-right"), "رجوع"),
+        h("button", { type: "button", class: "os-back", onClick: () => back(existing ? `record/${recordId}` : draft ? "quick-add" : "repo") }, ic("chev-right"), "رجوع"),
         titleEl, h("span")
       ),
       formEl
     );
   };
   mount();
+  // An ad handed over by «إضافة سريعة» is shown already analysed (no second call).
+  if (mounted) container.querySelector("[data-smart-box] textarea")?.value && container.querySelector("[data-smart-analyze]")?.click();
   if (!mounted) append(container, h("div", { class: "os-skeleton" }));
   const off = subscribe((k) => { if (k === "records") mount(); });
   return () => off();

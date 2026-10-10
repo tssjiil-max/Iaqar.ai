@@ -193,6 +193,7 @@ try {
   step = "8: property photos";
   await page.locator(".ref-add-record").click();
   await page.getByRole("button", { name: "إضافة عرض" }).click();
+  await page.locator('[data-fill-mode="manual"]').click();
   await page.locator("[data-photo-picker]").waitFor();
   await page.locator(".os-seg[aria-label='الغرض'] button", { hasText: "بيع" }).click();
   await page.fill('input[name="propertyType"]', "فيلا");
@@ -240,7 +241,7 @@ try {
   await page.locator("[data-gallery]").waitFor();
   const afterEdit = await until(() => { const r = h.store.get(`offices/${OFFICE_A}/opportunities/${newId}`); return r.imageCount === 1 ? r : null; }, "photo removed");
   check("removing a photo on edit updates the record and deletes the file", afterEdit.images[0].id === bigKey.id && afterEdit.coverUrl === bigKey.url && !h.env.IAQAR_MEDIA.keys().includes(savedRecord.images[0].path));
-  check("a request form has no photo picker", await (async () => { await go(page, "record/new?kind=REQUEST", 'input[name="price"]'); return page.locator("[data-photo-picker]").isHidden(); })());
+  check("a request form has no photo picker", await (async () => { await go(page, "record/new?kind=REQUEST", '[data-fill-mode="manual"]'); await page.locator('[data-fill-mode="manual"]').click(); return page.locator("[data-photo-picker]").isHidden(); })());
 
   // 7 — manage a record
   step = "7: record management";

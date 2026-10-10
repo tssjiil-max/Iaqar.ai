@@ -231,6 +231,9 @@ export function renderOffice(container){
         profileRow("pin", "", city)),
       h("div", { class: "ref-office-profile-logo" }, h("div", { class: "ref-office-logo-box" }, brokerAvatar(office) || officeLogo(office)))),
 
+    // «إضافة سريعة»: paste an ad (one or several) → review → save into this office.
+    h("button", { type: "button", class: "os-btn primary block ref-quick-add", "data-quick-add": "", onClick: () => go("quick-add") }, ic("sparkles"), "إضافة سريعة", h("small", { text: "الصق إعلانًا من واتساب أو تيليجرام" })),
+
     // Order (approved): office card → office tools → التعاون → مركز التواصل والدعم; the bottom bar stays fixed.
     h("section", { class: "os-card ref-office-section" },
       h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),

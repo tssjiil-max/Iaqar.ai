@@ -12,6 +12,8 @@ import { priceStatusField, validityField } from "./record-form.js";
 import { buildWhatsAppUrl, cleanText, formatNumber, localPhone, toNumber } from "../domain/format-domain.js";
 import { imagePicker } from "./record-images.js";
 import { EXTERNAL_BROKER, externalBrokerClaim } from "../domain/external-broker-domain.js";
+import { normalizeAnalysis, notesWithDistricts, splitDistrictInput } from "../domain/smart-fill-domain.js";
+import { applyListing, fillModes } from "./smart-fill.js";
 
 export function publicOfficeTarget() {
   const path = location.pathname;
@@ -73,7 +75,17 @@ function successView(root, office, kind) {
       wa ? h("a", { class: "os-btn whatsapp", href: wa, target: "_blank", rel: "noopener", style: { marginTop: "10px" } }, ic("whatsapp"), "تواصل مع المكتب") : null)));
 }
 
-function intakeForm(root, office, kind) {
+async function analyzePublic(office, text) {
+  let response = null;
+  try {
+    response = await fetch(`${workerBase()}/os/public/smart-fill`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ officeId: office.id, text }) });
+  } catch (_) { throw new Error("تعذر الاتصال بالخادم"); }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.ok === false) throw new Error(body.message || "تعذر التحليل الآن");
+  return normalizeAnalysis(body);
+}
+
+function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
   const recordKind = kind === "owner" ? RECORD_KIND.OFFER : RECORD_KIND.REQUEST;
   let purpose = "";
   const purposeSeg = h("div", { class: "os-seg", role: "group", "aria-label": "الغرض" });
@@ -105,14 +117,13 @@ function intakeForm(root, office, kind) {
   const picker = kind === "owner" ? imagePicker({ max: 5, hint: "حتى 5 صور للعقار. تُصغَّر تلقائيًا قبل الإرسال." }) : null;
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("send"), "إرسال");
   const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
-  const form = h("form", { class: "os-card", novalidate: true },
-    h("div", { class: "os-form" },
+  const fields = h("div", { class: "os-form" },
       field("صفة مقدم المشاركة", role), brokerFields,
       h("div", { class: "os-field" }, h("span", { text: kind === "owner" ? "ماذا تريد لعقارك؟" : "ماذا تبحث عنه؟" }), purposeSeg, hidden, h("span", { class: "os-error", role: "alert" })),
       field("نوع العقار", h("div", {}, h("input", { class: "os-input", name: "propertyType", list: "pub-types", autocomplete: "off", placeholder: "شقة، فيلا، أرض…" }), h("datalist", { id: "pub-types" }, PROPERTY_TYPES.map((t) => h("option", { value: t }))))),
       h("div", { class: "os-row2" },
         field("المدينة", h("input", { class: "os-input", name: "city", value: office.city || "" })),
-        field("الحي", h("input", { class: "os-input", name: "district" }))),
+        field("الحي", h("input", { class: "os-input", name: "district", placeholder: "حي أو أكثر: الملقا، النرجس" }))),
       field(kind === "owner" ? "السعر المطلوب (ريال)" : "الميزانية (ريال)", price),
       kind === "owner" ? priceStatusField() : null,
       h("div", { class: "os-row2" },
@@ -124,7 +135,28 @@ function intakeForm(root, office, kind) {
       field("الاسم الكامل", h("input", { class: "os-input", name: "contactName", autocomplete: "name", placeholder: "الاسم الأول واسم العائلة" })),
       field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" })),
       status, submit,
-      h("p", { class: "os-sub", style: { fontSize: ".84rem", textAlign: "center" }, text: "لا تحتاج إنشاء حساب. تصل بياناتك إلى هذا المكتب فقط." })));
+      h("p", { class: "os-sub os-public-privacy", text: "لا تحتاج إنشاء حساب. تصل بياناتك إلى هذا المكتب فقط، وتراجعها قبل الإرسال." }));
+  let smartUsed = false;
+  // «تعبئة ذكية | تعبئة يدوية» above the same form (smart by default; switching keeps everything).
+  const fill = fillModes({
+    formBox: fields,
+    initialText: carry?.text || "",
+    intro: carry?.notice || "",
+    analyze: (text) => analyzePublic(office, text),
+    several: "النص فيه أكثر من إعلان — رتبنا الأول. أرسل كل عرض أو طلب على حدة.",
+    onListing: (listing) => {
+      const wanted = listing.kind === "OFFER" ? "owner" : listing.kind === "REQUEST" ? "client" : "";
+      if (wanted && wanted !== kind && switchKind) {
+        // The text is a request on «لدي عقار» (or the reverse): open the right path with the same text.
+        switchKind(wanted, { text: fill.text(), notice: wanted === "client" ? "النص طلب عقار — نقلناك إلى «أبحث عن عقار»." : "النص عرض عقار — نقلناك إلى «لدي عقار»." });
+        return { abort: true };
+      }
+      smartUsed = true;
+      applyListing(fields, listing, { officeCity: office.city || "" });
+      return { roleLabel: role.options[role.selectedIndex]?.text || "", cityFromOffice: !listing.city && Boolean(office.city) };
+    }
+  });
+  const form = h("form", { class: "os-card", novalidate: true }, fill.el, fields);
   let submissionRef = null;
   let intakeStored = false;
   form.addEventListener("submit", async (event) => {
@@ -132,7 +164,8 @@ function intakeForm(root, office, kind) {
     status.hidden = true;
     clearFieldErrors(form);
     const value = (name) => form.querySelector(`[name="${name}"]`)?.value ?? "";
-    const input = { kind: recordKind, purpose, propertyType: value("propertyType"), city: value("city"), district: value("district"), price: value("price"), priceStatus: value("priceStatus"), area: value("area"), rooms: value("rooms"), contactName: value("contactName"), contactPhone: value("contactPhone"), notes: value("notes") };
+    const districts = splitDistrictInput(value("district"));
+    const input = { kind: recordKind, purpose, propertyType: value("propertyType"), city: value("city"), district: districts.district, price: value("price"), priceStatus: value("priceStatus"), area: value("area"), rooms: value("rooms"), contactName: value("contactName"), contactPhone: value("contactPhone"), notes: notesWithDistricts(value("notes"), districts.others) };
     const check = validateRecordInput(input, { requireName: true });
     const claim = externalBrokerClaim({ kind, submitterRole: role.value, externalBrokerOffice: value("externalBrokerOffice"), externalBrokerLicense: value("externalBrokerLicense"), representationClaim: value("representationClaim"), representationReference: value("representationReference") });
     Object.assign(check.errors, claim.errors);
@@ -173,6 +206,7 @@ function intakeForm(root, office, kind) {
         imageCount: mediaPaths.length,
         hasVideo: false,
         source: "office_public_link",
+        fillMethod: smartUsed ? "SMART_FILL" : "MANUAL",
         status: "new",
         // «مدة العرض أو الطلب» (optional for older clients of this page): the server applies it to the record.
         validityDuration: value("validityDuration") || "",
@@ -210,15 +244,16 @@ export async function renderPublicOffice(root, target) {
     return;
   }
   document.title = office.officeName || "المكتب العقاري";
-  const choose = (kind) => {
+  const choose = (kind, carry = null) => {
     clear(main);
     append(main, 
       h("div", { class: "os-page-head" },
         h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"),
         h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), h("span")),
       h("p", { class: "os-sub", style: { textAlign: "center", marginBottom: "10px" }, text: office.officeName || "" }),
-      intakeForm(root, office, kind));
+      intakeForm(root, office, kind, { switchKind: choose, carry }));
     window.scrollTo({ top: 0 });
+    if (carry?.text) main.querySelector("[data-smart-analyze]")?.click();
   };
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}`);
   const path = (kind, iconName, title, sub) => h("button", { type: "button", class: "os-path-card", "data-path": kind, onClick: () => choose(kind) },
@@ -232,7 +267,8 @@ export async function renderPublicOffice(root, target) {
     h("div", { class: "os-paths" },
       path("owner", "home", "لدي عقار", "للبيع أو الإيجار"),
       path("client", "search", "أبحث عن عقار", "للشراء أو الاستئجار")),
-    h("p", { class: "os-public-coop", "data-coop-hint": "" }, ic("handshake"), " وسيط عقاري متعاون؟ اختر المسار المناسب ثم «وسيط عقاري متعاون»."),
+    h("p", { class: "os-public-trust", "data-public-trust": "" }, "بدون حساب · تصل بياناتك لهذا المكتب فقط · تراجعها قبل الإرسال"),
+    h("p", { class: "os-public-coop", "data-coop-hint": "" }, ic("handshake"), " وسيط متعاون؟ اختر المسار ثم صفتك «وسيط عقاري متعاون»."),
     (office.phone || wa) ? h("div", { class: "os-public-contact" },
       wa ? h("a", { class: "os-btn primary", href: wa, target: "_blank", rel: "noopener", "data-contact": "whatsapp" }, ic("whatsapp"), "واتساب المكتب") : null,
       office.phone ? h("a", { class: "os-btn secondary", href: `tel:${localPhone(office.phone) || office.phone}`, "data-contact": "call" }, ic("phone"), "اتصال") : null) : null,
