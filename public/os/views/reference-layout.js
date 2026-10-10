@@ -233,7 +233,8 @@ export function renderOffice(container){
     h("section", { class: "os-card ref-office-section" },
       h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
       agentCard(),
-      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard))),
+      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard),
+        h("button", { type: "button", class: "ref-office-tool", "data-marketing-entry": "", onClick: () => go("tools/marketing") }, h("span", { class: "ref-office-tool-icon" }, ic("chart-up")), h("strong", { text: "مدير التسويق" })))),
 
     h("section", { class: "os-card ref-office-section" },
       h("button", { type: "button", class: "os-home-community", "data-community-entry": "", onClick: () => go("community") },

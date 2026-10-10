@@ -4,6 +4,7 @@
  * Public routes (reply page): token-scoped, rate-limited, no account.
  */
 
+import { marketingAction } from "./marketing-service.js";
 import { createStore } from "./store.js";
 import { resolveActor } from "./permissions.js";
 import { findCandidates, holdRecord, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
@@ -35,6 +36,7 @@ const PUBLIC_ROUTES = Object.freeze({
 });
 
 const OFFICE_ROUTES = Object.freeze({
+  "/os/marketing": (ctx, body, actor) => marketingAction(ctx, body, actor),
   "/os/records/save": (ctx, b, actor) => saveRecord(ctx, { actor, officeId: ctx.officeId, recordId: b.recordId, input: b.record || {}, requestKey: b.requestKey }),
   "/os/records/remove": (ctx, b, actor) => removeRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), reason: b.reason }),
   "/os/records/restore": (ctx, b, actor) => restoreRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),
@@ -129,7 +131,16 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
   if (request.method !== "POST") {
     return deps.jsonResponse({ ok: false, error: "method_not_allowed", requestId }, 405);
   }
-  const body = await request.json().catch(() => ({}));
+  let body;
+  if(url.pathname==='/os/marketing') {
+    if(env.DEPLOYMENT_ENV!=='staging')return deps.jsonResponse({ok:false,error:'marketing_staging_only',message:'مدير التسويق متاح في النسخة التجريبية فقط'},403);
+    if(!/^Bearer\s+\S+/.test(request.headers.get('authorization')||''))return deps.jsonResponse({ok:false,error:'authentication_required',message:'سجل دخول المكتب أولًا'},401);
+    try {
+      const reader=request.body?.getReader();let bytes=0;let raw='';const decoder=new TextDecoder();
+      if(reader)for(;;){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>16384){await reader.cancel();return deps.jsonResponse({ok:false,error:'request_too_large',message:'طلب التسويق كبير جدًا'},413);}raw+=decoder.decode(part.value,{stream:true});}
+      raw+=decoder.decode();body=JSON.parse(raw);if(!body||typeof body!=='object'||Array.isArray(body))throw new Error('invalid');
+    }catch{return deps.jsonResponse({ok:false,error:'invalid_body',message:'بيانات التسويق غير صالحة'},400);}
+  }else body = await request.json().catch(() => ({}));
   const meta = { ip: String(request.headers.get("CF-Connecting-IP") || "unknown").slice(0, 80) };
   const makeCtx = async (officeId) => {
     deps.assertFirebaseSecrets(env);
@@ -140,6 +151,7 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
       deps: boundDeps,
       store: createStore(boundDeps, { projectId, accessToken }),
       officeId,
+      workerOrigin: url.origin,
       // Server-side configuration only (which integrations are set up); never returned to a client as is.
       env,
       appOrigin: deps.resolveAppOrigin(env),

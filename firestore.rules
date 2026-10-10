@@ -45,7 +45,7 @@ service cloud.firestore {
         // بوت المكتب: مفتاح التشغيل وأسئلة المطابقة — للـ Worker فقط (المدير يغيّر المفتاح عبر الـ Worker).
         'botSettings', 'matchAsks',
         // مدير المكتب الذكي — للـ Worker فقط.
-        'agentSettings', 'agentChats', 'agentStats', 'agentPreview'
+        'agentSettings', 'agentChats', 'agentStats', 'agentPreview', 'marketingState'
       ];
     }
     function validOfficeProfile() {
@@ -398,6 +398,11 @@ service cloud.firestore {
           && request.resource.data.fullName is string
           && request.resource.data.fullName.size() <= 120;
         allow delete: if canManage(officeId);
+      }
+
+      // التسويق: جميع الأذونات والاعتماد عبر Worker، لا كتابة مباشرة حتى للمدير.
+      match /marketingState/{documentId} {
+        allow read, write: if false;
       }
 
       // القاعدة العامة تستثني المجموعات أعلاه: قواعد Firestore تُجمع ولا تُضيّق،
