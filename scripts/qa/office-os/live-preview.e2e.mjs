@@ -111,6 +111,29 @@ try {
   const health = await (await fetch(`${WORKER_URL}/health`)).json();
   check(`Worker healthy on ${PROJECT}`, health.backendReady === true && health.deploymentEnvironment === (ON_PRODUCTION ? "production" : "staging") && health.projectId === PROJECT, JSON.stringify({ projectId: health.projectId, env: health.deploymentEnvironment }));
 
+  // 0 «تعبئة ذكية»: the central analysis on this Worker, and the same in the browser (nothing submitted)
+  const smartText = "مطلوب عمارة في شوران أو الهجرة أو الرانوناء، الميزانية مليونين، شراء، مستعجل.";
+  const smart = await (await fetch(`${WORKER_URL}/os/public/smart-fill`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ officeId: OFFICE, text: smartText }) })).json().catch(() => ({}));
+  const sl = smart?.listings?.[0] || {};
+  check("live: «تعبئة ذكية» on the Worker — request, عمارة, 3 districts, 2,000,000, شراء, مستعجل, no city invented",
+    smart.ok === true && sl.kind === "REQUEST" && sl.purpose === "PURCHASE" && sl.propertyType === "عمارة" && (sl.districts || []).join("،") === "شوران،الهجرة،الرانوناء" && sl.price === 2000000 && sl.urgent === true && sl.city === "",
+    JSON.stringify({ engine: smart.engine, ai: smart.ai, aiStatus: smart.aiStatus, missing: sl.missing }));
+  report.smartFill = { engine: smart.engine || "", ai: smart.ai || "", aiStatus: smart.aiStatus || "" };
+  {
+    const ctx0 = await browser.newContext(mobile);
+    const p0 = await ctx0.newPage();
+    p0.setDefaultTimeout(30000);
+    await p0.goto(`${PREVIEW_URL}/?office=${OFFICE}&view=public`);
+    await p0.getByRole("button", { name: /لدي عقار/ }).click();
+    await p0.locator('[name="smartText"]').fill(smartText);
+    await p0.locator("[data-smart-analyze]").click();
+    await p0.locator("[data-smart-review]").waitFor();
+    const filled = { title: await p0.locator("h1.os-page-title").textContent(), type: await p0.locator('[name="propertyType"]').inputValue(), district: await p0.locator('[name="district"]').inputValue(), urgent: await p0.locator('[data-validity-option="yes"]').getAttribute("aria-pressed"), oldLabel: await p0.getByText("على راحتي").count() };
+    check("live: «تعبئة ذكية» in the browser — moved to «أبحث عن عقار», fields filled, «غير مستعجل» label", filled.title === "أبحث عن عقار" && filled.type === "عمارة" && filled.district === "شوران، الهجرة، الرانوناء" && filled.urgent === "true" && filled.oldLabel === 0, JSON.stringify(filled));
+    await shot(p0, "00-smart-fill-review");
+    await ctx0.close();
+  }
+
   // 1 visitor → office link (no account)
   const visitorCtx = await browser.newContext(mobile);
   const visitor = await visitorCtx.newPage();
