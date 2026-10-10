@@ -9,7 +9,7 @@
  */
 import crypto from "node:crypto";
 import { initializeApp, cert } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
 
 const PROJECT = "iaqar-ai-staging";
@@ -33,11 +33,11 @@ if (!snap.exists) {
   await office.set({
     officeId: OFFICE, officeName: "مكتب تجربة واتساب (Kapso)", officeNameKey: "qaofficekapso", brokerName: "وسيط التجربة", licenseNumber: "",
     city: "المدينة المنورة", phone: "", ownerUid: ownerUid || "kapso-sandbox-owner", active: true, isTestFixture: true, createdBy: "kapso-setup",
-    specialties: ["sale", "rent"], platformOpportunityOnboardingAckAt: FieldValue.serverTimestamp(), createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
+    specialties: ["sale", "rent"], platformOpportunityOnboardingAckAt: new Date(), createdAt: new Date(), updatedAt: new Date()
   });
 }
 if (ownerUid) {
-  await office.set({ ownerUid, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  await office.set({ ownerUid, updatedAt: new Date() }, { merge: true });
   await office.collection("members").doc(ownerUid).set({ uid: ownerUid, role: "owner", active: true, isTestFixture: true, addedBy: "kapso-setup" }, { merge: true });
 }
 note("Kapso test office", `${OFFICE} ${snap.exists ? "kept" : "created"} · owner's Staging account linked: ${ownerUid ? "yes" : "no (not found)"}`);
