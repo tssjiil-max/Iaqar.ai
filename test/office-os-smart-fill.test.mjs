@@ -99,3 +99,12 @@ test("intake origin: known values only; an external broker is a claim", () => {
   assert.deepEqual(o, { channel: "WHATSAPP", role: "EXTERNAL_BROKER", method: "SMART_FILL", originalText: "نص", at: "2026-10-10T00:00:00.000Z" });
   assert.equal(intakeOriginFrom({ channel: "EVIL", role: "ADMIN" }), null);
 });
+
+test("compound amounts and «بالحي»", async () => {
+  const { amountFrom: a, analyzeListing } = await import("../public/os/domain/smart-fill-domain.js");
+  assert.equal(a("السعر مليون و900 ألف"), 1_900_000);
+  assert.equal(a("2 مليون و500 ألف"), 2_500_000);
+  const l = analyzeListing("مطلوب عمارة بالهجرة أو شوران، الميزانية 2 مليون، مستعجل، التواصل واتساب.");
+  assert.deepEqual([l.kind, l.purpose, l.districts.join("،"), l.price, l.urgent], ["REQUEST", "PURCHASE", "الهجرة،شوران", 2_000_000, true]);
+  assert.deepEqual(analyzeListing("عندي عمارة للبيع في الهجرة، مساحتها 600 متر").districts, ["الهجرة"]);
+});

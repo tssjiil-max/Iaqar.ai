@@ -52,6 +52,14 @@ export function amountFrom(raw = "") {
   const text = norm(toLatinDigits(raw)).replace(/(\d),(?=\d{3}\b)/g, "$1");
   const clean = text.replace(/(?:\+?966|00966)?0?5\d{8}/g, " ");
   const candidates = [];
+  // Compound amounts first: «مليون و900 ألف»، «2 مليون و500 ألف»، «مليونين و300 الف».
+  const compound = /(?:(\d+(?:\.\d+)?)\s*(?:مليون|ملايين)|(مليونين|مليونان)|(?:^|[\s،,]|ب)(مليون))\s*و\s*(\d+)\s*(?:الف|الاف)/;
+  const c = clean.match(compound);
+  if (c) {
+    const millions = c[1] ? Number(c[1]) : c[2] ? 2 : 1;
+    const value = Math.round(millions * 1_000_000 + Number(c[4]) * 1000);
+    if (value > 0) return value <= 10_000_000_000 ? value : 0;
+  }
   const unitRe = /(\d+(?:\.\d+)?)\s*(مليون|ملايين|الف|الاف|k|m)(?![a-zء-ي])/gi;
   for (const m of clean.matchAll(unitRe)) {
     const n = Number(m[1]);
@@ -116,7 +124,8 @@ const CITY_NORMS = CITIES.map(norm);
 const CITY_ALIASES = { "المدينه": "المدينة المنورة", "المدينه المنوره": "المدينة المنورة", "مكه": "مكة المكرمة", "جده": "جدة" };
 const TYPE_WORDS = /^(عقار|عقارات|شقه|شقق|فيلا|فله|فيلل|دوبلكس|ارض|اراضي|عماره|عمائر|محل|محلات|مكتب|استراحه|مستودع|غرفه|ملحق|بيت|منزل|قصر|مزرعه|شاليه)$/;
 
-const isStop = (word) => STOP_WORDS.has(word) || STOP_WORDS.has(norm(word)) || /\d/.test(word) || TYPE_WORDS.test(norm(word));
+const STOP_PREFIX = /^(مساح|سعر|بسعر|السعر|ميزاني|الميزاني|بميزاني|تواصل|التواصل|للتواصل|واتس|الواتس|جوال|الجوال|كامل|الكامل|التقسيط|تقسيط|التمويل|الكاش|السوم|الشهر|السنه|اليوم|الاتفاق|التفاوض|مستعجل|عاجل|ضروري|غرف|صال|دور|حمام|مطبخ)/;
+const isStop = (word) => STOP_WORDS.has(word) || STOP_WORDS.has(norm(word)) || STOP_PREFIX.test(norm(word)) || /\d/.test(word) || TYPE_WORDS.test(norm(word));
 const isCityWord = (word) => CITY_NORMS.includes(norm(word)) || Boolean(CITY_ALIASES[norm(word)]) || CITY_NORMS.some((c) => c.startsWith(`${norm(word)} `));
 
 function readNameAt(tokens, i) {
@@ -125,7 +134,8 @@ function readNameAt(tokens, i) {
 }
 
 export function districtsFrom(raw = "") {
-  const tokens = toLatinDigits(raw).replace(/[.!؟?()«»"]/g, " ").replace(/[،,\/]/g, " ، ").replace(/\s+و(?=\S)/g, " و ").split(/\s+/).filter(Boolean);
+  // «بالهجرة» = «في الهجرة» (a city such as «بالرياض» is still read as the city, never as a district).
+  const tokens = toLatinDigits(raw).replace(/(^|\s)بال(?=[\u0621-\u064A]{2,})/g, "$1في ال").replace(/[.!؟?()«»"]/g, " ").replace(/[،,\/]/g, " ، ").replace(/\s+و(?=\S)/g, " و ").split(/\s+/).filter(Boolean);
   const out = [];
   const add = (name) => {
     const clean = name.replace(/^حي\s+/, "").trim();
@@ -233,9 +243,13 @@ export function analyzeListing(raw = "") {
   if (!districts.length && facts.district && !isCityWord(facts.district)) districts.push(facts.district);
   const features = [...detailLines(facts)];
   for (const [re, label] of FEATURES) { const m = norm(text).match(re); if (m && !features.includes(label(m))) features.push(label(m)); }
+  // A request with a written budget in the hundreds of thousands or more and no rent word reads as a purchase
+  // (shown in the review and confirmed by the person, never saved on its own).
+  const budget = amountFrom(text) || facts.price || 0;
+  const impliedPurchase = kind === "REQUEST" && budget >= 500_000 && /ميزاني|حدود/.test(norm(text)) && !/(ايجار|استئجار|استاجر|تاجير|سنوي|شهري)/.test(norm(text)) ? "PURCHASE" : "";
   const listing = normalizeListing({
     kind,
-    purpose: purposeFrom(text, kind) || (kind && facts.transactionType ? (kind === "OFFER" ? (facts.transactionType === "rent" ? "RENT" : "SALE") : (facts.transactionType === "rent" ? "LEASE_REQUEST" : "PURCHASE")) : ""),
+    purpose: purposeFrom(text, kind) || impliedPurchase || (kind && facts.transactionType ? (kind === "OFFER" ? (facts.transactionType === "rent" ? "RENT" : "SALE") : (facts.transactionType === "rent" ? "LEASE_REQUEST" : "PURCHASE")) : ""),
     propertyType: facts.propertyType || "",
     city: facts.city || "",
     districts,

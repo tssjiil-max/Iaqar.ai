@@ -136,6 +136,25 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
   fi
 )
 
+# Kapso WhatsApp Sandbox (optional, Staging only). Without the webhook secret the endpoint answers 503 to everything.
+(
+  cd worker
+  if [[ -n "${KAPSO_WEBHOOK_SECRET:-}" ]]; then
+    CURRENT_STAGE="wrangler-secret-kapso-webhook"
+    printf '%s' "$KAPSO_WEBHOOK_SECRET" | tr -d '\r\n' | npx wrangler secret put KAPSO_WEBHOOK_SECRET --env staging # // pragma: allowlist secret
+    echo "::notice title=Kapso Sandbox (Staging)::KAPSO_WEBHOOK_SECRET synced (value not printed)."
+  else
+    echo "::notice title=Kapso Sandbox (Staging)::KAPSO_WEBHOOK_SECRET_STAGING not set — /integrations/kapso/webhook answers 503 until it is."
+  fi
+  if [[ -n "${KAPSO_API_KEY:-}" ]]; then
+    CURRENT_STAGE="wrangler-secret-kapso-api"
+    printf '%s' "$KAPSO_API_KEY" | tr -d '\r\n' | npx wrangler secret put KAPSO_API_KEY --env staging # // pragma: allowlist secret
+    echo "::notice title=Kapso Sandbox (Staging)::KAPSO_API_KEY synced (value not printed) — replies go back to the sandbox sender."
+  else
+    echo "::notice title=Kapso Sandbox (Staging)::KAPSO_API_KEY_STAGING not set — messages are received and saved, replies are not sent."
+  fi
+)
+
 # «قنوات المكتب» — the platform's Telegram bot (optional). Staging only; the bot only receives.
 # A problem here never fails the deploy: the screen keeps saying «بوت المنصة غير مفعّل».
 TELEGRAM_READY=""

@@ -52,7 +52,8 @@ import {
   applyOperationLifecycle
 } from "./operations-domain.js";
 import webpush from "web-push";
-import { handleOfficeOs, isOfficeOsPath } from "./office-os/routes.js";
+import { handleOfficeOs, isOfficeOsPath, officeOsContext } from "./office-os/routes.js";
+import { handleKapsoWebhook } from "./office-os/kapso-service.js";
 import { isPublicRecordImagePath, promoteIntakeImages, servePublicRecordImage, uploadRecordImage, workerOriginOf } from "./office-os/record-media-service.js";
 import { callGeminiGenerateContent } from "./gemini-api-client.mjs";
 import { journeyIdForPair } from "./office-os/journey-service.js";
@@ -436,6 +437,13 @@ export default {
     try {
       if (request.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders() });
+      }
+
+      // Kapso WhatsApp Sandbox (Staging only, signed, one configured test office). Production answers 503.
+      if (request.method === "POST" && url.pathname === "/integrations/kapso/webhook") {
+        const raw = await request.text();
+        const result = await handleKapsoWebhook({ raw, headers: request.headers, env, makeCtx: (officeId) => officeOsContext(env, officeOsDeps(), officeId) });
+        return jsonResponse({ ...result.body, requestId }, result.status);
       }
 
       // Office OS (new office experience). Registered before the outbound-send guard
