@@ -33,7 +33,6 @@ jobs:
       FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON || secrets.FIREBASE_SERVICE_ACCOUNT_JSON_PRODUCTION }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_PRODUCTION || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      OUT_DIR: ${{ runner.temp }}/production-pilot
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,6 +60,8 @@ jobs:
             [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ] || { echo "::error title=missing secret::Cloudflare token/account for the production Worker"; exit 1; }
           fi
           git checkout -q "$PARENT"
+          echo "OUT_DIR=$RUNNER_TEMP/production-pilot" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/production-pilot"
           echo "MODE=$MODE" >> "$GITHUB_ENV"
           echo "sha=$PARENT" >> "$GITHUB_ENV"
           echo "::notice title=production pilot::$MODE · commit $SHORT"
