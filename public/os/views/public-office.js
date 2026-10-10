@@ -38,16 +38,27 @@ async function resolveOffice(target) {
   return { id: doc.id, ...doc.data() };
 }
 
+const PLATFORM_LOGO = "/icons/iaqar-logo.png";
+
+/** The office logo, or — when there is none or its file is gone — the platform mark (never a broken image). */
+function officeLogoImage(office) {
+  const fallback = () => h("img", { src: PLATFORM_LOGO, alt: "", class: "os-site-logo" });
+  if (!/^https:\/\//.test(String(office.logoUrl || ""))) return fallback();
+  const img = h("img", { src: office.logoUrl, alt: `شعار ${office.officeName || "المكتب"}` });
+  img.addEventListener("error", () => img.replaceWith(fallback()), { once: true });
+  return img;
+}
+
 function officeHeader(office) {
-  const logo = /^https:\/\//.test(String(office.logoUrl || "")) ? h("img", { src: office.logoUrl, alt: `شعار ${office.officeName || "المكتب"}` }) : h("img", { src: "/icons/iaqar-logo.png", alt: "iAqar.ai", class: "os-site-logo" });
   return h("div", { class: "os-public-hero" },
-    h("div", { class: "os-public-logo" }, logo),
+    h("div", { class: "os-public-logo" }, officeLogoImage(office)),
     h("h1", { class: "os-public-title", text: office.officeName || "المكتب العقاري" }),
     h("div", { class: "os-public-rule" }),
-    h("div", { class: "os-license" },
-      office.brokerName ? h("span", {}, ic("user"), ` الوسيط: ${office.brokerName}`) : null,
-      office.licenseNumber ? h("span", {}, ic("shield"), ` رخصة فال: ${office.licenseNumber}`) : null,
-      office.city ? h("span", {}, ic("pin"), ` ${office.city}`) : null));
+    h("div", { class: "os-license", "data-office-facts": "" },
+      office.city ? h("span", {}, ic("pin"), ` ${office.city}`) : null,
+      office.brokerName ? h("span", {}, ic("user"), ` ${office.brokerName}`) : null),
+    // The licence number as the office entered it — information, not a verification badge.
+    office.licenseNumber ? h("span", { class: "os-public-license", "data-office-license": "" }, ic("license"), ` رخصة فال ${office.licenseNumber}`) : null);
 }
 
 function successView(root, office, kind) {
@@ -210,18 +221,23 @@ export async function renderPublicOffice(root, target) {
     window.scrollTo({ top: 0 });
   };
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}`);
-  append(main, 
+  const path = (kind, iconName, title, sub) => h("button", { type: "button", class: "os-path-card", "data-path": kind, onClick: () => choose(kind) },
+    h("span", { class: "ic" }, ic(iconName)),
+    h("span", { class: "os-path-text" }, h("b", { text: title }), h("small", { text: sub })),
+    h("span", { class: "os-path-go", "aria-hidden": "true" }, ic("chev-left")));
+  main.classList.add("os-public-page");
+  append(main,
     officeHeader(office),
-    h("p", { class: "os-sub", style: { textAlign: "center" }, text: "سجّل عقارك أو طلبك مباشرة، وسيتواصل معك الوسيط المرخّص." }),
+    h("p", { class: "os-public-tagline", text: "عقارك وطلبك في المكان الصحيح. تواصل مباشرة مع المكتب العقاري." }),
     h("div", { class: "os-paths" },
-      h("button", { type: "button", class: "os-path-card", onClick: () => choose("owner") }, h("span", { class: "ic" }, ic("home")), "لدي عقار", h("small", { text: "للبيع أو الإيجار" })),
-      h("button", { type: "button", class: "os-path-card", onClick: () => choose("client") }, h("span", { class: "ic" }, ic("search")), "أبحث عن عقار", h("small", { text: "للشراء أو الاستئجار" }))),
-    h("div", { class: "os-btn-row" },
-      office.phone ? h("a", { class: "os-btn secondary", href: `tel:${localPhone(office.phone) || office.phone}` }, ic("phone"), "اتصال") : null,
-      wa ? h("a", { class: "os-btn whatsapp", href: wa, target: "_blank", rel: "noopener" }, ic("whatsapp"), "واتساب المكتب") : null),
-    h("div", { class: "os-skyline", "aria-hidden": "true" }),
-    h("p", { style: { textAlign: "center", marginTop: "16px" } }, h("a", { href: "/", class: "os-btn ghost" }, ic("key"), "دخول المكتب")),
+      path("owner", "home", "لدي عقار", "للبيع أو الإيجار"),
+      path("client", "search", "أبحث عن عقار", "للشراء أو الاستئجار")),
+    h("p", { class: "os-public-coop", "data-coop-hint": "" }, ic("handshake"), " وسيط عقاري متعاون؟ اختر المسار المناسب ثم «وسيط عقاري متعاون»."),
+    (office.phone || wa) ? h("div", { class: "os-public-contact" },
+      wa ? h("a", { class: "os-btn primary", href: wa, target: "_blank", rel: "noopener", "data-contact": "whatsapp" }, ic("whatsapp"), "واتساب المكتب") : null,
+      office.phone ? h("a", { class: "os-btn secondary", href: `tel:${localPhone(office.phone) || office.phone}`, "data-contact": "call" }, ic("phone"), "اتصال") : null) : null,
     h("footer", { class: "os-public-powered", "data-powered-by": "" },
       h("span", { text: "مدعوم بواسطة مكاتب عقارية ذكية" }),
-      h("a", { href: "/#/register", "data-create-office": "", text: "أنشئ مكتبك العقاري" })));
+      h("a", { href: "/#/register", "data-create-office": "", text: "أنشئ مكتبك العقاري" }),
+      h("a", { href: "/", "data-office-login": "", text: "دخول المكتب" })));
 }

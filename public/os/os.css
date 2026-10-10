@@ -990,3 +990,39 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-try-contact[hidden] { display: none; }
 .os-try-thread .os-btn-row { flex-wrap: wrap; margin-top: 8px; }
 .os-try-thread .os-chip { min-height: 40px; }
+
+/* ── Public office page (iaqar.ai/m/<office>): compact, quiet and official — the office name, its facts and the two
+   paths are visible without scrolling on a phone; contact sits right under them. Scoped to the landing only. ── */
+.os-public-page { padding-top: 14px; padding-bottom: 18px; }
+.os-public-page .os-public-hero { padding: 6px 4px 0; }
+.os-public-page .os-public-logo { width: 72px; height: 72px; border-radius: 20px; margin-bottom: 10px; background: #fff; border: 1px solid var(--frame-soft); box-shadow: 0 4px 14px rgba(8, 47, 58, .06); }
+.os-public-page .os-public-logo img.os-site-logo { padding: 14%; }
+.os-public-page .os-public-title { font-size: 1.45rem; line-height: 1.35; overflow-wrap: anywhere; }
+.os-public-page .os-public-rule { width: 44px; height: 3px; margin: 8px auto 10px; background: var(--brand-primary); }
+.os-public-page .os-license { font-size: .86rem; gap: 4px 14px; }
+.os-public-license { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--frame-soft); background: var(--brand-tint-2); color: var(--text); font-size: .8rem; font-weight: 600; direction: rtl; unicode-bidi: plaintext; }
+.os-public-license svg { width: 15px; height: 15px; color: var(--brand-primary); flex: none; }
+.os-public-tagline { margin: 12px auto 14px; max-width: 30em; text-align: center; color: var(--muted); font-size: .92rem; line-height: 1.6; }
+.os-public-page .os-paths { grid-template-columns: 1fr; gap: 10px; margin: 0 0 8px; }
+.os-public-page .os-path-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; justify-items: start; gap: 12px; min-height: 72px; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--frame); background: #fff; box-shadow: none; text-align: right; cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
+.os-public-page .os-path-card:hover { border-color: var(--brand-primary); background: var(--brand-tint-2); }
+.os-public-page .os-path-card:active { background: var(--brand-tint); }
+.os-public-page .os-path-card:focus-visible { outline: 3px solid var(--brand-soft); outline-offset: 2px; }
+.os-public-page .os-path-card .ic { width: 46px; height: 46px; border-radius: 14px; }
+.os-public-page .os-path-card .ic svg { width: 24px; height: 24px; }
+.os-path-text { display: grid; gap: 2px; min-width: 0; }
+.os-path-text b { color: var(--navy); font-size: 1.05rem; font-weight: 800; }
+.os-path-text small { color: var(--muted); font-weight: 500; font-size: .84rem; }
+.os-path-go { color: var(--brand-primary); display: grid; place-items: center; }
+.os-path-go svg { width: 20px; height: 20px; }
+.os-public-coop { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 14px; color: var(--muted); font-size: .8rem; text-align: center; }
+.os-public-coop svg { width: 16px; height: 16px; color: var(--brand-primary); flex: none; }
+.os-public-contact { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.os-public-contact .os-btn { min-height: 48px; justify-content: center; font-size: .95rem; }
+.os-public-contact .os-btn.primary { background: var(--brand-primary); color: #fff; border: 1px solid var(--brand-primary); }
+.os-public-contact .os-btn.secondary { background: #fff; color: var(--brand-primary); border: 1px solid var(--brand-primary); }
+.os-public-contact .os-btn svg { width: 19px; height: 19px; }
+.os-public-contact .os-btn:only-child { grid-column: 1 / -1; }
+.os-public-page .os-public-powered { margin-top: 4px; padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+.os-public-contact .os-btn { white-space: nowrap; gap: 6px; padding-inline: 10px; }
+@media (max-width: 360px) { .os-public-contact .os-btn { font-size: .86rem; } .os-public-contact .os-btn svg { width: 17px; height: 17px; } }
