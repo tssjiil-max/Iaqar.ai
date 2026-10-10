@@ -107,6 +107,13 @@ export function summaryText(listing, officeName) {
 }
 
 async function reply(ctx, cfg, to, body) {
+  const result = await sendReply(cfg, to, body);
+  // The outcome (never the text) is kept on the sender's conversation, so a refused key shows up in the office data.
+  ctx.lastReply = result.sent ? "sent" : result.reason;
+  return result;
+}
+
+async function sendReply(cfg, to, body) {
   if (!cfg.apiKey) return { sent: false, reason: "api_key_missing" };
   try {
     const response = await fetch(`${cfg.apiBase}/${cfg.phoneNumberId}/messages`, {
@@ -243,7 +250,13 @@ export async function handleKapsoWebhook({ raw, headers, env, makeCtx }) {
     if (message.direction && message.direction !== "inbound") { results.push({ status: "not_inbound" }); continue; }
     if (cfg.allowed.length && !cfg.allowed.includes(message.from)) { results.push({ status: "sender_not_allowed" }); continue; }
     try {
-      results.push(await handleKapsoMessage(ctx, cfg, message));
+      ctx.lastReply = "";
+      const result = await handleKapsoMessage(ctx, cfg, message);
+      if (ctx.lastReply) {
+        result.reply = ctx.lastReply;
+        await ctx.store.set(["offices", cfg.officeId, "kapsoDeliveryLog", `r_${Date.now()}_${results.length}`], { status: result.status, reply: ctx.lastReply, at: ctx.now().toISOString(), isTestFixture: true }).catch(() => {});
+      }
+      results.push(result);
     } catch (error) {
       console.error("[kapso] message failed", error?.code || error?.message);
       results.push({ status: "failed" });

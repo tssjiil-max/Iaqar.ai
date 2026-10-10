@@ -68,9 +68,18 @@ if (SECRET) {
   if (!ok) { console.log("::error title=Kapso signature::the Staging Worker did not accept the real secret as expected"); process.exit(1); }
 }
 
-// With the API key: one read-only call to Kapso (the sandbox number's details) — no message is sent.
-const KEY = String(process.env.KAPSO_API_KEY || "").replace(/[\r\n]/g, "");
+// With the API key: one read-only call to Kapso's documented platform API (list phone numbers) — no message is sent.
+const KEY = String(process.env.KAPSO_API_KEY || "").replace(/[\r\n]/g, "").trim();
 if (KEY) {
-  const res = await fetch("https://api.kapso.ai/meta/whatsapp/v24.0/597907523413541", { headers: { "X-API-Key": KEY } }).catch(() => null);
-  note("Kapso API key", `read-only check of the sandbox number → HTTP ${res?.status || 0}${res?.ok ? " (key accepted)" : ""}`);
+  const res = await fetch("https://api.kapso.ai/platform/v1/whatsapp/phone_numbers", { headers: { "X-API-Key": KEY, accept: "application/json" } }).catch(() => null);
+  const list = res?.ok ? await res.json().catch(() => ({})) : {};
+  const rows = Array.isArray(list?.data) ? list.data : Array.isArray(list) ? list : [];
+  const hasSandbox = JSON.stringify(rows).includes("597907523413541");
+  note("Kapso API key", `read-only list of phone numbers → HTTP ${res?.status || 0}${res?.ok ? ` · key accepted · ${rows.length} number(s) · sandbox number listed: ${hasSandbox ? "yes" : "no"}` : " · key refused or wrong key type"}`);
 }
+
+// The last real deliveries (status and reply outcome only — no phone, no text), to confirm a real WhatsApp message.
+const log = await office.collection("kapsoDeliveryLog").orderBy("at", "desc").limit(6).get().catch(() => ({ docs: [] }));
+const records = await office.collection("opportunities").get().catch(() => ({ docs: [] }));
+const fromWa = records.docs.filter((d) => d.data()?.intakeOrigin?.channel === "WHATSAPP");
+note("Kapso deliveries", `${log.docs.length ? log.docs.map((d) => `${d.data().at?.slice(11, 19) || ""} ${d.data().status}/${d.data().reply}`).join(" · ") : "none yet"} · records from WhatsApp in ${OFFICE}: ${fromWa.length}`);
