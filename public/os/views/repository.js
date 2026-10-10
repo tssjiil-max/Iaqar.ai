@@ -14,6 +14,7 @@ import { photo } from "./reference-layout.js";
 import { relativeAgo } from "../domain/format-domain.js";
 import { engagedRecordIds } from "../domain/task-domain.js";
 import { removeRecordFlow } from "./record-actions.js";
+import { isExternalBroker } from "../domain/external-broker-domain.js";
 
 /** Narrowing options inside «خيارات البحث» (ids kept for deep links: ?kind=OFFER|REQUEST|UNMATCHED). */
 const KIND_OPTIONS = [
@@ -24,7 +25,7 @@ const KIND_OPTIONS = [
 
 function recordCard(record) {
  const view=recordView(record);const when=record.createdAt?.toDate?record.createdAt.toDate():new Date(record.createdAt||"");
- return h("article",{class:"os-card ref-record-card","data-record":view.id},h("button",{type:"button",class:"ref-record-open",onClick:()=>go(`record/${view.id}`)},photo(record),h("div",{class:"ref-record-copy"},h("h3",{text:view.propertyType||view.title}),h("p",{},ic("pin"),view.location),h("b",{text:view.priceLabel.replace(/^(السعر|الميزانية)\s*/,"")})),h("span",{class:"ref-record-tags"},h("span",{class:"ref-status "+(view.kind==="OFFER"?"step-0":"ref-request"),"data-kind-label":view.kind,text:view.kindLabel}),view.state!=="ACTIVE"?h("span",{class:"ref-status ref-state","data-state-label":view.state,text:view.lifecycleLabel}):null),h("div",{class:"ref-record-meta"},h("span",{text:Number.isNaN(when.getTime())?"":when.toLocaleDateString("en-CA")}),view.rooms?h("span",{},ic("bed"),view.rooms+" غرف"):null,view.areaLabel?h("span",{},ic("area"),view.areaLabel):null)));
+ return h("article",{class:"os-card ref-record-card","data-record":view.id},h("button",{type:"button",class:"ref-record-open",onClick:()=>go(`record/${view.id}`)},photo(record),h("div",{class:"ref-record-copy"},h("h3",{text:view.propertyType||view.title}),h("p",{},ic("pin"),view.location),h("b",{text:view.priceLabel.replace(/^(السعر|الميزانية)\s*/,"")})),h("span",{class:"ref-record-tags"},h("span",{class:"ref-status "+(view.kind==="OFFER"?"step-0":"ref-request"),"data-kind-label":view.kind,text:view.kindLabel}),isExternalBroker(record)?h("span",{class:"ref-status",text:"وسيط متعاون"}):null,view.state!=="ACTIVE"?h("span",{class:"ref-status ref-state","data-state-label":view.state,text:view.lifecycleLabel}):null),h("div",{class:"ref-record-meta"},h("span",{text:Number.isNaN(when.getTime())?"":when.toLocaleDateString("en-CA")}),view.rooms?h("span",{},ic("bed"),view.rooms+" غرف"):null,view.areaLabel?h("span",{},ic("area"),view.areaLabel):null)));
 }
 
 export function openRecordMenu(record) {

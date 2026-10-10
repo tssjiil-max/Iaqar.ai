@@ -278,6 +278,7 @@ export function missingForMatching(record = {}) {
 }
 
 export const MISSING_LABELS = Object.freeze({
+  cooperationReview: "مراجعة التمثيل وقبول التعاون",
   opportunityKind: "نوع السجل",
   purpose: "الغرض",
   propertyType: "نوع العقار",

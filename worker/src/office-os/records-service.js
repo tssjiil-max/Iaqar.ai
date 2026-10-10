@@ -20,6 +20,7 @@ import { counterpartsEligible, opportunityToMatchInput, scoreMatch, MATCH_THRESH
 import { recordFailure } from "./journey-service.js";
 import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
 import { validityFields, validitySettingsFrom } from "../../../public/os/domain/validity-domain.js";
+import { isExternalBroker, cooperationEligible } from "../../../public/os/domain/external-broker-domain.js";
 
 async function runMatchingSafely(ctx, officeId, opportunityId) {
   if (typeof ctx.deps.runMatching !== "function") return { matchingPending: true, matches: 0 };
@@ -85,6 +86,21 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
     // An edit never changes availability (sold stays sold); only the explicit answers and «إعادة تفعيل» do.
     if (existing && existing.availabilityStatus) {
       Object.assign(fields, { availabilityStatus: existing.availabilityStatus, availabilityConfirmedAt: existing.availabilityConfirmedAt || null, availabilityConfirmedBy: existing.availabilityConfirmedBy || "", validityReason: existing.validityReason || "" });
+    }
+  }
+  if (isExternalBroker(existing || {})) {
+    fields.advertiserRole = "BROKER";
+    fields.contactType = "broker";
+    if (!cooperationEligible(existing)) fields.matchingReadiness = "NEEDS_COMPLETION";
+    const digits = value => String(value || "").replace(/\D/g, "").replace(/^966/, "0");
+    const scopeChanged = digits(check.value.contactPhone) !== digits(existing.contactPhone || existing.phone)
+      || check.value.contactName !== String(existing.contactName || existing.name || "")
+      || ["purpose", "propertyType", "city", "district"].some(key => String(check.value[key] || "") !== String(existing[key] || ""));
+    if (scopeChanged) {
+      fields.representationStatus = "PENDING"; fields.cooperationStatus = "REQUESTED";
+      fields.representationVerifiedBy = ""; fields.representationVerifiedAt = "";
+      fields.commissionStatus = "NONE"; fields.commissionValue = 0;
+      fields.matchingReadiness = "NEEDS_COMPLETION";
     }
   }
   await ctx.store.set(["offices", officeId, "opportunities", id], fields);

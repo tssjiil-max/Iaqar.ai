@@ -5,6 +5,7 @@
  */
 
 import { createStore } from "./store.js";
+import { reviewExternalCooperation } from "./external-broker-service.js";
 import { resolveActor } from "./permissions.js";
 import { findCandidates, holdRecord, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
 import {
@@ -35,6 +36,7 @@ const PUBLIC_ROUTES = Object.freeze({
 });
 
 const OFFICE_ROUTES = Object.freeze({
+  "/os/records/cooperation": (ctx, b, actor) => reviewExternalCooperation(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), input: b }),
   "/os/records/save": (ctx, b, actor) => saveRecord(ctx, { actor, officeId: ctx.officeId, recordId: b.recordId, input: b.record || {}, requestKey: b.requestKey }),
   "/os/records/remove": (ctx, b, actor) => removeRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), reason: b.reason }),
   "/os/records/restore": (ctx, b, actor) => restoreRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),

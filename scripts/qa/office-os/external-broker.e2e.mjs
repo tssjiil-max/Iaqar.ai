@@ -1,0 +1,49 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { chromium } from '@playwright/test';
+import { startOfficeOsHarness, OFFICE_A, OWNER_A } from './server.mjs';
+const h=await startOfficeOsHarness();
+const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || '/root/.cache/ms-playwright/chromium_headless_shell-1187/chrome-linux/headless_shell'});
+const out=process.env.OUT_DIR || '/tmp/iaqar-external-broker';fs.mkdirSync(out,{recursive:true});
+const errors=[];const context=await browser.newContext({viewport:{width:390,height:844},locale:'ar-SA'});
+const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+try {
+ for(const [kind,purpose,claim,idx] of [['owner','بيع','OWNER',1],['owner','إيجار','OWNER',2],['client','شراء','BUYER',3],['client','استئجار','TENANT',4]]) {
+  await page.goto(h.origin+'/o/sultan');
+  await page.getByRole('button',{name:kind==='owner'?'لدي عقار':'أبحث عن عقار',exact:false}).click();
+  assert.equal(await page.locator('input[name="contactPhone"]').count(),1);
+  await page.locator('[name="submitterRole"]').selectOption('EXTERNAL_BROKER');
+  await page.locator('[name="externalBrokerOffice"]').fill('مكتب تعاون مستقل');
+  await page.locator('[name="externalBrokerLicense"]').fill('1200012345');
+  await page.locator('[name="representationClaim"]').selectOption(claim);
+  await page.getByRole('button',{name:purpose,exact:true}).click();
+  for(const [name,value] of Object.entries({propertyType:'شقة',city:'الرياض',district:'الملقا',price:'1200000',contactName:'وسيط متعاون خارجي',contactPhone:`055998880${idx}`})) await page.locator(`[name="${name}"]`).fill(value);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  if(idx===1) await page.screenshot({path:out+'/external-broker-mobile.png',fullPage:true});
+  await page.getByRole('button',{name:'إرسال',exact:true}).click();
+  await page.getByRole('heading',{name:'تم استلام بياناتك'}).waitFor();
+  const saved=h.store.list(`offices/${OFFICE_A}/opportunities`).find(r=>r.contactPhone?.endsWith(`998880${idx}`));
+  assert.ok(saved,`saved ${purpose}`);assert.equal(saved.submitterRole,'EXTERNAL_BROKER');assert.equal(saved.representationStatus,'PENDING');
+  console.log(`PASS mobile external ${purpose}: ${saved.id}`);
+ }
+ assert.equal(h.store.list(`offices/${OFFICE_A}/members`).length,2);
+ await page.goto(h.origin+'/o/sultan');
+ await page.getByRole('button',{name:'لدي عقار',exact:false}).click();
+ assert.equal(await page.locator('[data-external-broker-fields]').isVisible(),false);
+ assert.equal(await page.locator('input[name="contactPhone"]').count(),1);
+ await page.addInitScript(([u,o])=>{localStorage.setItem('harness.uid',u);localStorage.setItem('iaqar.officeId',o);},[OWNER_A,OFFICE_A]);
+ const first=h.store.list(`offices/${OFFICE_A}/opportunities`).find(r=>r.submitterRole==='EXTERNAL_BROKER');
+ await page.goto(h.origin+'/#/record/'+first.id);
+ await page.locator('[data-external-cooperation]').waitFor();
+ await page.locator('[data-external-cooperation] summary').click();
+ await page.locator('[name="representationStatus"]').selectOption('VERIFIED');
+ await page.locator('[name="cooperationStatus"]').selectOption('ACCEPTED');
+ await page.locator('[name="evidenceReference"]').fill('مرجع تفويض راجعه المكتب فعليًا');
+ await page.getByRole('button',{name:'حفظ مراجعة التعاون'}).click();
+ await page.waitForFunction(()=>document.body.textContent.includes('حُفظت مراجعة التعاون'));
+ assert.equal(h.store.get(`offices/${OFFICE_A}/opportunities/${first.id}`).cooperationStatus,'ACCEPTED');
+ console.log('PASS manager browser review and record metadata');
+ assert.deepEqual(errors,[]);
+ fs.writeFileSync(out+'/result.json',JSON.stringify({mobile:true,submissions:4,pageErrors:errors,memberships:2},null,2));
+ console.log('PASS legacy owner default, mobile overflow, no extra membership, no page errors');
+} finally {await browser.close();await new Promise(r=>h.server.close(r));}

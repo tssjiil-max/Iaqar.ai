@@ -6,6 +6,8 @@
  * look like canonical Opportunities remain outside this gate until their migration.
  */
 
+import { cooperationEligible } from "../../public/os/domain/external-broker-domain.js";
+
 export const MATCHING_ADMISSION_STATUS = Object.freeze({
   ADMITTED: "ADMITTED",
   NEEDS_COMPLETION: "NEEDS_COMPLETION",
@@ -24,6 +26,7 @@ export const CANONICAL_MATCHING_REQUIRED_FIELDS = Object.freeze([
 ]);
 
 export const CANONICAL_MATCHING_FIELD_LABELS_AR = Object.freeze({
+  cooperationReview: "مراجعة التمثيل وقبول التعاون",
   opportunityKind: "نوع الفرصة",
   purpose: "الغرض",
   propertyType: "نوع العقار",
@@ -94,6 +97,7 @@ export function looksCanonicalOpportunity(record = {}) {
 
 export function canonicalOpportunityMissingFields(record = {}) {
   const missing = [];
+  if (!cooperationEligible(record)) missing.push("cooperationReview");
   if (!VALID_KINDS.has(upper(record.opportunityKind || record.kind))) missing.push("opportunityKind");
   if (!VALID_PURPOSES.has(upper(record.purpose))) missing.push("purpose");
   if (!filledText(record.propertyType)) missing.push("propertyType");

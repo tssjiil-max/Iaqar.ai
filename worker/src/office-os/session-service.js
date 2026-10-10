@@ -34,6 +34,7 @@ import { applyJourneyChange, afterJourneyClosed, loadJourney, syncMatchAppointme
 import { assertCanActOn } from "./permissions.js";
 
 const ROLES = [SESSION_ROLE.OWNER, SESSION_ROLE.CLIENT];
+import { assertOfficeMediatedJourney } from "./external-broker-service.js";
 
 const STATE_MESSAGES = Object.freeze({
   INVALID: "هذا الرابط غير صالح. تواصل مع المكتب للحصول على رابط جديد.",
@@ -95,6 +96,7 @@ async function issueLink(ctx, { officeId, journey, role, now }) {
  */
 export async function sessionLinks(ctx, { actor, officeId, journeyId, replace = "" }) {
   const journey = await loadOwnJourney(ctx, { actor, officeId, journeyId });
+  await assertOfficeMediatedJourney(ctx, officeId, journey);
   if (!isOpenJourney(journey)) throw ctx.deps.appError("journey_closed", 409, "الصفقة مغلقة — لا يمكن إصدار روابط جديدة");
   const now = ctx.now();
   const links = { ...(journey.sessionLinks || {}) };

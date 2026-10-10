@@ -155,3 +155,19 @@ test("the office bot: its switch, its questions and its routing are closed to ev
     }
   }
 });
+
+test('external cooperating intake: anonymous claims allowed but verification, membership and cross-office reads denied', async () => {
+ const db=anon();
+ const payload={officeId:'office-a',kind:'owner',name:'وسيط خارجي',phone:'0551234567',propertyType:'شقة',city:'الرياض',district:'الملقا',details:'',mediaPaths:[],imageCount:0,hasVideo:false,source:'office_public_link',status:'new',submitterRole:'EXTERNAL_BROKER',externalBrokerOffice:'مكتب مستقل',externalBrokerLicense:'1200012345',representationClaim:'OWNER',representationReference:'تفويض 123'};
+ await assertSucceeds(setDoc(doc(db,'offices/office-a/publicIntake/ext_valid'),payload));
+ await assertFails(setDoc(doc(db,'offices/office-a/publicIntake/ext_forge'),{...payload,representationStatus:'VERIFIED'}));
+ await assertFails(setDoc(doc(db,'offices/office-a/publicIntake/ext_forge_commission'),{...payload,commissionStatus:'AGREED',commissionValue:50}));
+ await assertFails(setDoc(doc(db,'offices/office-b/publicIntake/ext_wrong_office'),payload));
+ await assertFails(getDoc(doc(db,'offices/office-a/publicIntake/ext_valid')));
+ await assertFails(getDoc(doc(as('owner-b'),'offices/office-a/publicIntake/ext_valid')));
+ await assertFails(setDoc(doc(db,'offices/office-a/members/external'),{role:'broker',active:true}));
+ await env.withSecurityRulesDisabled(async ctx=>setDoc(doc(ctx.firestore(),'offices/office-a/opportunities/ext_review'),{officeId:'office-a',brokerId:'owner-a',submitterRole:'EXTERNAL_BROKER',representationStatus:'PENDING',cooperationStatus:'REQUESTED'}));
+ await assertFails(updateDoc(doc(as('owner-a'),'offices/office-a/opportunities/ext_review'),{representationStatus:'VERIFIED',cooperationStatus:'ACCEPTED'}));
+ await assertFails(updateDoc(doc(as('owner-a'),'offices/office-a/opportunities/ext_review'),{submitterRole:'OWNER'}));
+ await assertSucceeds(getDoc(doc(as('owner-a'),'offices/office-a/opportunities/ext_review')));
+});

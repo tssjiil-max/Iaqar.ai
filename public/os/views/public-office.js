@@ -11,6 +11,7 @@ import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transaction
 import { priceStatusField, validityField } from "./record-form.js";
 import { buildWhatsAppUrl, cleanText, formatNumber, localPhone, toNumber } from "../domain/format-domain.js";
 import { imagePicker } from "./record-images.js";
+import { EXTERNAL_BROKER, externalBrokerClaim } from "../domain/external-broker-domain.js";
 
 export function publicOfficeTarget() {
   const path = location.pathname;
@@ -71,6 +72,22 @@ function intakeForm(root, office, kind) {
     for (const p of PURPOSES[recordKind]) purposeSeg.append(h("button", { type: "button", "aria-pressed": String(purpose === p.id), onClick: () => { purpose = p.id; hidden.value = p.id; drawPurpose(); } }, p.label));
   };
   drawPurpose();
+  const role = h("select", { class: "os-input", name: "submitterRole", "data-testid": "submitter-role" },
+    h("option", { value: kind === "owner" ? "OWNER" : "CLIENT", text: kind === "owner" ? "مالك العقار" : "عميل يبحث عن عقار" }),
+    h("option", { value: EXTERNAL_BROKER, text: "وسيط عقاري متعاون" }));
+  const brokerFields = h("div", { class: "os-form", hidden: true, "data-external-broker-fields": "" },
+    field("المكتب العقاري الذي تتبعه", h("input", { class: "os-input", name: "externalBrokerOffice", maxlength: "100" }), { optional: true }),
+    field("رقم رخصة فال", h("input", { class: "os-input", name: "externalBrokerLicense", inputmode: "numeric", maxlength: "40" }), { hint: "عند انطباق متطلبات الترخيص. البيانات تخضع للمراجعة." }),
+    field("صفة التمثيل", h("select", { class: "os-input", name: "representationClaim" },
+      h("option", { value: "", text: "اختر" }),
+      ...(kind === "owner" ? [{ value: "OWNER", text: "أمثل المالك بموجب تفويض" }, { value: "NOT_AUTHORIZED", text: "لم يكتمل التفويض بعد" }] : [{ value: "BUYER", text: "أمثل مشتريًا" }, { value: "TENANT", text: "أمثل مستأجرًا" }]).map(o => h("option", o))),
+      { hint: "اختيار الصفة لا يوثقها. يراجع المكتب الإثبات قبل قبول التعاون." }),
+    field("مرجع التفويض أو إثبات التمثيل", h("input", { class: "os-input", name: "representationReference", maxlength: "240" }), { optional: true, hint: "يطلب المكتب المستند عند الحاجة عبر قناة التواصل المعتمدة." }));
+  role.addEventListener("change", () => {
+    brokerFields.hidden = role.value !== EXTERNAL_BROKER;
+    brokerFields.querySelectorAll("input,select").forEach(el => { el.disabled = brokerFields.hidden; });
+  });
+  role.dispatchEvent(new Event("change"));
   const price = h("input", { class: "os-input", name: "price", inputmode: "numeric", placeholder: "مثال: 850,000" });
   price.addEventListener("blur", () => { if (price.value) price.value = formatNumber(price.value) || price.value; });
   // The rules and the Worker accept up to 5 photos from the public link, for offers only.
@@ -79,6 +96,7 @@ function intakeForm(root, office, kind) {
   const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
   const form = h("form", { class: "os-card", novalidate: true },
     h("div", { class: "os-form" },
+      field("صفة مقدم المشاركة", role), brokerFields,
       h("div", { class: "os-field" }, h("span", { text: kind === "owner" ? "ماذا تريد لعقارك؟" : "ماذا تبحث عنه؟" }), purposeSeg, hidden, h("span", { class: "os-error", role: "alert" })),
       field("نوع العقار", h("div", {}, h("input", { class: "os-input", name: "propertyType", list: "pub-types", autocomplete: "off", placeholder: "شقة، فيلا، أرض…" }), h("datalist", { id: "pub-types" }, PROPERTY_TYPES.map((t) => h("option", { value: t }))))),
       h("div", { class: "os-row2" },
@@ -96,6 +114,8 @@ function intakeForm(root, office, kind) {
       field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" })),
       status, submit,
       h("p", { class: "os-sub", style: { fontSize: ".84rem", textAlign: "center" }, text: "لا تحتاج إنشاء حساب. تصل بياناتك إلى هذا المكتب فقط." })));
+  let submissionRef = null;
+  let intakeStored = false;
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     status.hidden = true;
@@ -103,6 +123,9 @@ function intakeForm(root, office, kind) {
     const value = (name) => form.querySelector(`[name="${name}"]`)?.value ?? "";
     const input = { kind: recordKind, purpose, propertyType: value("propertyType"), city: value("city"), district: value("district"), price: value("price"), priceStatus: value("priceStatus"), area: value("area"), rooms: value("rooms"), contactName: value("contactName"), contactPhone: value("contactPhone"), notes: value("notes") };
     const check = validateRecordInput(input, { requireName: true });
+    const claim = externalBrokerClaim({ kind, submitterRole: role.value, externalBrokerOffice: value("externalBrokerOffice"), externalBrokerLicense: value("externalBrokerLicense"), representationClaim: value("representationClaim"), representationReference: value("representationReference") });
+    Object.assign(check.errors, claim.errors);
+    if (role.value === EXTERNAL_BROKER && kind === "client" && ((purpose === "PURCHASE" && value("representationClaim") !== "BUYER") || (purpose === "LEASE_REQUEST" && value("representationClaim") !== "TENANT"))) check.errors.representationClaim = "اختر صفة تمثيل تتوافق مع غرض الطلب";
     const name = cleanText(input.contactName, 80);
     if (!/\S+\s+\S+/.test(name)) check.errors.contactName = "اكتب الاسم الأول واسم العائلة";
     if (Object.keys(check.errors).length) {
@@ -112,12 +135,18 @@ function intakeForm(root, office, kind) {
     }
     const v = check.value;
     const ok = await runAction(submit, async () => {
-      const ref = db().collection("offices").doc(office.id).collection("publicIntake").doc();
+      const ref = submissionRef ||= db().collection("offices").doc(office.id).collection("publicIntake").doc();
       // Photos first (to this intake's folder); the intake then lists exactly what was stored.
+      if (!intakeStored) {
       const mediaPaths = picker && picker.count() ? await picker.commitToIntake(office.id, ref.id) : [];
       await ref.set({
         officeId: office.id,
         kind,
+        submitterRole: role.value,
+        ...(role.value === EXTERNAL_BROKER ? {
+          externalBrokerOffice: claim.value.externalBrokerOffice, externalBrokerLicense: claim.value.externalBrokerLicense,
+          representationClaim: claim.value.representationClaim, representationReference: claim.value.representationReference
+        } : {}),
         name,
         phone: localPhone(v.contactPhone),
         propertyType: v.propertyType,
@@ -140,6 +169,8 @@ function intakeForm(root, office, kind) {
         validityCustomDate: value("validityCustomDate") || "",
         createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
       });
+      intakeStored = true;
+      }
       // Processing is retry-safe server side (already-processed intakes return duplicate).
       const response = await fetch(`${workerBase()}/pipeline/public-intake`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ officeId: office.id, intakeId: ref.id })

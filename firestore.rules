@@ -87,6 +87,18 @@ service cloud.firestore {
 
       match /publicIntake/{docId} {
         allow create: if request.resource.data.officeId == officeId
+          && (!("submitterRole" in request.resource.data) || request.resource.data.submitterRole in ['OWNER', 'CLIENT', 'EXTERNAL_BROKER'])
+          && (!("submitterRole" in request.resource.data) || request.resource.data.submitterRole != 'EXTERNAL_BROKER' || (
+            exists(/databases/$(database)/documents/publicOffices/$(officeId))
+            && request.resource.data.source == 'office_public_link'
+            && request.resource.data.externalBrokerOffice is string && request.resource.data.externalBrokerOffice.size() <= 100
+            && request.resource.data.externalBrokerLicense is string && request.resource.data.externalBrokerLicense.size() <= 40
+            && (request.resource.data.externalBrokerLicense == '' || request.resource.data.externalBrokerLicense.matches('[0-9]{5,40}'))
+            && request.resource.data.representationReference is string && request.resource.data.representationReference.size() <= 240
+            && ((request.resource.data.kind == 'owner' && request.resource.data.representationClaim in ['OWNER', 'NOT_AUTHORIZED'])
+              || (request.resource.data.kind == 'client' && request.resource.data.representationClaim in ['BUYER', 'TENANT']))
+          ))
+          && !request.resource.data.keys().hasAny(['representationStatus', 'representationVerifiedBy', 'representationVerifiedAt', 'representationEvidenceReference', 'cooperationStatus', 'commissionStatus', 'commissionValue', 'commissionAgreementReference', 'commissionType'])
           && request.resource.data.kind in ['client','owner']
           && request.resource.data.name is string
           && request.resource.data.name.size() >= 3
@@ -220,12 +232,16 @@ service cloud.firestore {
       match /opportunities/{opportunityId} {
         allow read: if isOfficeMember(officeId);
         allow create: if isOfficeMember(officeId)
+          && (!("submitterRole" in request.resource.data) || request.resource.data.submitterRole != 'EXTERNAL_BROKER')
+          && !request.resource.data.keys().hasAny(['representationStatus', 'cooperationStatus', 'representationVerifiedBy', 'representationVerifiedAt', 'representationEvidenceReference', 'commissionStatus', 'commissionValue', 'commissionAgreementReference', 'commissionType'])
           && request.resource.data.officeId == officeId
           && request.resource.data.brokerId is string
           && request.resource.data.deduplicationFingerprint is string
           && request.resource.data.sourceType is string
           && request.resource.data.sourceReference is string;
         allow update: if isOfficeMember(officeId)
+          && (!("submitterRole" in resource.data) || resource.data.submitterRole != 'EXTERNAL_BROKER')
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['submitterRole', 'externalBrokerOffice', 'externalBrokerLicense', 'representationClaim', 'representationReference', 'representationStatus', 'representationVerifiedBy', 'representationVerifiedAt', 'representationEvidenceReference', 'cooperationStatus', 'commissionStatus', 'commissionValue', 'commissionAgreementReference', 'commissionType'])
           && request.resource.data.officeId == officeId
           && resource.data.officeId == officeId
           && request.resource.data.officeId == resource.data.officeId
