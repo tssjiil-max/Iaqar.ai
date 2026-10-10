@@ -68,7 +68,7 @@ async function dumpCollection(collPath) {
 }
 
 // ------------------------------------------------------------------ 1. snapshot
-const roots = await collectionIds("");
+const roots = (await collectionIds("")).filter((id) => id !== "pilotBackups");
 for (const root of roots) await dumpCollection(root);
 let rulesSource = "";
 try {
@@ -84,18 +84,40 @@ const sha256 = crypto.createHash("sha256").update(gz).digest("hex");
 fs.writeFileSync(path.join(OUT, "live-firestore.rules"), rulesSource || "// not read");
 
 let stored = "";
+const tried = [];
 for (const bucket of [`${PRODUCTION_PROJECT}.firebasestorage.app`, `${PRODUCTION_PROJECT}.appspot.com`]) {
   const object = `pilot-backups/firestore-${stamp}.json.gz`;
   const response = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(object)}`, {
     method: "POST", headers: { ...auth, "content-type": "application/gzip" }, body: gz, signal: AbortSignal.timeout(120_000)
   }).catch((error) => ({ ok: false, status: String(error?.message || error) }));
   if (response.ok) { stored = `gs://${bucket}/${object}`; break; }
-  console.log(`bucket ${bucket}: HTTP ${response.status}`);
+  tried.push(`${bucket}: HTTP ${response.status}`);
+}
+if (!stored) {
+  // No Storage bucket on this plan/project: the snapshot is kept INSIDE the production database, in a
+  // collection no client and no Worker code reads or writes (rules deny everything not listed). Chunks of
+  // ≤ 700 KB (Firestore's 1 MiB document limit), restorable with scripts/production-pilot-restore.mjs.
+  notice("Storage bucket not available", tried.join(" · "));
+  const b64 = gz.toString("base64");
+  const size = 700_000;
+  const parts = Math.ceil(b64.length / size);
+  const root = `pilotBackups/${stamp}`;
+  const write = async (docPath, fields) => {
+    const response = await fetch(`${BASE}/${docPath}`, { method: "PATCH", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ fields }), signal: AbortSignal.timeout(60_000) });
+    if (!response.ok) throw new Error(`${docPath.split("/").slice(0, 2).join("/")} HTTP ${response.status}`);
+  };
+  try {
+    for (let i = 0; i < parts; i += 1) await write(`${root}/chunks/${String(i).padStart(4, "0")}`, { index: { integerValue: String(i) }, data: { stringValue: b64.slice(i * size, (i + 1) * size) } });
+    await write(root, { takenAt: { timestampValue: new Date().toISOString() }, sha256: { stringValue: sha256 }, parts: { integerValue: String(parts) }, documents: { integerValue: String(docs.length) }, complete: { booleanValue: true } });
+    stored = `firestore://${root} (${parts} part${parts === 1 ? "" : "s"})`;
+  } catch (error) {
+    notice("snapshot inside Firestore failed", error.message);
+  }
 }
 const counts = {};
 for (const d of docs) { const top = d.path.split("/")[0]; counts[top] = (counts[top] || 0) + 1; }
 fs.writeFileSync(path.join(OUT, "backup-manifest.json"), JSON.stringify({ takenAt: new Date().toISOString(), stored, sha256, bytes: gz.length, documents: docs.length, byRootCollection: counts, rulesRead: Boolean(rulesSource) }, null, 2));
-if (!stored) fail("snapshot not stored", "the production Storage bucket refused the upload — nothing is deployed without a backup");
+if (!stored) fail("snapshot not stored", "neither the production Storage bucket nor the database accepted it — nothing is deployed without a backup");
 else notice("production snapshot stored", `${stored}\n${docs.length} documents · ${(gz.length / 1024).toFixed(0)} KB · sha256 ${sha256.slice(0, 16)}…`);
 
 // ------------------------------------------------------------------ 2. compatibility for the new office app
