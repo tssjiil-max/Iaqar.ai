@@ -47,8 +47,17 @@ jobs:
           CONFIRM="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).confirm||"")' "$REQ")"
           [ "$MODE" = "preflight" ] || [ "$MODE" = "deploy" ] || { echo "::error title=refused::mode must be preflight or deploy"; exit 1; }
           # The last commit may change ONLY the request file; its parent must be on the tested staging lineage.
+          # Besides the request, the release commit may only carry launch tooling (never app code); that tooling
+          # is kept aside and run from there, while the deployed tree is exactly the parent commit.
           CHANGED="$(git diff --name-only HEAD^ HEAD)"
-          [ "$CHANGED" = "$REQ" ] || { echo "::error title=refused::the release commit must change only $REQ (changed: $CHANGED)"; exit 1; }
+          OTHER="$(printf '%s\n' "$CHANGED" | grep -vxE '\.github/production-pilot-request\.json|\.github/workflows/production-pilot\.yml|scripts/production-pilot-[a-z-]+\.mjs|scripts/qa/office-os/live-preview\.e2e\.mjs|firestore\.indexes\.json' || true)"
+          [ -z "$OTHER" ] || { echo "::error title=refused::the release commit may change only the request and launch tooling (also changed: $OTHER)"; exit 1; }
+          TOOLS="$RUNNER_TEMP/tooling/scripts"
+          mkdir -p "$TOOLS"
+          cp scripts/production-pilot-*.mjs scripts/production-credentials.mjs scripts/staging-credentials.mjs "$TOOLS/"
+          cp scripts/qa/office-os/live-preview.e2e.mjs "$TOOLS/live-preview.e2e.mjs"
+          cp firestore.indexes.json "$TOOLS/firestore.indexes.json"
+          echo "TOOLS=$TOOLS" >> "$GITHUB_ENV"
           PARENT="$(git rev-parse HEAD^)"
           git fetch -q origin codex/unified-staging-lineage-2026-08-29
           git merge-base --is-ancestor "$PARENT" FETCH_HEAD || { echo "::error title=refused::$PARENT is not on the tested staging lineage"; exit 1; }
@@ -79,11 +88,13 @@ jobs:
           curl -fsS https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/health | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s);console.log(`::notice title=production Worker before::${h.deploymentEnvironment} · ${h.projectId} · backendReady=${h.backendReady}`)})'
           curl -fsS -o /dev/null -w "iaqar.ai HTTP %{http_code}\n" https://iaqar.ai/
 
-      - name: Rollback point (live Hosting version + live rules)
-        run: node scripts/production-pilot-rollback.mjs record "$OUT_DIR"
+      - name: Rollback point (live Hosting version + live rules + pilot switch)
+        run: |
+          node "$TOOLS/production-pilot-rollback.mjs" record "$OUT_DIR"
+          node "$TOOLS/production-pilot-access.mjs" record "$OUT_DIR"
 
       - name: Data snapshot to the production bucket + compatibility of production offices
-        run: node scripts/production-pilot-backup.mjs
+        run: node "$TOOLS/production-pilot-backup.mjs"
 
       - name: Existing production preflight (informational)
         continue-on-error: true
@@ -107,17 +118,34 @@ jobs:
           npm test --prefix worker
           node --test test/office-os-visitor.test.mjs test/office-os-visitor-conversation.test.mjs test/office-os-agent.test.mjs test/office-os-validity.test.mjs test/office-os-security.test.mjs
 
-      - name: Deploy — Worker, Firestore rules/indexes, Hosting (aqar-b5d76)
+      - name: Deploy 1/2 — production Worker
         id: deploy
         if: env.MODE == 'deploy'
         run: |
-          set -euo pipefail
+          set -o pipefail
           node scripts/write-staging-version.mjs --channel=production
-          (cd worker && npx wrangler deploy)
+          if ! (cd worker && npx wrangler deploy) > "$RUNNER_TEMP/worker-deploy.log" 2>&1; then
+            echo "::error title=Worker deploy failed::$(tail -n 25 "$RUNNER_TEMP/worker-deploy.log" | grep -v -i "token" | tr '\n' ' ' | cut -c1-3000)"
+            exit 1
+          fi
+          tail -n 6 "$RUNNER_TEMP/worker-deploy.log"
+          echo "::notice title=Worker deployed::$sha"
+
+      - name: Deploy 2/2 — Firestore rules/indexes + Hosting (aqar-b5d76)
+        id: deploy_firebase
+        if: env.MODE == 'deploy'
+        run: |
+          set -o pipefail
+          # Deploy configuration fix carried by the release commit (a single-field index must be a field override).
+          cp "$TOOLS/firestore.indexes.json" firestore.indexes.json
           GAC="$(mktemp /tmp/iaqar-prod-gac.XXXXXX)"
           trap 'rm -f "$GAC"' EXIT
           node -e 'require("fs").writeFileSync(process.argv[1], process.env.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON, { mode: 0o600 })' "$GAC"
-          GOOGLE_APPLICATION_CREDENTIALS="$GAC" npx firebase-tools deploy --only firestore:rules,firestore:indexes,hosting --project aqar-b5d76 --non-interactive
+          if ! GOOGLE_APPLICATION_CREDENTIALS="$GAC" npx firebase-tools deploy --only firestore:rules,firestore:indexes,hosting --project aqar-b5d76 --non-interactive > "$RUNNER_TEMP/firebase-deploy.log" 2>&1; then
+            echo "::error title=Firebase deploy failed::$(tail -n 25 "$RUNNER_TEMP/firebase-deploy.log" | grep -v -i "private_key\|token" | tr '\n' ' ' | cut -c1-3000)"
+            exit 1
+          fi
+          tail -n 6 "$RUNNER_TEMP/firebase-deploy.log"
           echo "::notice title=deployed::$sha to iaqar.ai"
 
       - name: Smoke iaqar.ai
@@ -131,6 +159,11 @@ jobs:
           curl -fsS https://iaqar.ai/os/app.js >/dev/null
           curl -fsS https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/health | grep -q '"backendReady":true'
 
+      - name: Pilot switch for the test — office-link routing on, real offices + QA offices authorized
+        id: access_test
+        if: env.MODE == 'deploy'
+        run: node "$TOOLS/production-pilot-access.mjs" test "$OUT_DIR"
+
       - name: Live journey on iaqar.ai (isolated QA offices, removed afterwards)
         if: env.MODE == 'deploy'
         env:
@@ -139,12 +172,23 @@ jobs:
           PREVIEW_WORKER_URL: https://iaqar-macrodroid-intake.iaqar-ai.workers.dev
         run: |
           npx playwright install --with-deps chromium >/dev/null
+          # The QA journey (tooling) from the release commit, run inside the deployed tree for its modules.
+          cp "$TOOLS/live-preview.e2e.mjs" scripts/qa/office-os/live-preview.e2e.mjs
           node scripts/qa/office-os/live-preview.e2e.mjs
+
+      - name: Pilot switch final — office-link routing on, the real offices authorized (QA removed)
+        if: env.MODE == 'deploy'
+        run: node "$TOOLS/production-pilot-access.mjs" final "$OUT_DIR"
 
       - name: Roll back on failure (Hosting version, rules, Worker)
         if: failure() && env.MODE == 'deploy' && steps.deploy.outcome != 'skipped'
         run: |
-          node scripts/production-pilot-rollback.mjs restore "$OUT_DIR" || echo "::error title=rollback::Hosting/rules restore failed — restore from the Firebase console using $OUT_DIR/rollback-point.json"
+          if [ "${{ steps.deploy_firebase.outcome }}" != "skipped" ]; then
+            node "$TOOLS/production-pilot-rollback.mjs" restore "$OUT_DIR" > "$RUNNER_TEMP/rollback.log" 2>&1 && cat "$RUNNER_TEMP/rollback.log" || { echo "::error title=rollback Hosting/rules failed::$(tail -n 3 "$RUNNER_TEMP/rollback.log" | tr '\n' ' ')"; }
+          else
+            echo "Hosting and rules were not touched — nothing to restore there."
+          fi
+          if [ "${{ steps.access_test.outcome }}" != "skipped" ]; then node "$TOOLS/production-pilot-access.mjs" restore "$OUT_DIR" || echo "::error title=rollback::pilot switch restore failed — see pilot-access-before.json"; fi
           if [ -n "${WORKER_PREVIOUS:-}" ]; then (cd worker && yes | npx wrangler rollback "$WORKER_PREVIOUS" --message "pilot rollback") || echo "::error title=rollback::Worker rollback failed — use Cloudflare dashboard, version $WORKER_PREVIOUS"; fi
           echo "::error title=pilot rolled back::the previous production version is back"
 
@@ -154,7 +198,11 @@ jobs:
         with:
           name: production-pilot-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/production-pilot/*.json
+            ${{ runner.temp }}/production-pilot/rollback-point.json
+            ${{ runner.temp }}/production-pilot/backup-manifest.json
+            ${{ runner.temp }}/production-pilot/compat-report.json
+            ${{ runner.temp }}/production-pilot/version.json
+            ${{ runner.temp }}/production-pilot/live-report.json
             ${{ runner.temp }}/production-pilot/*.png
             ${{ runner.temp }}/production-pilot/*.rules
           if-no-files-found: warn
