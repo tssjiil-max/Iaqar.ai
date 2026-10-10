@@ -1,0 +1,23 @@
+{
+  "environment": "local real Worker + in-memory Firestore/Firebase auth stub; no live external services",
+  "checks": [
+    "identity office-alpha",
+    "PNG signature and 1080×1080 office-alpha",
+    "no mobile overflow office-alpha 360",
+    "no mobile overflow office-alpha 390",
+    "no mobile overflow office-alpha 430",
+    "all export sizes office-alpha",
+    "actual Arabic fonts loaded office-alpha",
+    "server drafts persisted and isolated office-alpha",
+    "identity office-beta",
+    "PNG signature and 1080×1080 office-beta",
+    "no mobile overflow office-beta 360",
+    "no mobile overflow office-beta 390",
+    "no mobile overflow office-beta 430",
+    "all export sizes office-beta",
+    "actual Arabic fonts loaded office-beta",
+    "server drafts persisted and isolated office-beta",
+    "no browser JavaScript exceptions"
+  ],
+  "errors": []
+}

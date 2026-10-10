@@ -1,0 +1,17 @@
+/* Marketing is scoped to its own view; existing office geometry stays unchanged. */
+@font-face { font-family: "Tajawal"; src: url("/fonts/tajawal/tajawal-400.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+.os-marketing-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.os-marketing-tabs button { font:inherit; padding:8px 12px; border:1px solid var(--border,#b9ced1); background:white; border-radius:12px; color:var(--text,#164754); }
+.os-marketing-tabs button[aria-pressed="true"] { background:var(--brand-primary,#03677A); color:white; }
+.os-marketing-content { display:grid; gap:14px; min-width:0; }
+.os-marketing-content .os-card { padding:18px; min-width:0; }
+.os-marketing-content .os-btn-row { flex-wrap:wrap; gap:8px; margin-top:12px; }
+.os-marketing-content a { overflow-wrap:anywhere; }
+.os-marketing-studio { display:grid; gap:14px; min-width:0; }
+.os-marketing-controls { display:grid; gap:12px; }
+.os-marketing-preview { display:block; width:100%; height:auto; max-height:640px; object-fit:contain; border:1px solid #b9ced1; border-radius:12px; }
+.os-marketing-content summary { cursor:pointer; }
+@media (min-width:900px) { .os-marketing-studio { grid-template-columns: minmax(280px,1fr) minmax(0,1.4fr); } }
+
+@font-face { font-family: "Noto Naskh Arabic"; src: url("/fonts/noto-arabic/NotoNaskhArabic.ttf") format("truetype"); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: "Noto Kufi Arabic"; src: url("/fonts/noto-arabic/NotoKufiArabic.ttf") format("truetype"); font-weight: 400 700; font-display: swap; }

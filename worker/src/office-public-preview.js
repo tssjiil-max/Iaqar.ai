@@ -125,6 +125,17 @@ async function resolveOfficeIdBySlug(deps, slug) {
   return parts[parts.length - 1] || "";
 }
 
+/** Keep the existing office URL; preserve only validated UTM in Staging browser handoff. */
+export function marketingLandingUrl(landingUrl, sourceUrl, env = {}) {
+  if(env.DEPLOYMENT_ENV !== 'staging' || !landingUrl)return landingUrl;
+  const output = new URL(landingUrl);
+  for(const key of ['utm_source','utm_medium','utm_campaign']) {
+    const value=sourceUrl.searchParams.get(key)||'';
+    if(/^[a-zA-Z0-9_-]{1,80}$/.test(value))output.searchParams.set(key,value);
+  }
+  return output.href;
+}
+
 export async function handlePublicOfficePreview(request, env, deps) {
   const url = new URL(request.url);
   const parsed = parsePublicOfficePath(url.pathname);
@@ -144,7 +155,7 @@ export async function handlePublicOfficePreview(request, env, deps) {
   const version = text(office.shareCardNonce) || officeShareCardVersion(office);
   const canonicalSlug = normalizePublicSlug(office.publicSlug) || parsed.slug;
   const canonicalUrl = `${appOrigin}/m/${encodeURIComponent(canonicalSlug)}`;
-  const landingUrl = officePublicLandingUrl(appOrigin, officeId);
+  const landingUrl = marketingLandingUrl(officePublicLandingUrl(appOrigin, officeId), url, env);
   const imageUrl = `${workerOrigin}${officeShareCardPath(officeId, version)}`;
   const crawler = isCrawlerUserAgent(request.headers.get("user-agent") || "");
   if (!crawler) {
@@ -185,7 +196,7 @@ export async function handlePublicOfficeSharePage(request, env, deps) {
   const canonicalSlug = normalizePublicSlug(office.publicSlug) || parsed.slug;
   const canonicalUrl = `${appOrigin}/m/${encodeURIComponent(canonicalSlug)}`;
   const shareUrl = `${workerOrigin}/s/${encodeURIComponent(parsed.slug)}/${encodeURIComponent(parsed.version)}`;
-  const landingUrl = officePublicLandingUrl(appOrigin, officeId);
+  const landingUrl = marketingLandingUrl(officePublicLandingUrl(appOrigin, officeId), url, env);
   const imageUrl = `${workerOrigin}${officeShareCardPath(officeId, parsed.version)}`;
 
   const html = buildOfficeOgHtml({

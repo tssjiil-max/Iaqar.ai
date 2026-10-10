@@ -1,0 +1,73 @@
+name: Smart marketing Staging preview
+on:
+  push:
+    branches: [codex/smart-marketing-staging-20261010]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: office-os-preview
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: github.ref == 'refs/heads/codex/smart-marketing-staging-20261010'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - run: npm run test:web
+      - run: npm run test:worker
+      - run: npm run check
+      - name: Verify Firestore isolation
+        run: npx firebase emulators:exec --only firestore --project demo-iaqar-rules 'node --test --test-concurrency=1 test/emulator/firestore-rules.emulator.test.mjs test/emulator/office-os-rules.emulator.test.mjs test/emulator/marketing-rules.emulator.test.mjs'
+      - run: npx playwright install --with-deps chromium
+      - name: Verify local studio and font failure safeguards
+        run: |
+          OUT_DIR="$RUNNER_TEMP/marketing-local" node scripts/qa/marketing.e2e.mjs
+          node scripts/qa/marketing-font-failures.mjs
+      - name: Safely protect marketing data on Staging
+        env:
+          IAQAR_DEPLOY_TARGET: staging-rules
+        run: node scripts/deploy-marketing-rules.mjs
+      - name: Deploy isolated Staging preview
+        env:
+          IAQAR_DEPLOY_TARGET: preview
+        run: PREVIEW_OUTPUT_FILE="$GITHUB_ENV" bash scripts/deploy-office-os-preview.sh
+      - name: Verify live marketing on two temporary offices
+        env:
+          OUT_DIR: ${{ runner.temp }}/marketing-live
+        run: node scripts/qa/marketing-live.mjs
+      - name: Publish preview status
+        if: always()
+        run: |
+          echo "### Smart marketing preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "- App: ${PREVIEW_URL:-not deployed}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Worker: ${PREVIEW_WORKER_URL:-not deployed}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Save test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-marketing-evidence
+          path: |
+            ${{ runner.temp }}/marketing-local
+            ${{ runner.temp }}/marketing-live
+          if-no-files-found: warn
+          retention-days: 14

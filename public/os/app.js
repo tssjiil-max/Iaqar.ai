@@ -28,6 +28,7 @@ import { renderNotificationSettings } from "./views/notification-settings.js";
 import { renderLibrary } from "./views/library.js";
 import { renderChannelSettings, renderCooperationSettings, renderLinkSettings, renderOfficeProfile, renderSettingsHub } from "./views/office-settings.js";
 import { renderCommunity } from "./views/community.js";
+import { renderMarketing } from "./views/marketing.js";
 import { renderOfficeTool } from "./views/office-tools.js";
 import { renderAudit, renderInbox, renderSearch } from "./views/office-center.js";
 import { renderDealHub } from "./views/deal-hub.js";
@@ -63,6 +64,7 @@ function view() {
   if (section === "deal" && id) return { name: "tool", deal: true, run: (el) => renderDealHub(el, { journeyId: id }) };
   if (section === "community") return { name: "community", run: renderCommunity };
   if (section === "library") return { name: "library", run: renderLibrary };
+  if (section === "tools" && id === "marketing") return { name: "marketing", run: renderMarketing };
   if (section === "tools") return { name: "tool", run: (el) => renderOfficeTool(el, { tool: id }) };
   if (section === "inbox") return { name: "tool", run: renderInbox };
   if (section === "agent" && id === "try") return { name: "tool", run: renderAgentTry };
