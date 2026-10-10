@@ -127,6 +127,15 @@ function slim(result) {
   return { ok: true, ...result };
 }
 
+/** The same request context the office routes use, for a server-side caller (Kapso Sandbox). */
+export async function officeOsContext(env, deps, officeId) {
+  deps.assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || deps.DEFAULT_PROJECT_ID;
+  const accessToken = await deps.getGoogleAccessToken(env);
+  const boundDeps = deps.bind ? deps.bind({ env, projectId, accessToken }) : deps;
+  return { deps: boundDeps, store: createStore(boundDeps, { projectId, accessToken }), officeId, env, appOrigin: deps.resolveAppOrigin(env), now: () => new Date() };
+}
+
 export function isOfficeOsPath(pathname) {
   return pathname === "/os" || String(pathname || "").startsWith("/os/");
 }

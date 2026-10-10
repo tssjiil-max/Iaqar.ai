@@ -46,6 +46,11 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 TELEGRAM_OUTBOUND = "enabled"
 # صلاحية العروض والطلبات: the hourly sweep runs on Staging only (asks go only through the office bot's gates).
 VALIDITY_SWEEP = "enabled"
+# Kapso WhatsApp Sandbox (Staging only): the ONE test office its messages go to, the sandbox number they must be
+# addressed to, and the only sender accepted (the owner's test session). Secrets: KAPSO_WEBHOOK_SECRET, KAPSO_API_KEY.
+KAPSO_OFFICE_ID = "qa-office-kapso"
+KAPSO_PHONE_NUMBER_ID = "597907523413541"
+KAPSO_ALLOWED_SENDERS = "966552019909"
 
 [env.staging.ai]
 binding = "AI"
