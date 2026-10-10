@@ -1,5 +1,7 @@
 {
-  "mode": "preflight",
-  "confirm": "",
-  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>."
+  "mode": "deploy",
+  "confirm": "DEPLOY-dbb69b3",
+  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>.",
+  "requestedAt": "2026-10-10T21:16+03:00",
+  "approved": "owner: deploy smart fill + quick add to iaqar.ai («انشر»)"
 }

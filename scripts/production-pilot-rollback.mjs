@@ -11,6 +11,7 @@ import path from "node:path";
 import { getProductionAccessToken, loadProductionServiceAccount, PRODUCTION_PROJECT } from "./production-credentials.mjs";
 
 const [mode, dir] = process.argv.slice(2);
+process.on("unhandledRejection", (error) => { console.error(String(error?.message || error)); process.exit(1); });
 if (!["record", "restore"].includes(mode) || !dir) { console.error("usage: production-pilot-rollback.mjs record|restore <dir>"); process.exit(2); }
 fs.mkdirSync(dir, { recursive: true });
 const sa = loadProductionServiceAccount();
@@ -41,8 +42,13 @@ if (mode === "record") {
   const point = JSON.parse(fs.readFileSync(file, "utf8"));
   // Hosting: the recorded version becomes the live release again.
   const siteId = point.site.split("/").pop();
-  await call(`${HOSTING}/sites/${siteId}/releases?versionName=${encodeURIComponent(point.hostingVersion.replace(/^projects\/[^/]+\//, ""))}`, { method: "POST", body: JSON.stringify({ message: "pilot rollback" }) });
+  const recordedVersion = point.hostingVersion.replace(/^projects\/[^/]+\//, "");
+  const liveNow = String((await call(`${HOSTING}/${point.site}/channels/live`)).release?.version?.name || "").replace(/^projects\/[^/]+\//, "");
+  if (liveNow === recordedVersion) console.log("Hosting: the recorded version is still live — nothing to restore.");
+  else await call(`${HOSTING}/sites/${siteId}/releases?versionName=${encodeURIComponent(recordedVersion)}`, { method: "POST", body: JSON.stringify({ message: "pilot rollback" }) });
   // Rules: the recorded ruleset is released again (it still exists; a new copy if it was deleted).
+  const rulesNow = (await call(`${RULES}/projects/${PRODUCTION_PROJECT}/releases/cloud.firestore`)).rulesetName;
+  if (rulesNow === point.rulesetName) { console.log("Rules: the recorded ruleset is still released — nothing to restore."); process.exit(0); }
   let rulesetName = point.rulesetName;
   try { await call(`${RULES}/${rulesetName}`); } catch {
     rulesetName = (await call(`${RULES}/projects/${PRODUCTION_PROJECT}/rulesets`, { method: "POST", body: JSON.stringify({ source: { files: point.rulesFiles } }) })).name;
