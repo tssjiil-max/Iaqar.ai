@@ -90,7 +90,9 @@ function brokerAvatar(office) {
 
 function officeLogo(office) {
   if (/^https?:\/\//.test(String(office.logoUrl || ""))) {
-    return h("img", { src: office.logoUrl, alt: officeDisplayName(office) || "شعار المكتب" });
+    const img = h("img", { src: office.logoUrl, alt: officeDisplayName(office) || "شعار المكتب" });
+    img.addEventListener("error", () => img.replaceWith(h("span", { class: "ref-office-logo-mark", "aria-hidden": "true" })), { once: true });
+    return img;
   }
   return h("span", { class: "ref-office-logo-mark", "aria-hidden": "true" });
 }

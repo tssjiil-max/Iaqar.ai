@@ -112,9 +112,13 @@ function openMenu() {
 
 export function renderShellHeader({ active = "office" } = {}) {
   const office = session.office || {};
-  const logo = /^https:\/\//.test(String(office.logoUrl || ""))
-    ? h("img", { src: office.logoUrl, alt: "" })
-    : h("span", { class: "ref-logo" });
+  let logo = h("span", { class: "ref-logo" });
+  if (/^https:\/\//.test(String(office.logoUrl || ""))) {
+    // An office logo whose file no longer exists falls back to the platform mark (never a broken image).
+    const img = h("img", { src: office.logoUrl, alt: "" });
+    img.addEventListener("error", () => img.replaceWith(h("span", { class: "ref-logo" })), { once: true });
+    logo = img;
+  }
   const localTitle = active === "tasks" ? "المهام اليومية" : active === "repo" ? "العروض والطلبات" : "";
 
   const bell = h("button", { type: "button", class: "ref-bell", "aria-label": "التنبيهات", "data-header-bell": "", onClick: openNotifications }, ic("bell"), h("i", { class: "ref-bell-dot", "aria-hidden": "true" }));
