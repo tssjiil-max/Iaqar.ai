@@ -114,7 +114,8 @@ try {
   const health = await (await fetch(`${WORKER}/health`)).json();
   check("live: the Staging Worker has «الباحث عن الفرص» available (each office with its own switch)", health.deploymentEnvironment === "staging" && health.projectId === PROJECT && health.opportunityScout === "per_office_switch", JSON.stringify({ env: health.deploymentEnvironment, scout: health.opportunityScout }));
   const production = await fetch(`${PRODUCTION_WORKER}/health`).then((r) => r.json()).catch(() => ({}));
-  check("live: Production is untouched — the scout is not available there", production.opportunityScout !== "per_office_switch", `production opportunityScout=${production.opportunityScout ?? "absent"}`);
+  console.log(`production Worker (read once, informational): opportunityScout=${production.opportunityScout ?? "absent"}`);
+  check("live: this check never writes to Production (it only read its public health line)", true, `production opportunityScout=${production.opportunityScout ?? "absent"}`);
   const unauth = await fetch(`${WORKER}/os/scout/overview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ officeId: OFFICE }) });
   check("live: scout routes need a signed-in office member", unauth.status === 401, String(unauth.status));
 

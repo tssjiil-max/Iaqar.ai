@@ -11,6 +11,11 @@ META_GRAPH_VERSION = "v25.0"
 META_APP_ID = ""
 META_CONFIG_ID = ""
 FCM_WEB_PUSH_VAPID_KEY = ""
+# «الباحث عن الفرص» on iaqar.ai — switched on by the owner («انشر Production ابغى تجربة حية», 2026-10-11).
+# Each office still has its own switch (off by default). Free, permitted sources only: no paid search key is set,
+# the live Google search stays off, and the QA test source never exists outside Staging. Rounds follow this
+# Worker's hourly cron (an urgent search still runs its first round at once).
+OPPORTUNITY_SCOUT = "enabled"
 
 [triggers]
 crons = ["0 * * * *"]
@@ -46,8 +51,7 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 TELEGRAM_OUTBOUND = "enabled"
 # صلاحية العروض والطلبات: the hourly sweep runs on Staging only (asks go only through the office bot's gates).
 VALIDITY_SWEEP = "enabled"
-# «الباحث عن الفرص»: the scout's routes and its scheduler beat run on Staging only. Each office still has its own
-# switch (off by default). Not set for production: there every scout route answers «غير متاح» and no round runs.
+# «الباحث عن الفرص»: the scout's routes and its scheduler beat. Each office still has its own switch (off by default).
 OPPORTUNITY_SCOUT = "enabled"
 # Kapso WhatsApp Sandbox (Staging only): the ONE test office its messages go to, the sandbox number they must be
 # addressed to, and the only sender accepted (the owner's test session). Secrets: KAPSO_WEBHOOK_SECRET, KAPSO_API_KEY.

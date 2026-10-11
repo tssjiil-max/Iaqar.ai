@@ -1101,8 +1101,8 @@ export default {
     if (String(env.VALIDITY_SWEEP || "").toLowerCase() === "enabled" && new Date(scheduledTime || Date.now()).getUTCMinutes() < 5) {
       ctx.waitUntil(runValiditySweep(env).catch((error) => console.warn("[office-os] validity sweep", error?.message)));
     }
-    // «الباحث عن الفرص»: one beat of its scheduler on every cron run, only where it is switched on for the environment
-    // (Staging). An idle beat reads one small document; offices whose scout is off cost nothing.
+    // «الباحث عن الفرص»: one beat of its scheduler on every cron run, only where it is switched on for the environment.
+    // An idle beat reads one small document; offices whose scout is off cost nothing.
     if (scoutAvailable(env)) {
       ctx.waitUntil(runScoutBeat(env).catch((error) => console.warn("[scout] beat failed", error?.code || error?.message)));
     }
