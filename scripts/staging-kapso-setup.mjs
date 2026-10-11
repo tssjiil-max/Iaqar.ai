@@ -78,6 +78,19 @@ if (KEY) {
   note("Kapso API key", `read-only list of phone numbers → HTTP ${res?.status || 0}${res?.ok ? ` · key accepted · ${rows.length} number(s) · sandbox number listed: ${hasSandbox ? "yes" : "no"}` : " · key refused or wrong key type"}`);
 }
 
+// One real send through the Kapso Sandbox — only when asked (KAPSO_SEND_TEST=1), only to the allowed sandbox sender,
+// only from the sandbox number. Prints the HTTP status only.
+if (KEY && process.env.KAPSO_SEND_TEST === "1") {
+  const to = "966552019909";
+  const res = await fetch("https://api.kapso.ai/meta/whatsapp/v24.0/597907523413541/messages", {
+    method: "POST", headers: { "content-type": "application/json", "X-API-Key": KEY },
+    body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: "اختبار إرسال من iAqar Staging (Sandbox) ✅" } }),
+    signal: AbortSignal.timeout(15000)
+  }).catch(() => null);
+  const out = res ? await res.json().catch(() => ({})) : {};
+  note("Kapso send test", `sandbox → ${to.slice(0, 5)}… → HTTP ${res?.status || 0}${res?.ok ? " · accepted" : ` · ${String(out?.error?.message || out?.error || "").slice(0, 120)}`}`);
+}
+
 // The last real deliveries (status and reply outcome only — no phone, no text), to confirm a real WhatsApp message.
 const log = await office.collection("kapsoDeliveryLog").orderBy("at", "desc").limit(6).get().catch(() => ({ docs: [] }));
 const records = await office.collection("opportunities").get().catch(() => ({ docs: [] }));

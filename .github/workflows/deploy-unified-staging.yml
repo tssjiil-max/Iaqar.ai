@@ -2,6 +2,11 @@ name: Deploy unified staging
 
 on:
   workflow_dispatch:
+    inputs:
+      kapso_send_test:
+        description: "Send one test message through the Kapso Sandbox"
+        type: boolean
+        default: false
   push:
     branches:
       - codex/unified-staging-lineage-2026-08-29
@@ -64,6 +69,8 @@ jobs:
           npm run deploy:staging:safe
 
       - name: Kapso WhatsApp Sandbox — test office + endpoint refuses unsigned requests
+        env:
+          KAPSO_SEND_TEST: ${{ inputs.kapso_send_test && '1' || '' }}
         run: node scripts/staging-kapso-setup.mjs
 
       - name: Upload staging deploy failure diagnostic
