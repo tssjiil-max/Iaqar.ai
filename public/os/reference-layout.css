@@ -189,3 +189,5 @@ html,body{background:var(--surface)}
 .ref-stage-all,.ref-heading button{font-size:14.5px;min-height:40px}
 .ref-add-record,.ref-follow{font-size:19px;font-weight:600;min-height:52px}
 @media(max-width:360px){.ref-task-copy h3{font-size:15.5px}.ref-record-copy h3{font-size:16px}.ref-record-copy b{font-size:15.5px}.ref-bottom button{font-size:13px}.ref-task-actions .os-btn{font-size:13.5px;padding:6px 10px}}
+/* 320px: the six stage names of «مسار الصفقة» each fit their column («مستندات» is the widest). */
+@media(max-width:350px){.ref-path{padding-inline:6px}.ref-steps{gap:2px}}
