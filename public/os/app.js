@@ -4,7 +4,7 @@
  *   everything else                                → «دخول المكتب» + office app
  * Office app routes (hash): #/office (default) · #/tasks · #/task/<id> · #/repo · #/record/<id> · #/record/new ·
  *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/session/<journeyId> · #/community · #/library ·
- *   #/deal/<journeyId> (متابعة الصفقة) · #/inbox · #/search · #/audit · #/tools/<forms|guide|services|calculator|market> · #/settings[/profile|link|cooperation|channels|notifications|brokers]
+ *   #/deal/<journeyId> (متابعة الصفقة) · #/inbox · #/search · #/audit · #/scout[/new|/opp/<id>|/task/<id>] (باحث الفرص) · #/tools/<forms|guide|services|calculator|market> · #/settings[/profile|link|cooperation|channels|notifications|brokers]
  */
 
 import { h, clear, append } from "./core/dom.js";
@@ -32,6 +32,7 @@ import { renderCommunity } from "./views/community.js";
 import { renderOfficeTool } from "./views/office-tools.js";
 import { renderAudit, renderInbox, renderSearch } from "./views/office-center.js";
 import { renderDealHub } from "./views/deal-hub.js";
+import { renderScout, renderScoutFind, renderScoutNew, renderScoutSettings, renderScoutTask } from "./views/scout.js";
 import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js";
 import { go, noteNavigation, setRenderer } from "./core/nav.js";
 import { forgetDeal } from "./core/deal-return.js";
@@ -67,12 +68,17 @@ function view() {
   if (section === "library") return { name: "library", run: renderLibrary };
   if (section === "tools") return { name: "tool", run: (el) => renderOfficeTool(el, { tool: id }) };
   if (section === "inbox") return { name: "tool", run: renderInbox };
+  // «باحث الفرص»: the board, a new search, one find, one search.
+  if (section === "scout" && id === "new") return { name: "tool", run: renderScoutNew };
+  if (section === "scout" && id === "opp" && sub) return { name: "tool", run: (el) => renderScoutFind(el, { id: sub }) };
+  if (section === "scout" && id === "task" && sub) return { name: "tool", run: (el) => renderScoutTask(el, { id: sub }) };
+  if (section === "scout") return { name: "tool", run: renderScout };
   if (section === "agent" && id === "try") return { name: "tool", run: renderAgentTry };
   if (section === "agent") return { name: "tool", run: renderAgent };
   if (section === "search") return { name: "tool", run: (el) => renderSearch(el, { query: query.get("q") || "" }) };
   if (section === "audit") return { name: "tool", run: renderAudit };
   if (section === "settings") {
-    const page = { profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, channels: renderChannelSettings, agent: renderAgentSettings, notifications: renderNotificationSettings, brokers: renderSettings }[id] || renderSettingsHub;
+    const page = { profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, channels: renderChannelSettings, agent: renderAgentSettings, scout: renderScoutSettings, notifications: renderNotificationSettings, brokers: renderSettings }[id] || renderSettingsHub;
     return { name: "settings", run: (el) => page(el) };
   }
   return { name: "tasks", main: true, deal: true, run: (el) => renderTasks(el, { filter: query.get("filter") || "all", step: query.get("step"), lane: query.get("lane") }) };
@@ -141,6 +147,11 @@ function applyDeepLink() {
   const clean = new URL(location.href);
   ["openOperation", "openOpportunity", "openMatch", "openDailyTask", "openAppointment", "focusFollowUp"].forEach((k) => clean.searchParams.delete(k));
   history.replaceState({}, "", `${clean.pathname}${clean.search}`);
+  // A push from «باحث الفرص» opens the find itself.
+  if (operationId && operationId.startsWith("scout:")) {
+    const findId = operationId.slice("scout:".length);
+    if (/^so_[A-Za-z0-9_]{6,60}$/.test(findId)) { go(`scout/opp/${findId}`); return; }
+  }
   if (operationId && operationId.startsWith("session:")) {
     const journeyId = operationId.slice("session:".length);
     if (journeyId) { go(`session/${journeyId}`); return; }

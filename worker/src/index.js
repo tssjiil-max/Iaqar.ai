@@ -54,6 +54,7 @@ import {
 import webpush from "web-push";
 import { handleOfficeOs, isOfficeOsPath, officeOsContext } from "./office-os/routes.js";
 import { handleKapsoWebhook } from "./office-os/kapso-service.js";
+import { runScoutTick, scoutAvailable, scoutHealthReport } from "./office-os/scout-service.js";
 import { isPublicRecordImagePath, promoteIntakeImages, servePublicRecordImage, uploadRecordImage, workerOriginOf } from "./office-os/record-media-service.js";
 import { callGeminiGenerateContent } from "./gemini-api-client.mjs";
 import { journeyIdForPair } from "./office-os/journey-service.js";
@@ -519,6 +520,8 @@ export default {
           // allowed on this environment AND the office switched its bot on AND the person pressed Start.
           outboundMessaging: false,
           telegramBot: botOutboundConfig(env).available ? "per_office_switch" : "off",
+          // «باحث الفرص»: available on this environment or not (each office still has its own switch, off by default).
+          opportunityScout: scoutAvailable(env) ? "per_office_switch" : "off",
           deploymentEnvironment,
           firebaseConfigured,
           backendReady,
@@ -928,6 +931,14 @@ export default {
         return await handleAdminSession(request, env, requestId, getAdminHelpers());
       }
 
+      // «باحث الفرص» observability for the platform admin: scheduler beat, sources and why each is or is not usable,
+      // counts of offices and searches. No office data, no contact details, no secrets.
+      if (request.method === "GET" && url.pathname === "/admin/scout/health") {
+        assertFirebaseSecrets(env);
+        await requirePlatformIdentity(request, env, true);
+        return jsonResponse({ ...(await scoutHealthReport(await officeOsSystemContext(env))), requestId });
+      }
+
       if (request.method === "GET" && url.pathname === "/admin/overview") {
         return await handleAdminOverview(request, env, requestId, getAdminHelpers());
       }
@@ -1089,6 +1100,11 @@ export default {
     // for offices whose office manager is on. Nothing is deleted; asks go only to sides linked to the bot.
     if (String(env.VALIDITY_SWEEP || "").toLowerCase() === "enabled" && new Date(scheduledTime || Date.now()).getUTCMinutes() < 5) {
       ctx.waitUntil(runValiditySweep(env).catch((error) => console.warn("[office-os] validity sweep", error?.message)));
+    }
+    // «باحث الفرص»: one beat of its scheduler on every cron run, only where it is switched on for the environment
+    // (Staging). An idle beat reads one small document; offices whose scout is off cost nothing.
+    if (scoutAvailable(env)) {
+      ctx.waitUntil(runScoutBeat(env).catch((error) => console.warn("[scout] beat failed", error?.code || error?.message)));
     }
   }
 };
@@ -1831,6 +1847,18 @@ async function handleTelegramWebhookRoute(request, env, requestId) {
     }
   });
   return jsonResponse({ ...result, requestId }, Number(result.status || 200));
+}
+
+async function officeOsSystemContext(env) {
+  assertFirebaseSecrets(env);
+  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+  const accessToken = await getGoogleAccessToken(env);
+  const bound = officeOsDeps().bind({ env, projectId, accessToken });
+  return { deps: bound, store: createOfficeOsStore(bound, { projectId, accessToken }), env, officeId: "", appOrigin: resolveAppOrigin(env), now: () => new Date() };
+}
+
+async function runScoutBeat(env) {
+  return runScoutTick(await officeOsSystemContext(env));
 }
 
 async function runValiditySweep(env) {
@@ -6103,7 +6131,9 @@ export const PUSH_TYPE_NOTIFICATION_CATEGORIES = Object.freeze({
   opportunity_followup_reminder: "appointmentNotifications",
   viewing: "appointmentNotifications",
   operation: "systemNotifications",
-  system: "systemNotifications"
+  system: "systemNotifications",
+  // «باحث الفرص»: a strong find for one of the office's offers or requests follows the office's match preference.
+  scout: "matchNotifications"
 });
 
 // أنواع طلبها الوسيط بنفسه، فلا تُحجب بأي تفضيل.
@@ -7384,7 +7414,7 @@ async function patchFirestoreDocument({ projectId, segments, accessToken, fields
 }
 
 function officeOsDeps() {
-  const base = partySessionHelpers();
+  const base = { ...partySessionHelpers(), deleteFirestoreDocument };
   return {
     ...base,
     listCollectionDocuments,

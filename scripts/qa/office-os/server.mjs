@@ -44,6 +44,8 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
     FIREBASE_PRIVATE_KEY: sa.privateKey,
     FIREBASE_PRIVATE_KEY_ID: "0123456789abcdef0123456789abcdef01234567",
     DEPLOYMENT_ENV: "staging",
+    // «باحث الفرص» is switched on for Staging in wrangler.toml; the harness mirrors that environment.
+    OPPORTUNITY_SCOUT: "enabled",
     // In-memory media bucket (what R2 is in production) so share-card uploads work without a 503.
     IAQAR_MEDIA: (() => { const objects = new Map(); return { put: async (key, body, meta = {}) => { objects.set(key, { bytes: Buffer.from(await new Response(body).arrayBuffer()), type: meta.httpMetadata?.contentType }); }, get: async (key) => (objects.has(key) ? { body: objects.get(key).bytes, httpEtag: '"e2e"', writeHttpMetadata(h) { if (objects.get(key).type) h.set("content-type", objects.get(key).type); } } : null), delete: async (key) => { objects.delete(key); }, keys: () => [...objects.keys()] }; })(),
     APP_ORIGIN: ""

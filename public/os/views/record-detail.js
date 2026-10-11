@@ -16,6 +16,7 @@ import { buildWhatsAppUrl, formatDateTime } from "../domain/format-domain.js";
 import { archiveRecordFlow, pauseRecordFlow, removeRecordFlow, restoreRecordFlow } from "./record-actions.js";
 import { imageGallery } from "./record-images.js";
 import { ANSWER, STATE, answerOptions, validityView } from "../domain/validity-domain.js";
+import { recordScoutRow } from "./scout.js";
 
 function fact(iconName, label, value) {
   if (!value) return null;
@@ -73,6 +74,8 @@ export function renderRecordDetail(container, { recordId }) {
   // Built once per visit: a redraw (live data) must not ask the server again or drop a link just made.
   let botRow = null;
   let botRowFor = "";
+  // «باحث الفرص» for this record: built once per visit (its state is asked from the server once, then follows the presses).
+  let scoutRow = null;
   const draw = () => {
     const record = recordById(recordId);
     clear(container);
@@ -126,6 +129,8 @@ export function renderRecordDetail(container, { recordId }) {
       h("div", { style: { marginTop: "12px" } }, actions)
     ));
     append(container, externalCooperationPanel(record));
+    // «ابحث عن مشتري» / «ابحث عن عقار»: one press, everything read from this record.
+    if (view.state === "ACTIVE" && !isExternalBroker(record)) append(container, (scoutRow = scoutRow || recordScoutRow(record)));
 
     // «الصلاحية والتوفر»: the record's own facts and one-tap answers (same record; nothing is deleted).
     if (view.state !== "DELETED") {

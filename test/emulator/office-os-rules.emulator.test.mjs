@@ -115,6 +115,24 @@ test("the office agent: settings, conversations and stats are closed to every cl
   }
 });
 
+test("«باحث الفرص»: settings, searches, finds, pasted text, the state and the platform schedule are closed to every client (Worker only)", async () => {
+  const paths = [
+    "offices/office-a/scoutSettings/main", "offices/office-a/scoutState/main", "offices/office-a/scoutTasks/st_r_1", "offices/office-a/scoutOpportunities/so_1",
+    "offices/office-a/scoutFeed/sf_1", "offices/office-a/scoutFixtures/fx_1", "offices/office-a/scoutRuns/run_1", "_system/scoutSchedule"
+  ];
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    for (const path of paths) await setDoc(doc(db, path), { officeId: "office-a", enabled: true });
+  });
+  for (const db of [as("owner-a"), as("broker-a"), as("owner-b"), anon()]) {
+    for (const path of paths) {
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), { officeId: "office-a", enabled: false }));
+      await assertFails(deleteDoc(doc(db, path)));
+    }
+  }
+});
+
 test("platform support (Telegram Business): connections, chats, tickets and limits are closed to every client (Worker only)", async () => {
   const paths = ["supportConnections/bc_1", "supportChats/bc_1__7", "supportTickets/st_1", "supportSettings/telegram", "supportRate/owner-a__2026-10-09", "supportResume/abc", "validityAsks/abc"];
   await env.withSecurityRulesDisabled(async (ctx) => {

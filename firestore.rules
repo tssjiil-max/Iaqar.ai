@@ -45,7 +45,9 @@ service cloud.firestore {
         // بوت المكتب: مفتاح التشغيل وأسئلة المطابقة — للـ Worker فقط (المدير يغيّر المفتاح عبر الـ Worker).
         'botSettings', 'matchAsks',
         // مدير المكتب الذكي — للـ Worker فقط.
-        'agentSettings', 'agentChats', 'agentStats', 'agentPreview'
+        'agentSettings', 'agentChats', 'agentStats', 'agentPreview',
+        // باحث الفرص — للـ Worker فقط (المتصفح يقرأ ويغيّر عبر مسارات /os/scout بعد التحقق من العضوية).
+        'scoutSettings', 'scoutState', 'scoutTasks', 'scoutOpportunities', 'scoutFeed', 'scoutFixtures', 'scoutRuns'
       ];
     }
     function validOfficeProfile() {

@@ -76,6 +76,19 @@ export function installMemoryFirestore({ jwk }) {
       for (const w of writes) if (w.update) write(w.update.name.split("/documents/")[1], w.update.fields || {}, w.updateMask?.fieldPaths);
       return Response.json({ writeResults: [] });
     }
+    // A query scoped to a parent document (…/documents/<parent>:runQuery): one collection, one range filter on a
+    // timestamp field, ordered by it. Root queries (…/documents:runQuery) keep answering with nothing, as before.
+    if (pathname.endsWith(":runQuery") && pathname.length > base.length + ":runQuery".length) {
+      const parent = pathname.slice(base.length, -":runQuery".length);
+      const q = JSON.parse(init.body || "{}").structuredQuery || {};
+      const filter = q.where?.fieldFilter;
+      const field = filter?.field?.fieldPath || "";
+      const bound = Date.parse(filter?.value?.timestampValue || "") || 0;
+      const at = (p) => { const v = docs.get(p).fields[field]; return Date.parse(v?.timestampValue || v?.stringValue || "") || 0; };
+      const older = filter?.op === "LESS_THAN";
+      const rows = listPaths(`${parent}/${q.from?.[0]?.collectionId || ""}`).filter((p) => (older ? at(p) > 0 && at(p) < bound : at(p) > bound)).sort((a, b) => at(a) - at(b)).slice(0, Number(q.limit || 50));
+      return Response.json(rows.length ? rows.map((p) => ({ document: docJson(p) })) : [{ readTime: new Date().toISOString() }]);
+    }
     if (pathname.includes(":")) return Response.json([]);
     const p = pathname.slice(base.length);
     const isCollection = p.split("/").length % 2 === 1;

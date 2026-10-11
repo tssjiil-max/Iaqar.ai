@@ -238,13 +238,13 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
       else if (result.matchingPending) toast("تم الحفظ، وسيُستكمل فحص المطابقة تلقائيًا", "ok");
       else if (result.matches > 0) toast(result.matches === 1 ? "تم الحفظ — ظهرت مطابقة للمراجعة في المهام اليومية" : `تم الحفظ — ظهرت ${result.matches} مطابقات للمراجعة`, "ok");
       else if (!photos.failed) toast(existing ? "تم حفظ التعديلات" : "تم الحفظ — سيُعاد فحص السجل عند وصول بيانات مناسبة", "ok");
-      if (draft?.onSaved) { draft.onSaved(result.recordId, result.duplicate === true); go("quick-add"); return; }
+      if (draft?.onSaved) { draft.onSaved(result.recordId, result.duplicate === true); go(draft.returnTo || "quick-add"); return; }
       go(`record/${result.recordId}`);
     });
     clear(container);
     append(container, 
       h("div", { class: "os-page-head" },
-        h("button", { type: "button", class: "os-back", onClick: () => back(existing ? `record/${recordId}` : draft ? "quick-add" : "repo") }, ic("chev-right"), "رجوع"),
+        h("button", { type: "button", class: "os-back", onClick: () => back(existing ? `record/${recordId}` : draft ? draft.returnTo || "quick-add" : "repo") }, ic("chev-right"), "رجوع"),
         titleEl, h("span")
       ),
       formEl
