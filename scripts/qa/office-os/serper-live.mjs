@@ -33,6 +33,8 @@ try{
  const before=await budget();
  const started=await call('/os/scout/search',{search:{mode:'GENERAL',seek:'OFFER',tx:'sale',propertyTypes:['عمارة'],city:'المدينة المنورة',districts:'الهجرة',nlText:report.query},requestKey:`serper-${run}`});
  report.taskId=started.taskId;
+ // GENERAL queues its first source round; explicitly run it before reading evidence.
+ await call('/os/scout/search/control',{taskId:started.taskId,action:'RUN_NOW'});
  const overview=await call('/os/scout/overview');
  const caches=(await ref.collection('scoutSerperCache').get()).docs.map(d=>d.data());
  report.providerConnected=caches.some(d=>d.status==='complete');
