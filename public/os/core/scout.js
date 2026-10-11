@@ -29,3 +29,7 @@ export const scoutForRecord = (officeId, recordId, action = "STATUS", mode = "")
 export const scoutFind = (officeId, opportunityId) => api("/os/scout/find", { officeId, opportunityId });
 export const actOnScoutFind = (officeId, opportunityId, action, recordId = "") => changed(api("/os/scout/find/act", { officeId, opportunityId, action, recordId }, { keepalive: action === "CONTACT" }));
 export const feedScout = (officeId, text, channel = "") => changed(api("/os/scout/feed", { officeId, text, channel }));
+/** «ابحث في الويب الآن»: Google's answer for this search, shown once and never stored. */
+export const liveWebSearch = (officeId, taskId) => api("/os/scout/web/live", { officeId, taskId });
+export const linkScoutTelegramChat = (officeId) => api("/os/scout/telegram/link", { officeId });
+export const unlinkScoutTelegramChat = (officeId, chatId) => changed(api("/os/scout/telegram/unlink", { officeId, chatId }));

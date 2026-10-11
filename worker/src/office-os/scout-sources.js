@@ -18,10 +18,13 @@
  *   • عقار and حراج are registered as UNAVAILABLE with the reason found when their terms were checked; they have
  *     no fetch code. They become usable only through a data agreement, which then arrives as «تغذية مرخّصة».
  *   • WhatsApp is not crawled: only messages that reached the office through its official integration are read.
+ *   • The open web is asked through a web-search API only (scout-web.js): result pages are never opened, and
+ *     sites that forbid collecting their listings are left out of the results too.
  *   • Logs carry counts and codes — never a phone, a name or an ad's text.
  */
 
 import { splitDigest } from "../../../public/os/domain/scout-domain.js";
+import { postsSearchAdapter, webSearchAdapter } from "./scout-web.js";
 
 export const SOURCE_STATE = Object.freeze({ AVAILABLE: "AVAILABLE", NOT_CONFIGURED: "NOT_CONFIGURED", UNAVAILABLE: "UNAVAILABLE" });
 
@@ -73,6 +76,29 @@ const brokerFeed = {
     const docs = await ctx.store.queryAfter(["offices", officeId], "scoutFeed", { field: "createdAt", after: since, limit: Math.min(20, limit) });
     const items = [];
     for (const doc of docs) items.push(...itemsFromText({ sourceId: "broker_feed", docId: doc.id, body: String(doc.text || ""), at: iso(doc.createdAt) }));
+    return { items, scanned: docs.length, until: iso(docs.at(-1)?.createdAt) };
+  }
+};
+
+export const telegramGroupsReady = (env = {}) => Boolean(text(env.TELEGRAM_BOT_TOKEN, 200) && text(env.TELEGRAM_WEBHOOK_SECRET, 300) && text(env.TELEGRAM_BOT_USERNAME, 60));
+
+/**
+ * Telegram groups and channels the office linked to its scout: the platform's bot is added there by an admin of
+ * the group (Telegram's official Bot API), and only messages that read as property ads are kept for the office.
+ */
+const telegramGroups = {
+  id: "telegram_groups",
+  label: "قروبات وقنوات تيليجرام",
+  kind: "APP",
+  access: { method: "Telegram Bot API → offices/{officeId}/scoutPosts", basis: "بوت المنصة يُضاف إلى القروب أو القناة من مشرفها (واجهة تيليجرام الرسمية للبوتات)؛ لا يُقرأ حساب شخصي ولا قروب لم يُضَف إليه البوت" },
+  quality: 0.65,
+  availability: (ctx) => (telegramGroupsReady(ctx.env) ? { state: SOURCE_STATE.AVAILABLE, reason: "" } : { state: SOURCE_STATE.NOT_CONFIGURED, reason: "بوت المنصة على تيليجرام غير مفعّل على هذه البيئة" }),
+  async fetch(ctx, { officeId, since, limit }) {
+    const docs = await ctx.store.queryAfter(["offices", officeId], "scoutPosts", { field: "createdAt", after: since, limit });
+    const items = docs.filter((doc) => typeof doc.text === "string" && doc.text.trim()).map((doc) => ({
+      sourceId: "telegram_groups", externalId: text(doc.id, 120), text: doc.text.slice(0, 2000), url: text(doc.link, 500), contactRoute: text(doc.link, 500),
+      publishedAt: iso(doc.postedAt), at: iso(doc.createdAt)
+    }));
     return { items, scanned: docs.length, until: iso(docs.at(-1)?.createdAt) };
   }
 };
@@ -168,6 +194,9 @@ const unavailable = (id, label, reason) => ({
 export const SOURCE_ADAPTERS = Object.freeze([
   officeInbox,
   brokerFeed,
+  telegramGroups,
+  webSearchAdapter,
+  postsSearchAdapter,
   partnerFeed,
   qaFixture,
   unavailable("aqar", "عقار", "robots.txt يمنع صفحات البحث والمدن والأحياء والتصنيفات ومعلومات المعلن، والشروط تمنع جمع بيانات المنصة ومستخدميها؛ لا يوجد API عام. يحتاج اتفاقية وصول."),
@@ -175,13 +204,15 @@ export const SOURCE_ADAPTERS = Object.freeze([
 ]);
 
 const BY_ID = new Map(SOURCE_ADAPTERS.map((adapter) => [adapter.id, adapter]));
-const adapterOf = (sourceId) => BY_ID.get(String(sourceId || "").startsWith("qa_") ? "qa_fixture" : String(sourceId || "")) || null;
+const adapterOf = (sourceId) => { const id = String(sourceId || ""); return BY_ID.get(id.startsWith("qa_") ? "qa_fixture" : id.startsWith("web_") && id !== "web_search" ? "web_search" : id) || null; };
 
 export function sourceLabel(sourceId, env = {}) {
   const adapter = adapterOf(sourceId);
   if (!adapter) return "مصدر";
   if (adapter.id === "partner_feed") return feedConfig(env).name;
   if (adapter.id === "qa_fixture") return `مصدر اختبار (${String(sourceId).slice(3) || "fixture"})`;
+  // A web find names the site it was found on («وُجدت في مصدرين» then means two different sites).
+  if (adapter.id === "web_search" && sourceId !== "web_search") return `الويب · ${String(sourceId).slice(4)}`;
   return adapter.label;
 }
 

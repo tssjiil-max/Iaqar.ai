@@ -21,7 +21,7 @@ import {
   ADVERTISER_LABEL, BAND, BAND_LABEL, CATEGORY_LABEL, END_REASON_LABEL, MODE_CONFIG, OPP_ACTION, OPP_STATUS, RING, SCOUT_MODE, SEEK, SURFACE, TASK_CONTROL, TASK_ORIGIN, TASK_STATUS,
   allowedRing, awaySummary, bandRank, boardCard, candidateFromRaw, categoryOf, contentKey, discoveryProfile, entityHeadline, freshness, isContactable, mergeSighting,
   modeOf, normPhone, normalizeScoutSettings, strongCount, notificationCopy, parseScoutCommand, planQueries, priceLine, profileFromRecord, profileSummary, scoutCounters, splitDigest,
-  surfaceDecision, taskCadence, taskTitle, taskView, validateCustomSearch
+  surfaceDecision, taskCadence, taskTitle, taskView, validateCustomSearch, webQueryText
 } from "../../../public/os/domain/scout-domain.js";
 import { kindOf, recordTitle } from "../../../public/os/domain/records-domain.js";
 import { consumePublicRateLimit, publicRateLimitKey } from "../public-rate-limit.js";
@@ -30,7 +30,9 @@ import { alertBrokerOnTelegram } from "./bot-notify.js";
 import { canActOn } from "./permissions.js";
 import { fillListingGaps, smartFillAiStatus } from "./smart-fill-service.js";
 import { entityFromIndex, evaluateFind, findExisting, inInventory, indexEntry, repeatCount } from "./scout-evaluate.js";
-import { nextBackoff, sourceLabel, sourceQuality, sourcesForOffice, sourcesReport, usableSources } from "./scout-sources.js";
+import { SOURCE_STATE, nextBackoff, sourceLabel, sourceQuality, sourcesForOffice, sourcesReport, usableSources } from "./scout-sources.js";
+import { scoutChatsView } from "./scout-telegram.js";
+import { liveSearchAvailable, liveWebSearch } from "./scout-web.js";
 import {
   SCOUT_LIMITS, dequeueTask, enqueueTask, findPath, isRunning, loadSchedule, loadSettings, loadState, mutateSchedule, mutateState, officeEntry, recordDigest,
   recordSearchState, scoutAvailable, settingsPath, taskPath
@@ -184,6 +186,8 @@ export async function syncOfficeInventory(ctx, officeId, { settings, now = ctx.n
   for (const id of expired) await ctx.store.remove(findPath(officeId, id)).catch(() => {});
   const oldFeed = await ctx.store.queryAfter(["offices", officeId], "scoutFeed", { field: "createdAt", before: new Date(now.getTime() - SCOUT_LIMITS.opportunityTtlDays * DAY), limit: 20 }).catch(() => []);
   for (const doc of oldFeed) await ctx.store.remove(["offices", officeId, "scoutFeed", doc.id]).catch(() => {});
+  const oldPosts = await ctx.store.queryAfter(["offices", officeId], "scoutPosts", { field: "createdAt", before: new Date(now.getTime() - SCOUT_LIMITS.opportunityTtlDays * DAY), limit: 40 }).catch(() => []);
+  for (const doc of oldPosts) await ctx.store.remove(["offices", officeId, "scoutPosts", doc.id]).catch(() => {});
   return { digest, queue, created, openRecords: open.length, expired: expired.length };
 }
 
@@ -319,7 +323,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
   const settings = await loadSettings(ctx, officeId, office);
   if (!settings.enabled) return { ok: true, off: true, tasks: {}, enqueue: [] };
   const nowMs = now.getTime();
-  const outcome = { ok: true, tasks: {}, enqueue: [], syncAt: 0, stats: { fetched: 0, fresh: 0, known: 0, merged: 0, discarded: 0, inInventory: 0, notContactable: 0, kept: 0, strong: 0, veryStrong: 0, notified: 0, aiCalls: 0, sourceErrors: 0 }, cards: [] };
+  const outcome = { ok: true, tasks: {}, enqueue: [], syncAt: 0, stats: { fetched: 0, fresh: 0, known: 0, merged: 0, discarded: 0, inInventory: 0, notContactable: 0, kept: 0, strong: 0, veryStrong: 0, notified: 0, aiCalls: 0, outsideQueries: 0, sourceErrors: 0 }, cards: [] };
   if (sync) {
     const synced = await syncOfficeInventory(ctx, officeId, { settings, now });
     outcome.enqueue = synced.queue;
@@ -464,14 +468,38 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
   const limit = Math.max(...tasks.map((t) => MODE_CONFIG[modeOf(t.mode)].itemsPerCycle));
   const rawItems = [];
   const fetchedUntil = {};
+  const asked = new Map();
   for (const { adapter, backingOff } of sources) {
     if (backingOff && !inline) continue;
     const recheck = (task) => Boolean(adapter.queryable && task.cycle % MODE_CONFIG[modeOf(task.mode)].recheckEvery === 0);
     const sinceOf = (task) => sinceMs || (inline || recheck(task) ? nowMs - (task.profile?.freshnessDays || MODE_CONFIG[modeOf(task.mode)].backfillDays) * DAY : cursorOf(task, adapter.id, now));
     const starts = tasks.map(sinceOf);
-    const forms = adapter.queryable ? tasks.flatMap(planQueries).filter((form, i, all) => all.findIndex((f) => JSON.stringify(f) === JSON.stringify(form)) === i).slice(0, 6) : [];
+    const distinct = (list) => list.filter((form, i, all) => all.findIndex((f) => JSON.stringify(f) === JSON.stringify(form)) === i);
+    let forms = adapter.queryable ? distinct(tasks.flatMap(planQueries)).slice(0, 6) : [];
+    const asking = [];
+    if (adapter.metered) {
+      // A paid outside search: each search asks at its own mode's pace, the most pressing first, and the office
+      // never goes past its daily allowance. A search with nothing specific to ask (no type, no district) does not ask.
+      let left = Math.min(8, Math.max(0, adapter.metered.perDay(ctx.env) - Number(usage[adapter.metered.usageKey] || 0)));
+      forms = [];
+      for (const task of [...tasks].sort((a, b) => MODE_CONFIG[modeOf(b.mode)].priority - MODE_CONFIG[modeOf(a.mode)].priority)) {
+        const pace = (taskCadence(task, now).downgraded ? MODE_CONFIG.GENERAL : MODE_CONFIG[modeOf(task.mode)]).metered;
+        if (left <= 0 || nowMs - (Date.parse(task.metered?.[adapter.id] || "") || 0) < pace.everyMinutes * 60_000) continue;
+        const mine = planQueries(task).filter((form) => (form.propertyTypes || []).length || (form.districts || []).length).slice(0, Math.min(pace.queries, left));
+        if (!mine.length) continue;
+        forms.push(...mine); left -= mine.length; asking.push(task.id);
+      }
+      forms = distinct(forms);
+      if (!forms.length) continue;
+    }
     try {
-      const got = await adapter.fetch(ctx, { officeId, since: new Date(Math.min(...starts)), limit, forms });
+      const got = await adapter.fetch(ctx, { officeId, since: new Date(Math.min(...starts)), limit, forms, now });
+      if (adapter.metered) {
+        const sent = Number(got.queries ?? forms.length) || 0;
+        usage[adapter.metered.usageKey] = Number(usage[adapter.metered.usageKey] || 0) + sent;
+        outcome.stats.outsideQueries += sent;
+        for (const id of asking) asked.set(id, { ...(asked.get(id) || {}), [adapter.id]: now.toISOString() });
+      }
       let items = got.items || [];
       let until = got.until || "";
       // A search that is catching up must not hold back the ones that are up to date: read the newest window too.
@@ -559,6 +587,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
       if (moved) patch.cursors = cursors;
       if (task.indexChecked !== true) patch.indexChecked = true;
     }
+    if (asked.has(task.id)) patch.metered = { ...(task.metered || {}), ...asked.get(task.id) };
     if (counter.strong) patch.stats = { strong: Number(task.stats?.strong || 0) + counter.strong, veryStrong: Number(task.stats?.veryStrong || 0) + counter.veryStrong };
     if (Object.keys(patch).length || inline) await ctx.store.set(taskPath(officeId, task.id), { ...patch, lastRunAt: now.toISOString(), updatedAt: now });
     const cadence = taskCadence(task, now);
@@ -566,7 +595,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
     outcome.tasks[task.id] = { n: patch.geoRing ? nowMs : nowMs + cadence.intervalMinutes * 60_000, p: cadence.priority, c: task.cycle + 1, e: empty, r: task.recordCheckedAt };
   }
   health = { ...health, lastCycleAt: now.toISOString(), ...(outcome.stats.sourceErrors ? { lastErrorAt: now.toISOString() } : { lastOkAt: now.toISOString() }), cycles: Number(health.cycles || 0) + 1 };
-  const active = outcome.stats.fetched > 0 || outcome.stats.sourceErrors > 0;
+  const active = outcome.stats.fetched > 0 || outcome.stats.sourceErrors > 0 || outcome.stats.outsideQueries > 0;
   if (active || touched.size || inline || nowMs - (Date.parse(state.health?.lastCycleAt || "") || 0) > 3_600_000) {
     const changedIds = new Set(touched.keys());
     await mutateState(ctx, officeId, (current) => ({
@@ -680,9 +709,15 @@ export async function scoutOverview(ctx, { officeId, actor }) {
     .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || MODE_CONFIG[b.mode].priority - MODE_CONFIG[a.mode].priority);
   const board = boardFor(state);
   const failing = Object.values(state.health?.sources || {}).some((s) => Number(s.fails || 0) >= 3);
+  // What the office cannot use yet, and why — said plainly, so nobody assumes a site is being read when it is not.
+  const pending = actor.isManager === true
+    ? sourcesReport(ctx, office).filter((source) => source.kind !== "TEST" && source.state !== SOURCE_STATE.AVAILABLE).map((source) => ({ id: source.id, label: source.label, reason: text(source.reason, 240) }))
+    : [];
   return {
     ok: true, available: true, isManager: actor.isManager === true, settings, counters: scoutCounters({ board, tasks, now }), away: awaySummary(board),
-    board: board.slice(0, 30), tasks: tasks.slice(0, 60), sources: sourcesForOffice(ctx, office, settings), health: { failing, lastRoundAt: state.health?.lastCycleAt || "" },
+    board: board.slice(0, 30), tasks: tasks.slice(0, 60), sources: sourcesForOffice(ctx, office, settings), pendingSources: pending,
+    telegram: actor.isManager === true ? await scoutChatsView(ctx, officeId) : null, liveSearch: liveSearchAvailable(ctx.env),
+    health: { failing, lastRoundAt: state.health?.lastCycleAt || "" },
     limits: { feedChars: SCOUT_LIMITS.feedChars }, officeCity: text(office.city, 60)
   };
 }
@@ -892,7 +927,8 @@ export async function searchDetail(ctx, { officeId, taskId }) {
   const now = ctx.now();
   return {
     ok: true, task: { ...taskView(task, now), summary: profileSummary(task.profile, task.seek), nlText: text(task.nlText, 600), startedAt: task.startedAt || "", intensiveUntil: task.intensiveUntil || "", veryStrong: Number(task.stats?.veryStrong || 0) },
-    board: boardFor(state).filter((card) => card.taskId === id || (task.recordId && card.recordId === task.recordId)).slice(0, 20)
+    board: boardFor(state).filter((card) => card.taskId === id || (task.recordId && card.recordId === task.recordId)).slice(0, 20),
+    liveSearch: liveSearchAvailable(ctx.env)
   };
 }
 
@@ -981,6 +1017,35 @@ export async function actOnFind(ctx, { actor, officeId, opportunityId, action, r
   });
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.SCOUT_FIND_ACTION, actorUid: actor.uid, entityType: "scout", entityId: entity.id, key: `${verb}|${now.toISOString()}`, details: { action: verb, recordId: patch.convertedRecordId || "" } });
   return { ok: true, status: next.status, contact: verb === OPP_ACTION.CONTACT ? { phone: normPhone(entity.phone), route: entity.contactRoute || "" } : undefined };
+}
+
+/**
+ * «ابحث في الويب الآن»: the broker asks, Google Search answers (through the Gemini API), and the answer is shown
+ * to him as it came — with its sources and Google's own search suggestions. Google's terms allow exactly this and
+ * forbid collecting or keeping the results, so nothing here is stored, scored or turned into a find; the question
+ * is built from the search itself (type, district, city, price) and carries no client's name or number.
+ */
+export async function liveSearchForTask(ctx, { actor, officeId, taskId }) {
+  await requireOn(ctx, officeId);
+  if (!liveSearchAvailable(ctx.env)) throw ctx.deps.appError("live_search_unavailable", 503, "البحث المباشر في الويب غير متاح على هذه البيئة");
+  const id = text(taskId, 80);
+  const task = /^st_[A-Za-z0-9_]{3,60}$/.test(id) ? await ctx.store.get(taskPath(officeId, id)) : null;
+  if (!task || String(task.officeId || officeId) !== officeId) throw ctx.deps.appError("search_not_found", 404, "البحث غير موجود");
+  const mine = consumePublicRateLimit(publicRateLimitKey({ route: "scout-live", ip: actor.uid, officeId }), { limit: 6, windowMs: 10 * 60_000 });
+  const office = consumePublicRateLimit(publicRateLimitKey({ route: "scout-live-office", ip: "office", officeId }), { limit: SCOUT_LIMITS.livePerOfficeDay, windowMs: DAY });
+  if (!mine.ok || !office.ok) throw ctx.deps.appError("rate_limited", 429, "بحثت في الويب كثيرًا خلال وقت قصير — حاول بعد قليل");
+  const form = planQueries(task).find((f) => (f.propertyTypes || []).length || (f.districts || []).length);
+  if (!form) throw ctx.deps.appError("search_too_wide", 400, "حدّد نوع العقار أو الحي في هذا البحث أولًا");
+  const profile = task.profile || {};
+  const price = profile.priceMax ? ` بسعر حتى ${formatNumber(profile.priceMax)} ريال` : profile.priceMin ? ` بسعر من ${formatNumber(profile.priceMin)} ريال` : task.exactPrice ? ` بسعر قريب من ${formatNumber(task.exactPrice)} ريال` : "";
+  const question = `${webQueryText(form)}${price} — إعلانات حديثة`;
+  const result = await liveWebSearch(ctx.env, { question });
+  if (!result.ok) {
+    if (result.code === "quota") throw ctx.deps.appError("live_search_quota", 429, "بلغ البحث المباشر حدّه الآن — حاول لاحقًا");
+    throw ctx.deps.appError("live_search_unavailable", 503, result.code === "not_available" ? "البحث المباشر في الويب غير مفعّل على هذه البيئة" : "تعذر البحث في الويب الآن — حاول بعد قليل");
+  }
+  await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.SCOUT_SEARCH_CONTROLLED, actorUid: actor.uid, entityType: "scout", entityId: task.id, key: `live|${ctx.now().toISOString()}`, details: { action: "LIVE_WEB", grounded: result.grounded } });
+  return { ok: true, question, grounded: result.grounded, answer: result.answer, sources: result.sources, suggestions: result.suggestions };
 }
 
 /**

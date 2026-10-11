@@ -13,7 +13,8 @@ import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../core/ui.js";
 import {
-  actOnScoutFind, controlScoutSearch, createScoutSearch, feedScout, loadScout, parseScoutText, saveScoutSettings, scoutFind, scoutForRecord, scoutSearchDetail
+  actOnScoutFind, controlScoutSearch, createScoutSearch, feedScout, linkScoutTelegramChat, liveWebSearch, loadScout, parseScoutText, saveScoutSettings, scoutFind, scoutForRecord, scoutSearchDetail,
+  unlinkScoutTelegramChat
 } from "../core/scout.js";
 import { buildWhatsAppUrl, relativeAgo } from "../domain/format-domain.js";
 import { PROPERTY_TYPES, RECORD_KIND, kindOf } from "../domain/records-domain.js";
@@ -339,7 +340,7 @@ export function renderScoutTask(container, { id }) {
     });
     return button;
   };
-  function draw({ task, board }) {
+  function draw({ task, board, liveSearch }) {
     if (!alive) return;
     clear(body);
     const running = task.status === TASK_STATUS.ACTIVE;
@@ -359,12 +360,36 @@ export function renderScoutTask(container, { id }) {
         task.canPause ? control(TASK_CONTROL.PAUSE, "إيقاف مؤقت", "secondary", "pause", { success: "أُوقف هذا البحث مؤقتًا" }) : null,
         task.canResume ? control(TASK_CONTROL.RESUME, "استئناف", "primary", "play", { success: "عاد البحث يعمل" }) : null,
         task.canEnd ? control(TASK_CONTROL.END, "إنهاء", "danger", "x", { confirm: { title: "إنهاء هذا البحث؟", text: "تبقى الفرص التي وجدها. لا يتأثر باحث الفرص ولا بقية عمليات البحث.", confirmLabel: "إنهاء", danger: true }, success: "أُنهي البحث" }) : null),
+      liveSearch && task.origin !== "DISCOVERY" ? h("button", { type: "button", class: "os-btn soft block", "data-task-live": "", onClick: () => liveSearchSheet(id) }, ic("search"), "ابحث في الويب الآن (Google)") : null,
       h("section", { "data-task-finds": "" },
         h("div", { class: "os-card-head" }, h("h2", { class: "os-h2" }, ic("sparkles"), "ما وجده هذا البحث")),
         board.length ? board.map(findCard) : h("div", { class: "os-card" }, h("p", { class: "os-sub", text: running ? "لا توجد فرص قوية بعد. البحث مستمر، وسنخبرك عند العثور على ما يستحق." : "لم يجد هذا البحث فرصًا قوية." }))));
   }
   load();
   return () => { alive = false; };
+}
+
+/**
+ * «ابحث في الويب الآن»: what Google Search answers for this search, at this moment. It is shown as it came — the
+ * answer, its sources, and Google's own suggestions block — and it is not kept: closing the sheet is the end of it.
+ */
+function liveSearchSheet(taskId) {
+  const body = h("div", { class: "os-form", "data-live-search": "" }, h("div", { class: "os-skeleton" }), h("p", { class: "os-sub", text: "جارٍ البحث في الويب…" }));
+  openSheet("بحث مباشر في الويب", body);
+  liveWebSearch(OFFICE(), taskId).then((result) => {
+    clear(body);
+    if (!result.grounded) { append(body, h("div", { class: "os-alert info", "data-live-empty": "", text: "لم يُظهر بحث الويب نتائج مناسبة لهذا البحث الآن." })); return; }
+    // Google's block is shown as Google sends it, in a closed frame: its links open in a new tab and it runs nothing here.
+    const suggestions = result.suggestions ? h("iframe", { class: "os-live-suggest", title: "اقتراحات بحث Google", sandbox: "allow-popups allow-popups-to-escape-sandbox", referrerpolicy: "no-referrer", "data-live-suggest": "" }) : null;
+    if (suggestions) suggestions.srcdoc = result.suggestions;
+    append(body,
+      h("p", { class: "os-sub", dir: "auto", text: `«${result.question}»` }),
+      h("div", { class: "os-live-answer", dir: "auto", "data-live-answer": "", text: result.answer }),
+      h("div", { class: "os-live-sources", "data-live-sources": "" }, h("b", { text: "المصادر" }),
+        result.sources.map((source) => h("a", { class: "os-link-btn", href: source.url, target: "_blank", rel: "noopener noreferrer", dir: "auto", text: source.title || "فتح المصدر" }))),
+      suggestions,
+      h("p", { class: "os-sub", text: "نتائج بحث Google كما وردت. لا تُحفظ ولا تدخل في فرص الباحث — افتح المصدر للتحقق والتواصل." }));
+  }).catch((error) => { clear(body); append(body, h("div", { class: "os-alert warn", "data-live-error": "", text: error?.message || "تعذر البحث في الويب الآن." })); });
 }
 
 // ------------------------------------------------------------------ #/settings/scout
@@ -396,6 +421,28 @@ export function renderScoutSettings(container) {
     const push = h("input", { type: "checkbox", "data-scout-push": "" }); push.checked = s.notifyPush;
     const quality = segmented("minQuality", QUALITY_OPTIONS, s.minQuality);
     const sourceBoxes = overview.sources.map((source) => { const box = h("input", { type: "checkbox", "data-scout-source": source.id }); box.checked = source.on; return { id: source.id, box, label: source.label }; });
+    const telegram = overview.telegram;
+    const addChat = h("button", { type: "button", class: "os-btn secondary block", "data-scout-chat-add": "" }, ic("send"), "أضف قروبًا أو قناة");
+    addChat.addEventListener("click", () => runAction(addChat, async () => {
+      const link = await linkScoutTelegramChat(OFFICE());
+      if (link.state !== "PENDING") { toast(link.message || "بوت المنصة غير مفعّل على هذه البيئة"); return; }
+      const line = h("input", { class: "os-input", readonly: true, dir: "ltr", "data-scout-chat-command": "", value: link.command });
+      openSheet("ربط قروب أو قناة تيليجرام", h("div", { class: "os-form" },
+        h("p", { class: "os-sub", text: "القروب: اضغط الزر واختر القروب — يُضاف بوت المنصة إليه ويكتمل الربط. ثم اجعل البوت مشرفًا ليقرأ الإعلانات." }),
+        h("a", { class: "os-btn primary block", href: link.groupLink, target: "_blank", rel: "noopener noreferrer", "data-scout-chat-link": "" }, ic("send"), "اختر القروب في تيليجرام"),
+        h("p", { class: "os-sub", text: `القناة: أضف @${link.botUsername} مشرفًا فيها، ثم انشر هذا السطر في القناة:` }),
+        line,
+        h("p", { class: "os-sub", text: "الرابط صالح لربع ساعة ولمرة واحدة. لا تُحفظ إلا الرسائل التي تُقرأ كإعلان عقاري." })), { onClose: reload });
+    }));
+    const chatRow = (chat) => {
+      const remove = h("button", { type: "button", class: "os-btn soft", "data-scout-chat-remove": chat.chatId }, ic("x"), "فصل");
+      remove.addEventListener("click", async () => {
+        if (!(await confirmDialog({ title: "فصل هذا القروب؟", text: "يتوقف الباحث عن قراءة إعلاناته. الفرص التي وُجدت تبقى.", confirmLabel: "فصل", danger: true }))) return;
+        await runAction(remove, () => unlinkScoutTelegramChat(OFFICE(), chat.chatId), { success: "فُصل القروب" });
+        reload();
+      });
+      return h("div", { class: "os-pref-row", "data-scout-chat": chat.chatId }, h("span", { dir: "auto", text: `${chat.title}${chat.type === "channel" ? " · قناة" : ""}` }), remove);
+    };
     const save = h("button", { type: "button", class: "os-btn primary block", "data-scout-save": "" }, ic("check"), "حفظ الإعدادات");
     save.addEventListener("click", () => runAction(save, async () => {
       await saveScoutSettings(OFFICE(), {
@@ -429,7 +476,15 @@ export function renderScoutSettings(container) {
       h("section", { class: "os-card", "data-scout-sources": "" },
         h("h2", { class: "os-h2", text: "المصادر" }),
         h("p", { class: "os-sub", text: "تظهر هنا المصادر التي تم التحقق من جواز استخدامها فقط." }),
-        h("div", { class: "os-pref-list" }, sourceBoxes.map((x) => h("label", { class: "os-pref-row" }, h("span", { text: x.label }), x.box)))),
+        h("div", { class: "os-pref-list" }, sourceBoxes.map((x) => h("label", { class: "os-pref-row" }, h("span", { text: x.label }), x.box))),
+        (overview.pendingSources || []).length ? h("div", { class: "os-scout-pending", "data-scout-pending": "" },
+          h("b", { text: "غير مفعّلة بعد" }),
+          overview.pendingSources.map((source) => h("p", { class: "os-sub", "data-scout-pending-source": source.id }, h("b", { text: `${source.label}: ` }), source.reason))) : null),
+      telegram?.configured ? h("section", { class: "os-card", "data-scout-chats": "" },
+        h("h2", { class: "os-h2", text: "قروبات وقنوات تيليجرام" }),
+        h("p", { class: "os-sub", text: "أضف بوت المنصة إلى قروب عقاري أو قناة أنت فيها، فيقرأ الباحث إعلاناتها تلقائيًا بدل اللصق اليدوي. يحتاج موافقة مشرف القروب." }),
+        telegram.chats.length ? h("div", { class: "os-pref-list" }, telegram.chats.map(chatRow)) : null,
+        telegram.chats.length < telegram.limit ? addChat : h("p", { class: "os-sub", text: `الحد ${telegram.limit} قروبات أو قنوات.` })) : null,
       save);
   };
   const reload = () => loadScout(OFFICE(), { fresh: true }).then(draw).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل إعدادات باحث الفرص." })); });

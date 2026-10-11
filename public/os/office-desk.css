@@ -485,3 +485,10 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-scout-record-state { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--brand-dark); font-weight: 600; font-size: .93rem; }
 .os-scout-record-state svg { width: 18px; height: 18px; flex: none; margin-top: 3px; color: var(--brand-primary); }
 .os-app[data-view="tool"] [data-scout-form] .os-seg { margin: 0; }
+/* «ابحث في الويب الآن» — Google's answer as it came, its sources, and Google's own suggestions block. */
+.os-live-answer { white-space: pre-wrap; line-height: 1.8; padding: 12px; border-radius: 12px; background: var(--brand-tint); color: var(--brand-dark); overflow-wrap: anywhere; }
+.os-live-sources { display: grid; gap: 6px; }
+.os-live-sources .os-link-btn { overflow-wrap: anywhere; text-align: start; }
+.os-live-suggest { width: 100%; height: 64px; border: 0; border-radius: 12px; background: var(--surface); }
+.os-scout-pending { display: grid; gap: 4px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--frame-soft); }
+.os-scout-pending > b { font-size: 13px; color: var(--muted); }

@@ -35,6 +35,8 @@ export const MODE_CONFIG = Object.freeze({
     windowHours: 0, afterWindow: "", backfillDays: 7, itemsPerCycle: 25, queryVariants: 1,
     startRing: 0, expandAfterEmptyCycles: 3, priceTolerance: 0.10, relatedTypes: false,
     recheckEvery: 4, ai: Object.freeze({ allowed: false, perDay: 0 }),
+    // Paid outside searches (web search, X): how often one search may ask, and how many query forms each time.
+    metered: Object.freeze({ everyMinutes: 1440, queries: 1 }),
     notify: Object.freeze({ minBand: BAND.VERY_STRONG, throttled: true, summaryOnComplete: false, urgentTag: false })
   }),
   DEEP: Object.freeze({
@@ -42,6 +44,7 @@ export const MODE_CONFIG = Object.freeze({
     windowHours: 24, afterWindow: "COMPLETE", backfillDays: 30, itemsPerCycle: 80, queryVariants: 6,
     startRing: 0, expandAfterEmptyCycles: 1, priceTolerance: 0.25, relatedTypes: true,
     recheckEvery: 1, ai: Object.freeze({ allowed: true, perDay: 30 }),
+    metered: Object.freeze({ everyMinutes: 120, queries: 3 }),
     notify: Object.freeze({ minBand: BAND.VERY_STRONG, throttled: false, summaryOnComplete: true, urgentTag: false })
   }),
   URGENT: Object.freeze({
@@ -49,6 +52,7 @@ export const MODE_CONFIG = Object.freeze({
     windowHours: 72, afterWindow: "DOWNGRADE", backfillDays: 14, itemsPerCycle: 40, queryVariants: 3,
     startRing: 1, expandAfterEmptyCycles: 0, priceTolerance: 0.15, relatedTypes: false,
     recheckEvery: 1, ai: Object.freeze({ allowed: true, perDay: 10 }),
+    metered: Object.freeze({ everyMinutes: 60, queries: 2 }),
     notify: Object.freeze({ minBand: BAND.STRONG, throttled: false, summaryOnComplete: false, urgentTag: true })
   })
 });
@@ -398,7 +402,7 @@ export function planQueries(task = {}) {
   const near = ring >= RING.ADJACENT ? [...new Set(districts.flatMap(adjacentDistricts))].filter((d) => !districts.map(normDistrict).includes(normDistrict(d))) : [];
   const types = (profile.propertyTypes || []).slice(0, 4);
   const widen = (ratio) => ({ priceMin: profile.priceMin ? Math.round(profile.priceMin * (1 - ratio)) : 0, priceMax: profile.priceMax ? Math.round(profile.priceMax * (1 + ratio)) : 0 });
-  const base = { tx: profile.tx || "", city: profile.city || "", districts, propertyTypes: types, ...widen(0), freshnessDays: profile.freshnessDays || config.backfillDays };
+  const base = { seek: task.seek || "", tx: profile.tx || "", city: profile.city || "", districts, propertyTypes: types, ...widen(0), freshnessDays: profile.freshnessDays || config.backfillDays, preferDirectOwner: profile.preferDirectOwner === true };
   const forms = [{ id: "exact", ...base }];
   if (near.length) forms.push({ id: "adjacent", ...base, districts: near });
   if (config.priceTolerance > 0.10 && (profile.priceMin || profile.priceMax)) forms.push({ id: "price", ...base, ...widen(config.priceTolerance) });
@@ -410,6 +414,46 @@ export function planQueries(task = {}) {
   }
   if (ring >= RING.CITY) forms.push({ id: "city", ...base, districts: [] });
   return forms.slice(0, config.queryVariants + (ring >= RING.CITY ? 1 : 0));
+}
+
+/**
+ * A query form in the words people write ads with — for a web search or a posts search. The price is left out on
+ * purpose (search engines match numbers badly); it is judged afterwards on what comes back.
+ *   offer for sale   «أرض للبيع حي الحمراء المدينة المنورة»
+ *   a buyer          «مطلوب أرض للشراء حي الحمراء المدينة المنورة»
+ */
+export function webQueryText(form = {}) {
+  const rent = form.tx === "rent";
+  const type = (form.propertyTypes || [])[0] || "عقار";
+  const wanted = form.seek === SEEK.REQUEST;
+  const districts = (form.districts || []).slice(0, 2).map((d) => `حي ${d}`).join(" أو ");
+  const intent = wanted ? `مطلوب ${type} ${rent ? "للإيجار" : "للشراء"}` : `${type} ${rent ? "للإيجار" : "للبيع"}`;
+  const owner = !wanted && (form.seek === SEEK.OWNER || form.preferDirectOwner) ? "من المالك مباشرة" : "";
+  return [intent, districts, form.city || "", owner].filter(Boolean).join(" ").replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+/** The same form for a posts search (X): exact words, Arabic posts only, no reposts. */
+export function postsQueryText(form = {}) {
+  const rent = form.tx === "rent";
+  const type = (form.propertyTypes || [])[0] || "";
+  const district = (form.districts || [])[0] || "";
+  const place = district || form.city || "";
+  const intent = form.seek === SEEK.REQUEST ? "مطلوب" : rent ? "(للإيجار OR للايجار)" : "للبيع";
+  return [type ? `"${type}"` : "", place ? `"${place}"` : "", intent, "lang:ar -is:retweet -is:reply"].filter(Boolean).join(" ").slice(0, 400);
+}
+
+const INDEX_PAGE = /^(?:أراضي|اراضي|شقق|فلل|عمائر|عماير|محلات|مكاتب|مزارع|استراحات|عقارات|بيوت|أدوار|ادوار|مستودعات)\s|\d+\s*(?:إعلان|اعلان|عقار|نتيجة|عرض)(?:\s|$)|أفضل\s+\d+|دليل\s/;
+/** A results page («شقق للبيع في … — 250 إعلان») is a list of ads, not an ad: it is never a find. */
+export function looksLikeListingIndex(title = "") {
+  return INDEX_PAGE.test(String(title || "").trim());
+}
+
+/** A cheap first look at a message from a group: is it a property ad at all? (Chatter never reaches the scout.) */
+export function looksLikeAd(value = "") {
+  const body = String(value || "").trim();
+  if (body.length < 25 || body.length > 4000) return false;
+  const candidate = candidateFromRaw({ text: body });
+  return candidate.understood && Boolean(candidate.kind) && Boolean(candidate.propertyType) && Boolean(candidate.price || candidate.area || candidate.district);
 }
 
 // ------------------------------------------------------------------ a found ad → a candidate
