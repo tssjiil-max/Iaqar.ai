@@ -96,3 +96,9 @@ const log = await office.collection("kapsoDeliveryLog").orderBy("at", "desc").li
 const records = await office.collection("opportunities").get().catch(() => ({ docs: [] }));
 const fromWa = records.docs.filter((d) => d.data()?.intakeOrigin?.channel === "WHATSAPP");
 note("Kapso deliveries", `${log.docs.length ? log.docs.map((d) => `${d.data().at?.slice(11, 19) || ""} ${d.data().status}/${d.data().reply}`).join(" · ") : "none yet"} · records from WhatsApp in ${OFFICE}: ${fromWa.length}`);
+
+// Latest WhatsApp records (no phone, no original text): what was classified and extracted.
+for (const d of fromWa.sort((a, b) => String(b.data().createdAt?.toDate?.() || "").localeCompare(String(a.data().createdAt?.toDate?.() || ""))).slice(0, 3)) {
+  const r = d.data();
+  note("Kapso record", JSON.stringify({ id: d.id, created: r.createdAt?.toDate?.()?.toISOString?.() || "", kind: r.opportunityType || r.type || r.kind, purpose: r.purpose || r.dealType, propertyType: r.propertyType, city: r.city, district: r.district || r.districts, area: r.area || r.areaSqm, price: r.price || r.budget, owner: r.sourceRole || r.intakeOrigin?.role, method: r.intakeOrigin?.method, status: r.status, keys: Object.keys(r).filter((k) => /kind|type|purpose|price|area|district|role/i.test(k)).slice(0, 14) }).slice(0, 700));
+}
