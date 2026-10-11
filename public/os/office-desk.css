@@ -12,7 +12,7 @@
   display: grid;
   place-items: center;
 }
-.ref-shell-header .ref-bell svg { width: 22px; height: 22px; }
+.ref-shell-header .ref-bell svg { width: 24px; height: 24px; }
 
 /* ---------- Office identity card ---------- */
 .ref-office-profile {
@@ -73,7 +73,7 @@
   place-items: center;
   box-shadow: none;
 }
-.ref-office-row-icon svg { width: 17px; height: 17px; }
+.ref-office-row-icon svg { width: 18px; height: 18px; }
 .ref-office-row-text {
   min-width: 0;
   display: flex;
@@ -198,8 +198,8 @@
 }
 .ref-office-tool-icon svg,
 .ref-office-extra-icon svg {
-  width: 23px;
-  height: 23px;
+  width: 24px;
+  height: 24px;
 }
 .ref-office-tool-icon .t2,
 .ref-office-extra-icon .t2 {
@@ -276,7 +276,7 @@
 @media (max-width: 359px) {
   .os-app[data-view="office"] { padding-inline: 10px; }
   .ref-shell-header .ref-bell { width: 32px; min-width: 32px; height: 32px; border-radius: 11px; }
-  .ref-shell-header .ref-bell svg { width: 19px; height: 19px; }
+  .ref-shell-header .ref-bell svg { width: 20px; height: 20px; }
   .ref-office-profile { grid-template-columns: minmax(0,1fr) 86px; gap: 8px; padding: 10px; }
   .ref-office-profile-logo { padding-inline-start: 8px; }
   .ref-office-logo-box { min-height: 112px; }
@@ -397,12 +397,12 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
   color: var(--brand-dark); font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.ref-support-chip svg { width: 22px; height: 22px; flex: none; }
+.ref-support-chip svg { width: 24px; height: 24px; flex: none; }
 .ref-support-chip span { direction: ltr; unicode-bidi: isolate; }
 .ref-support-chip.is-action span { direction: rtl; }
 .ref-support-chip:active { background: var(--brand-tint-2); }
 .ref-support-assistant { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 15px; }
-.ref-support-assistant svg { width: 22px; height: 22px; flex: none; padding: 3px; border-radius: 8px; background: var(--brand-tint); }
+.ref-support-assistant svg { width: 24px; height: 24px; flex: none; padding: 3px; border-radius: 8px; background: var(--brand-tint); }
 .os-support-form { display: grid; gap: 12px; }
 .os-support-admin { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; color: var(--brand-dark); }
 .os-support-admin input { width: 20px; height: 20px; accent-color: var(--brand-primary); }
@@ -411,7 +411,7 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .ref-agent-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--frame-soft); border-radius: 15px; background: var(--surface); }
 .ref-agent-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .ref-agent-head .os-set-icon { width: 36px; height: 36px; }
-.ref-agent-head .os-set-icon svg { width: 21px; height: 21px; }
+.ref-agent-head .os-set-icon svg { width: 20px; height: 20px; }
 .ref-agent-head b { font-size: 18px; color: var(--brand-dark); }
 .ref-agent-status { margin-inline-start: auto; font-size: 14px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--brand-tint); color: var(--muted); max-width: 100%; }
 .ref-agent-status.is-ok { background: var(--ok-tint); color: var(--ok); }
@@ -509,7 +509,6 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .ref-office-profile-head h2 { font-weight: 700; line-height: 1.5; }
 .ref-office-row-text span { font-size: 14px; }
 .ref-office-row-text b { font-size: 15.5px; font-weight: 600; }
-.ref-office-profile-row { min-height: 44px; }
 .ref-office-heading h2, .ref-office-extras-heading h2 { font-weight: 700; line-height: 1.5; }
 .ref-office-tool strong { font-weight: 600; line-height: 1.45; font-size: clamp(15.5px, 4.4vw, 18px); }
 .ref-office-extra strong { font-weight: 600; line-height: 1.45; }
@@ -525,7 +524,9 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-center-tag, .os-inbox-class, .os-center-count, .os-scout-mode { line-height: 1.45; }
 .os-set-text small { line-height: 1.6; }
 @media (max-width: 359px) {
-  .ref-office-row-text span { font-size: 13.5px; }
-  .ref-office-row-text b { font-size: 14.5px; }
+  /* 320px: «ترخيص فال» and its number stay on one line. */
+  .ref-office-row-text { gap: 2px 3px; }
+  .ref-office-row-text span { font-size: 13px; }
+  .ref-office-row-text b { font-size: 13.5px; }
   .ref-office-tool strong { font-size: 15px; }
 }
