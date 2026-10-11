@@ -1,5 +1,7 @@
 {
-  "mode": "preflight",
-  "confirm": "",
-  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>."
+  "mode": "deploy",
+  "confirm": "DEPLOY-f51057d",
+  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>.",
+  "requestedAt": "2026-10-11T19:05+03:00",
+  "approved": "owner: «انشر كل ما على Staging» — Naskh visual pass + everything merged on Staging up to f51057d (scout and Kapso stay off in production: their switches are Staging-only settings)"
 }
