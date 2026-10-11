@@ -1,5 +1,7 @@
 {
-  "mode": "preflight",
-  "confirm": "",
-  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>."
+  "mode": "deploy",
+  "confirm": "DEPLOY-7a29024",
+  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>.",
+  "requestedAt": "2026-10-11T20:20+03:00",
+  "approved": "owner: «انشر Production ابغى تجربة حية» — switches «الباحث عن الفرص» on for iaqar.ai (each office keeps its own switch, off by default; free permitted sources only, no paid door). Only change since f51057d: the switch in worker/wrangler.toml and its wording/tests."
 }
