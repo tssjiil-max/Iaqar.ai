@@ -84,18 +84,22 @@ const sha256 = crypto.createHash("sha256").update(gz).digest("hex");
 fs.writeFileSync(path.join(OUT, "live-firestore.rules"), rulesSource || "// not read");
 
 let stored = "";
+const refusals = [];
 for (const bucket of [`${PRODUCTION_PROJECT}.firebasestorage.app`, `${PRODUCTION_PROJECT}.appspot.com`]) {
   const object = `pilot-backups/firestore-${stamp}.json.gz`;
   const response = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(object)}`, {
     method: "POST", headers: { ...auth, "content-type": "application/gzip" }, body: gz, signal: AbortSignal.timeout(120_000)
   }).catch((error) => ({ ok: false, status: String(error?.message || error) }));
   if (response.ok) { stored = `gs://${bucket}/${object}`; break; }
-  console.log(`bucket ${bucket}: HTTP ${response.status}`);
+  // Why it was refused (status and the service's own reason word — never a token, never data), shown with the failure.
+  const reason = typeof response.json === "function" ? await response.json().then((b) => `${b?.error?.errors?.[0]?.reason || ""} ${String(b?.error?.message || "").slice(0, 140)}`.trim()).catch(() => "") : "";
+  refusals.push(`${bucket.split(".").slice(1).join(".")}: HTTP ${response.status}${reason ? ` (${reason})` : ""}`);
+  console.log(`bucket ${bucket}: HTTP ${response.status} ${reason}`);
 }
 const counts = {};
 for (const d of docs) { const top = d.path.split("/")[0]; counts[top] = (counts[top] || 0) + 1; }
 fs.writeFileSync(path.join(OUT, "backup-manifest.json"), JSON.stringify({ takenAt: new Date().toISOString(), stored, sha256, bytes: gz.length, documents: docs.length, byRootCollection: counts, rulesRead: Boolean(rulesSource) }, null, 2));
-if (!stored) fail("snapshot not stored", "the production Storage bucket refused the upload — nothing is deployed without a backup");
+if (!stored) fail("snapshot not stored", `the production Storage bucket refused the upload — nothing is deployed without a backup · ${(gz.length / 1_048_576).toFixed(1)} MB · ${refusals.join(" | ")}`);
 else notice("production snapshot stored", `${stored}\n${docs.length} documents · ${(gz.length / 1024).toFixed(0)} KB · sha256 ${sha256.slice(0, 16)}…`);
 
 // ------------------------------------------------------------------ 2. compatibility for the new office app
