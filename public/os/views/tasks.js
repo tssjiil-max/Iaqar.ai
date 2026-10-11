@@ -77,6 +77,7 @@ function modelFor(task, now) {
 function primaryAction(task, model) {
   if (model.opens === "deal") return () => go(dealRoute(task));
   if (model.opens === "community") return () => go("community");
+  if (model.opens === "scout" && task.sourceEntityId) return () => go(`scout/opp/${task.sourceEntityId}`);
   if (model.opens === "review") return () => go(`review/${task.matchId}`);
   if (model.opens === "workspace" && model.journeyId) return () => go(`journey/${model.journeyId}?focus=${model.type}`);
   if (model.opens === "session" && model.journeyId) return () => go(`session/${model.journeyId}`);
@@ -113,6 +114,7 @@ function taskButton(task, model) {
 function actionTitleOf(model) {
   // For tasks whose button only names the page it opens, the heading says what is needed instead.
   if (String(model.type).startsWith("SESSION_")) return taskTypeLabel(model.type) || model.button;
+  if (model.type === "SCOUT_FOLLOW_UP") return "متابعة فرصة خارجية";
   return model.type === "MATCH_REVIEW" ? "تطابق جديد" : model.type === "VIEWING_CONFIRM" ? "تأكيد موعد المعاينة" : model.type === "SEND_PROPOSAL" ? "متابعة عرض سعر" : model.button;
 }
 

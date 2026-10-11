@@ -1,4 +1,4 @@
-// «باحث الفرص» — live check on Staging after the deploy (isolated QA offices only).
+// «الباحث عن الفرص» — live check on Staging after the deploy (isolated QA offices only).
 //
 // Proves the whole chain on the deployed Worker and the deployed app, with real Firestore, the real cron and the
 // real rules — and without touching any third-party site:
@@ -112,7 +112,7 @@ const browser = await chromium.launch();
 try {
   // ---------- the deployed Worker
   const health = await (await fetch(`${WORKER}/health`)).json();
-  check("live: the Staging Worker has «باحث الفرص» available (each office with its own switch)", health.deploymentEnvironment === "staging" && health.projectId === PROJECT && health.opportunityScout === "per_office_switch", JSON.stringify({ env: health.deploymentEnvironment, scout: health.opportunityScout }));
+  check("live: the Staging Worker has «الباحث عن الفرص» available (each office with its own switch)", health.deploymentEnvironment === "staging" && health.projectId === PROJECT && health.opportunityScout === "per_office_switch", JSON.stringify({ env: health.deploymentEnvironment, scout: health.opportunityScout }));
   const production = await fetch(`${PRODUCTION_WORKER}/health`).then((r) => r.json()).catch(() => ({}));
   check("live: Production is untouched — the scout is not available there", production.opportunityScout !== "per_office_switch", `production opportunityScout=${production.opportunityScout ?? "absent"}`);
   const unauth = await fetch(`${WORKER}/os/scout/overview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ officeId: OFFICE }) });
@@ -120,7 +120,7 @@ try {
 
   const owner = await makeUser("owner", OFFICE);
   const ownerB = await makeUser("ownerb", OFFICE_B);
-  await resetOffice(OFFICE, owner.uid, "مكتب اختبار باحث الفرص");
+  await resetOffice(OFFICE, owner.uid, "مكتب اختبار الباحث عن الفرص");
   await resetOffice(OFFICE_B, ownerB.uid, "مكتب اختبار العزل");
 
   // ---------- the test source already has ads before anything is switched on (10 ads: 4 that matter, 6 weak)
@@ -142,7 +142,7 @@ try {
   await page.fill('input[name="password"]', owner.password);
   await page.getByRole("button", { name: "دخول المكتب" }).click();
   await page.locator("[data-scout-card]:not([hidden])").waitFor();
-  check("live: the office page shows «باحث الفرص», stopped by default", (await page.locator("[data-scout-card] [data-scout-status]").getAttribute("data-scout-status")) === "off");
+  check("live: the office page shows «الباحث عن الفرص», stopped by default", (await page.locator("[data-scout-card] [data-scout-status]").getAttribute("data-scout-status")) === "off");
   await page.locator("[data-scout-open]").click();
   await page.locator("[data-scout-enable]").click();
   await page.locator('[data-scout-page] [data-scout-status="on"]').waitFor();
@@ -236,6 +236,50 @@ try {
   check("live: the master switch off — the office leaves the queue; finds, searches and settings stay", off.status === 200 && !offQueue && (await finds()).length === kept.finds && (await tasks()).length === kept.tasks && (await office.collection("scoutSettings").doc("main").get()).data()?.city === "المدينة المنورة");
   const on = await api("/os/scout/settings", { settings: { enabled: true } }, owner.uid);
   check("live: on again — the running searches are queued again", on.status === 200 && Object.keys((await queue()).entries[OFFICE]?.t || {}).length >= 3);
+
+  // ---------- by the broker's own hand, honest sources, lists and follow-up (no third-party site is contacted)
+  const overviewNow = (await api("/os/scout/overview", {}, owner.uid)).body;
+  const sourceState = Object.fromEntries((overviewNow.sourceStatus || []).map((s) => [s.id, s.status]));
+  check("live: every source shows its true state — the office's own are connected; عقار، حراج، بيوت، وصلت need a permission; private WhatsApp groups are not available",
+    sourceState.office_inbox === "CONNECTED" && sourceState.broker_feed === "CONNECTED" && ["aqar", "haraj", "bayut", "wasalt", "telegram_groups"].every((id) => sourceState[id] === "NEEDS_PERMISSION") && sourceState.whatsapp_groups === "UNAVAILABLE" && !("qa_fixture" in sourceState), JSON.stringify(sourceState));
+  console.log(`paid doors on this environment (informational): web_search=${sourceState.web_search} x_search=${sourceState.x_search} liveSearch=${overviewNow.liveSearch}`);
+  const AD = `https://sa.aqar.fm/ad/qa-scout-live-${RUN}`;
+  const refused = await api("/os/scout/import", { url: AD }, owner.uid);
+  check("live: a link to a site that forbids automated reading is not fetched — the broker is asked for the ad's text", refused.status === 200 && refused.body.needsText === true && refused.body.reason === "restricted", JSON.stringify(refused.body).slice(0, 160));
+  const imported = await api("/os/scout/import", { url: AD, text: "للبيع فيلا في حي الملقا بالرياض مساحة 400 متر السعر 3,200,000 ريال" }, owner.uid);
+  const read = imported.body.read?.[0] || {};
+  const villa = (await finds()).find((f) => f.url === AD);
+  check("live: link + pasted text → read (فيلا · الملقا · الرياض · 3,200,000 · 400 م²), kept for the broker in another city, what is missing named, no official record created",
+    read.kind === "OFFER" && read.propertyType === "فيلا" && read.district === "الملقا" && read.city === "الرياض" && read.price === 3_200_000 && read.area === 400 && Array.isArray(read.missing) && villa?.surface === "SHOWN" && villa.pinned === true
+    && (await office.collection("opportunities").get()).docs.every((d) => d.data().propertyType !== "فيلا"), JSON.stringify(read).slice(0, 200));
+  const countBefore = (await finds()).length;
+  const repriced = await api("/os/scout/import", { url: AD, text: "للبيع فيلا في حي الملقا بالرياض مساحة 400 متر السعر 3,000,000 ريال" }, owner.uid);
+  const villaNow = (await api("/os/scout/find", { opportunityId: villa.id }, owner.uid)).body.find;
+  check("live: the same link again with a new price → the same find, updated (no duplicate), the change on its record", repriced.status === 200 && (await finds()).length === countBefore && villaNow.changes?.[0]?.from === 3_200_000 && villaNow.changes[0].to === 3_000_000, JSON.stringify(villaNow.changes));
+  const followUp = await api("/os/scout/find/act", { opportunityId: villa.id, action: "FOLLOW_UP" }, owner.uid);
+  const taskDoc = followUp.body.taskId ? (await office.collection("operations").doc(followUp.body.taskId).get()).data() : null;
+  check("live: «أنشئ مهمة متابعة» writes one task in the office's Daily Tasks, for this broker", taskDoc?.type === "SCOUT_FOLLOW_UP" && taskDoc.status === "OPEN" && taskDoc.assignedBrokerId === owner.uid && taskDoc.sourceEntityId === villa.id);
+  await page.goto(`${APP}/#/tasks`);
+  const taskCard = await page.locator('[data-type="SCOUT_FOLLOW_UP"]').waitFor({ timeout: 20000 }).then(() => true, () => false);
+  check("live: the task shows in Daily Tasks as «متابعة فرصة خارجية»", taskCard && /متابعة فرصة خارجية/.test(await page.locator('[data-type="SCOUT_FOLLOW_UP"] h3').textContent().catch(() => "")));
+  await shot("05-daily-task");
+  const wanted = await api("/os/records/save", { requestKey: `scout-live-riyadh-${RUN}`, record: { ...record("REQUEST", "فيلا", "الملقا", 3_300_000, "0551000003"), city: "الرياض" } }, owner.uid);
+  const rechecked = await api("/os/scout/find/act", { opportunityId: villa.id, action: "RECHECK" }, owner.uid);
+  const matched = (await api("/os/scout/find", { opportunityId: villa.id }, owner.uid)).body.find;
+  check("live: «ابحث عن مطابقات» — matched with the office's الرياض request: an estimated fit, the reasons, the price difference", rechecked.body.matched >= 1 && matched.recordId === wanted.body.recordId && matched.fit >= 50 && matched.why.length >= 1 && matched.differences.some((line) => /ميزانية عميلك/.test(line)), `${matched.fit}% · ${matched.differences.join(" | ")}`);
+  const outcome = await api("/os/scout/find/act", { opportunityId: villa.id, action: "OUTCOME", result: "INTERESTED", note: "اختبار" }, owner.uid);
+  const afterOutcome = (await api("/os/scout/find", { opportunityId: villa.id }, owner.uid)).body.find;
+  check("live: «سجّل نتيجة التواصل» keeps the result, moves the find to «قيد المراجعة» and closes the task", outcome.status === 200 && afterOutcome.outcome === "INTERESTED" && afterOutcome.status === "CONTACTED" && (await office.collection("operations").doc(followUp.body.taskId).get()).data()?.status === "COMPLETED");
+  const tuned = await api("/os/scout/settings", { settings: { priceMax: 5_000_000, areaMin: 150, kinds: ["OFFER"], cadenceMinutes: 720, alertLevel: "STRONG" } }, owner.uid);
+  const kept2 = (await office.collection("scoutSettings").doc("main").get()).data() || {};
+  check("live: the office's own search settings are saved (price, area, kind, pace, alert level)", tuned.status === 200 && kept2.priceMax === 5_000_000 && kept2.areaMin === 150 && String(kept2.kinds) === "OFFER" && kept2.cadenceMinutes === 720 && kept2.alertLevel === "STRONG");
+  await api("/os/scout/settings", { settings: { priceMax: 0, areaMin: 0, kinds: ["OFFER", "REQUEST"], cadenceMinutes: 360, alertLevel: "VERY_STRONG" } }, owner.uid);
+  await page.goto(`${APP}/#/scout`);
+  await page.locator("[data-scout-buckets]").waitFor();
+  const chips = await page.locator("[data-scout-buckets] [data-bucket]").evaluateAll((nodes) => nodes.map((n) => `${n.dataset.bucket}:${n.dataset.bucketCount}`));
+  check("live: the page is «الباحث عن الفرص» with its lists (الكل، مطابقة، جديدة، قيد المراجعة، محفوظة، مستبعدة), real counts, and the last successful search", chips.map((c) => c.split(":")[0]).join() === "ALL,MATCHED,NEW,REVIEW,SAVED,EXCLUDED" && /الباحث عن الفرص/.test(await page.locator(".os-page-title").textContent()) && /آخر بحث ناجح/.test(await page.locator("[data-scout-last]").textContent().catch(() => "")), chips.join(" "));
+  await page.locator("[data-scout-source-status] summary").click();
+  await shot("06-lists-and-sources");
 
   // ---------- isolation and the rules
   const stolen = await api("/os/scout/find", { opportunityId: buyer.id }, ownerB.uid, OFFICE_B);

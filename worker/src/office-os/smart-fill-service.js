@@ -81,7 +81,7 @@ async function withModel(ctx, officeId, analysis) {
 }
 
 /**
- * The same gap-filling for another reader of ads inside the office («باحث الفرص»): the rules' analysis goes in, and a
+ * The same gap-filling for another reader of ads inside the office («الباحث عن الفرص»): the rules' analysis goes in, and a
  * model — only when one is configured — fills what they left empty, every value checked against the text.
  */
 export function fillListingGaps(ctx, officeId, analysis) {

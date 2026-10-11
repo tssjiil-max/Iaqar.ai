@@ -24,7 +24,7 @@ import { previewVisitor } from "./visitor-service.js";
 import { analyzeOfficeText, analyzePublicText } from "./smart-fill-service.js";
 import { applyAvailabilityAnswer, reactivateRecord, setRecordValidity, sweepValidityNow } from "./validity-service.js";
 import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker, linkBrokerWithTelegramLogin } from "./bot-service.js";
-import { actOnFind, controlSearch, createSearch, feedScout, findDetail, parseSearchText, recordSearch, saveScoutSettings, scoutOverview, scoutRecordChanged, searchDetail } from "./scout-service.js";
+import { actOnFind, controlSearch, createSearch, feedScout, findDetail, importScoutLink, liveSearchForTask, parseSearchText, recordSearch, saveScoutSettings, scoutOverview, scoutRecordChanged, searchDetail } from "./scout-service.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
@@ -111,7 +111,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/agent/suggestions": (ctx, b, actor) => agentSuggestions(ctx, { officeId: ctx.officeId, actor }),
   // «جرّب مدير مكتبك»: the Telegram conversation an owner/broker/client would have — nothing sent, nothing saved.
   "/os/agent/preview": (ctx, b, actor) => previewVisitor(ctx, { actor, officeId: ctx.officeId, input: { action: text(b.action), text: typeof b.text === "string" ? b.text.slice(0, 1500) : "", data: text(b.data), phone: text(b.phone) } }),
-  // «باحث الفرص»: every member reads the board and starts or controls his searches; the switches are the manager's.
+  // «الباحث عن الفرص»: every member reads the board and starts or controls his searches; the switches are the manager's.
   "/os/scout/overview": (ctx, b, actor) => scoutOverview(ctx, { officeId: ctx.officeId, actor }),
   "/os/scout/settings": (ctx, b, actor) => saveScoutSettings(ctx, { actor, officeId: ctx.officeId, patch: b.settings && typeof b.settings === "object" ? b.settings : {} }),
   "/os/scout/parse": (ctx, b, actor) => parseSearchText(ctx, { actor, officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "" }),
@@ -121,7 +121,9 @@ const OFFICE_ROUTES = Object.freeze({
   // From inside an offer or a request: one press, everything read from the record.
   "/os/scout/record": (ctx, b, actor) => recordSearch(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), action: text(b.action).toUpperCase() || "STATUS", mode: text(b.mode) }),
   "/os/scout/find": (ctx, b) => findDetail(ctx, { officeId: ctx.officeId, opportunityId: text(b.opportunityId) }),
-  "/os/scout/find/act": (ctx, b, actor) => actOnFind(ctx, { actor, officeId: ctx.officeId, opportunityId: text(b.opportunityId), action: text(b.action), recordId: text(b.recordId) }),
+  "/os/scout/find/act": (ctx, b, actor) => actOnFind(ctx, { actor, officeId: ctx.officeId, opportunityId: text(b.opportunityId), action: text(b.action), recordId: text(b.recordId), result: text(b.result), note: typeof b.note === "string" ? b.note : "" }),
+  "/os/scout/import": (ctx, b, actor) => importScoutLink(ctx, { actor, officeId: ctx.officeId, url: typeof b.url === "string" ? b.url : "", text: typeof b.text === "string" ? b.text : "" }),
+  "/os/scout/web/live": (ctx, b, actor) => liveSearchForTask(ctx, { actor, officeId: ctx.officeId, taskId: text(b.taskId) }),
   "/os/scout/feed": (ctx, b, actor) => feedScout(ctx, { actor, officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", channel: text(b.channel).toUpperCase() }),
   "/os/support/status": (ctx) => supportStatus(ctx),
   "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } })
@@ -131,7 +133,7 @@ function text(value) {
   return String(value ?? "").trim().slice(0, 200);
 }
 
-/** Record actions after which the record's search in «باحث الفرص» is brought in line. */
+/** Record actions after which the record's search in «الباحث عن الفرص» is brought in line. */
 const SCOUT_RECORD_ROUTES = new Set([
   "/os/records/save", "/os/records/remove", "/os/records/restore", "/os/records/pause", "/os/records/archive",
   "/os/records/validity", "/os/records/availability", "/os/records/reactivate"
@@ -207,7 +209,7 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
     const actor = await resolveActor(deps, request, env, officeId);
     const ctx = await makeCtx(officeId);
     const result = await handler(ctx, body, actor);
-    // «باحث الفرص» follows the record at once (its search starts, waits or ends); a failure here never undoes the action.
+    // «الباحث عن الفرص» follows the record at once (its search starts, waits or ends); a failure here never undoes the action.
     if (SCOUT_RECORD_ROUTES.has(url.pathname)) {
       const recordId = text(result?.recordId || body.recordId);
       const matches = url.pathname === "/os/records/save" && result?.matchingPending === false && !result?.duplicate ? Number(result.matches || 0) : null;

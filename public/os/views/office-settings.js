@@ -57,10 +57,10 @@ export function renderSettingsHub(container) {
       row("bell", "الإشعارات", "أنواع الإشعارات التي يستقبلها المكتب وحسابك", "notifications"),
       row("broker", "الوسطاء والإسناد والصلاحيات", "من يستلم ما يصل من رابط المكتب، ومن يُتمّ الصفقات", "brokers"));
   append(container, list);
-  // «باحث الفرص» has a settings page only where it is available (it is not, on an environment without it).
+  // «الباحث عن الفرص» has a settings page only where it is available (it is not, on an environment without it).
   loadScout(session.officeId).then((overview) => {
     if (!list.isConnected || overview.available === false || list.querySelector('[data-settings="scout"]')) return;
-    list.querySelector('[data-settings="agent"]').after(row("search", "باحث الفرص", "تشغيله وإيقافه، نطاق عمل المكتب، ومستوى الفرص المعروضة", "scout"));
+    list.querySelector('[data-settings="agent"]').after(row("search", "الباحث عن الفرص", "تشغيله وإيقافه، نطاق عمل المكتب، ومستوى الفرص المعروضة", "scout"));
   }).catch(() => { /* the settings work without it */ });
   return null;
 }

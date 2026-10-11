@@ -1,4 +1,4 @@
-// «باحث الفرص» — browser check on the local harness (real Worker, real UI, in-memory store, isolated data).
+// «الباحث عن الفرص» — browser check on the local harness (real Worker, real UI, in-memory store, isolated data).
 // The manager switches it on; an offer and a request get their searches by themselves; a record starts and stops
 // its own search with one press (nothing asked again); a pasted digest becomes the few finds worth a call; a find
 // opens with why it fits; a sentence becomes an urgent search; each search has its own controls; switching the
@@ -18,6 +18,24 @@ fs.mkdirSync(OUT, { recursive: true });
 const { startOfficeOsHarness, idTokenFor, OWNER_A, OWNER_B, OFFICE_A, OFFICE_B } = await import(path.join(ROOT, "scripts/qa/office-os/server.mjs"));
 const h = await startOfficeOsHarness();
 h.store.patch(`offices/${OFFICE_A}`, { city: "المدينة المنورة" });
+
+// A pretend site for «أدخل رابط الإعلان» (the Worker's own outbound requests pass through here; nothing real is contacted).
+const VILLA = "https://villas.example.sa/riyadh/almalqa/7781";
+const sitePages = new Map([
+  ["villas.example.sa/robots.txt", { type: "text/plain", body: "User-agent: *\nDisallow: /search\n" }],
+  ["villas.example.sa/riyadh/almalqa/7781", { body: '<html><head><title>فيلا للبيع في حي الملقا بالرياض</title><meta property="og:description" content="فيلا للبيع في حي الملقا في الرياض مساحة 400 متر السعر 3,200,000 ريال للتواصل 0559020001"></head></html>' }]
+]);
+const outside = [];
+const harnessFetch = globalThis.fetch;
+globalThis.fetch = async (input, init = {}) => {
+  const url = new URL(String(input instanceof Request ? input.url : input));
+  if (url.hostname.endsWith(".example.sa") || /aqar\.fm$|haraj\.com\.sa$/.test(url.hostname)) {
+    outside.push(`${url.hostname}${url.pathname}`);
+    const found = sitePages.get(`${url.hostname}${url.pathname}`);
+    return found ? new Response(found.body, { status: 200, headers: { "content-type": found.type || "text/html; charset=utf-8" } }) : new Response("not found", { status: 404 });
+  }
+  return harnessFetch(input, init);
+};
 
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 const checks = [];
@@ -60,7 +78,7 @@ try {
   step = "home card (off)";
   await page.goto(`${h.origin}/#/office`);
   await page.locator("[data-scout-card]:not([hidden])").waitFor();
-  check("office page shows «باحث الفرص» under the office tools, stopped until the manager switches it on", (await page.locator("[data-scout-card] [data-scout-status]").getAttribute("data-scout-status")) === "off");
+  check("office page shows «الباحث عن الفرص» under the office tools, stopped until the manager switches it on", (await page.locator("[data-scout-card] [data-scout-status]").getAttribute("data-scout-status")) === "off");
   await shot(page, "01-home-card-off");
 
   step = "switch on";
@@ -207,10 +225,96 @@ try {
   const cross = await api("/os/scout/overview", {}, OWNER_B, OFFICE_A);
   check("another office sees none of this office's finds or searches, and cannot open them by id", other.body.board.length === 0 && other.body.tasks.length === 0 && stolen.status === 404 && cross.status === 403, `${stolen.status} ${cross.status}`);
 
+  step = "an ad by its link";
+  await page.goto(`${h.origin}/#/scout`);
+  await page.locator("[data-scout-feed]").click();
+  await page.locator("[data-feed-link]").fill("https://sa.aqar.fm/ad/5550001");
+  await page.locator("[data-feed-send]").click();
+  await page.locator("[data-feed-result]:not([hidden])").waitFor();
+  check("a link to a site that forbids automated reading is not fetched: the broker is asked to paste the ad's text", /الصق نص الإعلان/.test(await page.locator("[data-feed-result]").textContent()) && outside.length === 0, outside.join(", "));
+  await page.locator("[data-feed-link]").fill(VILLA);
+  await page.locator("[data-feed-send]").click();
+  await page.locator("[data-feed-read-item]").waitFor();
+  const readLine = await page.locator("[data-feed-read-item]").textContent();
+  check("a link the site lets be read: the ad is read from its page and added — type, district, city, price and area shown back, what is missing named", /أُضيف الإعلان/.test(await page.locator("[data-feed-result]").textContent()) && /فيلا/.test(readLine) && /3,200,000/.test(readLine) && /غير مذكور: تاريخ النشر/.test(readLine) && outside.join() === "villas.example.sa/robots.txt,villas.example.sa/riyadh/almalqa/7781", readLine);
+  await shot(page, "15-add-by-link");
+  await page.locator(".os-sheet .os-icon-btn").click();
+  const villa = finds().find((f) => f.phone === "0559020001");
+  check("the ad is kept for the broker in any city (a الرياض villa in a المدينة office), and no official record was created", villa?.surface === "SHOWN" && villa.city === "الرياض" && villa.url === VILLA && h.store.list(`offices/${OFFICE_A}/opportunities`).every((r) => r.propertyType !== "فيلا"));
+
+  step = "the five lists";
+  await page.reload();
+  await page.locator("[data-scout-buckets]").waitFor();
+  const chips = await page.locator("[data-scout-buckets] [data-bucket]").evaluateAll((nodes) => nodes.map((n) => `${n.dataset.bucket}:${n.dataset.bucketCount}`));
+  check("the page has the lists: الكل، مطابقة، جديدة، قيد المراجعة، محفوظة، مستبعدة — with real counts", chips.map((c) => c.split(":")[0]).join() === "ALL,MATCHED,NEW,REVIEW,SAVED,EXCLUDED" && chips.every((c) => /:\d+$/.test(c)), chips.join(" "));
+  await page.locator('[data-bucket="NEW"]').click();
+  check("«جديدة» holds the ad just added (matched to nothing of the office yet)", (await page.locator(`[data-find="${villa.id}"]`).count()) === 1 && (await page.locator("[data-find]").count()) === Number(chips.find((c) => c.startsWith("NEW:")).split(":")[1]));
+  check("the page says when the last successful search was", /آخر بحث ناجح/.test(await page.locator("[data-scout-last]").textContent()));
+  await shot(page, "16-lists");
+  await page.locator("[data-scout-source-status] summary").click();
+  const states = Object.fromEntries(await page.locator("[data-scout-source-status] [data-source]").evaluateAll((nodes) => nodes.map((n) => [n.dataset.source, n.dataset.sourceState])));
+  check("every source shows its true state: the office's own are connected; عقار، حراج، بيوت، وصلت and the paid searches need a permission; private WhatsApp groups are not available", states.office_inbox === "CONNECTED" && states.broker_feed === "CONNECTED" && ["aqar", "haraj", "bayut", "wasalt", "web_search", "x_search", "telegram_groups"].every((id) => states[id] === "NEEDS_PERMISSION") && states.whatsapp_groups === "UNAVAILABLE" && !("qa_fixture" in states), JSON.stringify(states));
+  await shot(page, "17-source-status");
+
+  step = "follow-up task";
+  await page.locator(`[data-find="${villa.id}"]`).click();
+  await page.locator("[data-find-unmatched]").waitFor();
+  check("the find shows its original source, the discovery date, and what the ad left out", (await page.locator("[data-find-source]").getAttribute("href")) === VILLA && (await page.locator('[data-find-row="discovered"]').count()) === 1 && /غير مذكور/.test(await page.locator('[data-find-row="published"]').textContent()) && /تاريخ النشر/.test(await page.locator('[data-find-row="missing"]').textContent()));
+  await page.locator('[data-find-action="FOLLOW_UP"]').click();
+  await page.locator("[data-find-task-open]").waitFor();
+  const followUp = h.store.list(`offices/${OFFICE_A}/operations`).find((t) => t.type === "SCOUT_FOLLOW_UP");
+  check("«أنشئ مهمة متابعة» wrote one task for this broker", followUp?.status === "OPEN" && followUp.assignedBrokerId === OWNER_A && followUp.sourceEntityId === villa.id);
+  await page.goto(`${h.origin}/#/tasks`);
+  await page.locator('[data-type="SCOUT_FOLLOW_UP"]').waitFor();
+  check("the task is in Daily Tasks as «متابعة فرصة خارجية», at the «تواصل» step", /متابعة فرصة خارجية/.test(await page.locator('[data-type="SCOUT_FOLLOW_UP"] h3').textContent()) && /تواصل/.test(await page.locator('[data-type="SCOUT_FOLLOW_UP"] .ref-status').textContent()));
+  await shot(page, "18-daily-task");
+  await page.locator('[data-type="SCOUT_FOLLOW_UP"] [data-action="SCOUT_FOLLOW_UP"]').click();
+  await page.locator("[data-scout-find-page] [data-find-outcome]").waitFor();
+  check("its button opens the find itself", page.url().endsWith(`#/scout/opp/${villa.id}`));
+  await page.locator("[data-find-outcome]").click();
+  await page.locator("[data-outcome-result]").selectOption("INTERESTED");
+  await page.locator("[data-outcome-note]").fill("طلب معاينة يوم السبت");
+  await page.locator("[data-outcome-save]").click();
+  await page.locator('[data-find-row="outcome"]').waitFor();
+  check("«سجّل نتيجة التواصل» keeps the result on the find, moves it to «قيد المراجعة», and closes the task", /مهتم/.test(await page.locator('[data-find-row="outcome"]').textContent()) && finds().find((f) => f.id === villa.id).status === "CONTACTED" && h.store.get(`offices/${OFFICE_A}/operations/${followUp.id}`).status === "COMPLETED");
+
+  step = "match on demand";
+  await api("/os/records/save", { requestKey: "scout-e2e-riyadh", record: { kind: "REQUEST", purpose: "PURCHASE", propertyType: "فيلا", city: "الرياض", district: "الملقا", price: 3_400_000, contactName: "عميل الرياض", contactPhone: "0557300001" } });
+  await page.locator('[data-find-action="RECHECK"]').click();
+  await page.locator("[data-find-fit]").waitFor();
+  const fit = Number(await page.locator("[data-find-fit]").getAttribute("data-find-fit"));
+  const whyText = await page.locator("[data-find-why]").textContent();
+  check("«ابحث عن مطابقات»: the find is matched with the office's new request — an estimated fit, the reasons, and the price difference", fit >= 50 && fit <= 100 && /مطابقة تقديرية/.test(whyText) && /ليس حكمًا مؤكدًا/.test(whyText) && /أقل من ميزانية عميلك/.test(await page.locator("[data-find-differences]").textContent()) && (await page.locator("[data-find-record]").count()) === 1, `${fit}%`);
+  await shot(page, "19-find-matched");
+
+  step = "exclude and take back";
+  await page.locator('[data-find-action="IGNORE"]').click();
+  await page.locator("[data-scout-buckets]").waitFor();
+  await page.locator('[data-bucket="EXCLUDED"]').click();
+  check("«استبعاد» moves the find to «مستبعدة» (off the main list)", (await page.locator(`[data-find="${villa.id}"]`).count()) === 1 && Number(await page.locator('[data-bucket="EXCLUDED"]').getAttribute("data-bucket-count")) >= 1);
+  await page.locator(`[data-find="${villa.id}"]`).click();
+  await page.locator('[data-find-action="RESTORE"]').click();
+  await page.locator("[data-find-actions]").waitFor();
+  check("and it can be taken back", finds().find((f) => f.id === villa.id).status === "NEW" && finds().find((f) => f.id === villa.id).surface === "SHOWN");
+
+  step = "search settings";
+  await page.goto(`${h.origin}/#/settings/scout`);
+  await page.locator("[data-scout-cadence]").waitFor();
+  await page.locator('input[name="priceMax"]').fill("4000000");
+  await page.locator('input[name="areaMin"]').fill("200");
+  await page.locator("[data-scout-cadence]").selectOption("720");
+  await page.locator('[data-scout-kind="REQUEST"]').uncheck();
+  await page.locator("[data-scout-alerts]").uncheck();
+  await shot(page, "20-search-settings");
+  await page.locator("[data-scout-save]").click();
+  await page.locator(".os-toast", { hasText: "تم حفظ" }).waitFor();
+  const stored = h.store.get(`offices/${OFFICE_A}/scoutSettings/main`);
+  check("the office sets its own price and area range, kinds, pace and alerts", stored.priceMax === 4_000_000 && stored.areaMin === 200 && stored.cadenceMinutes === 720 && String(stored.kinds) === "OFFER" && stored.notify === false, JSON.stringify({ priceMax: stored.priceMax, cadence: stored.cadenceMinutes, kinds: stored.kinds, notify: stored.notify }));
+
   step = "phone widths";
-  for (const width of [320, 360, 430]) {
+  for (const width of [320, 360, 390, 430]) {
     await page.setViewportSize({ width, height: 800 });
-    for (const route of ["scout", "scout/new", "settings/scout"]) {
+    for (const route of ["scout", "scout/new", "settings/scout", `scout/opp/${villa.id}`]) {
       await page.goto(`${h.origin}/#/${route}`);
       await page.waitForTimeout(500);
       const overflow = await page.evaluate(() => document.scrollingElement.scrollWidth - document.scrollingElement.clientWidth);

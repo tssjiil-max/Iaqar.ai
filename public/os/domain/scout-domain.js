@@ -1,5 +1,5 @@
 /**
- * «باحث الفرص» — pure rules shared by the office UI, the Worker and node:test (no DOM, no network).
+ * «الباحث عن الفرص» — pure rules shared by the office UI, the Worker and node:test (no DOM, no network).
  *
  *   • The scout is a lens over the office's own data and the sources the office is allowed to use. It never
  *     has its own understanding of an ad: every text goes through the shared «تعبئة ذكية» analysis
@@ -35,6 +35,8 @@ export const MODE_CONFIG = Object.freeze({
     windowHours: 0, afterWindow: "", backfillDays: 7, itemsPerCycle: 25, queryVariants: 1,
     startRing: 0, expandAfterEmptyCycles: 3, priceTolerance: 0.10, relatedTypes: false,
     recheckEvery: 4, ai: Object.freeze({ allowed: false, perDay: 0 }),
+    // Paid outside searches (web search, X): how often one search may ask, and how many query forms each time.
+    metered: Object.freeze({ everyMinutes: 1440, queries: 1 }),
     notify: Object.freeze({ minBand: BAND.VERY_STRONG, throttled: true, summaryOnComplete: false, urgentTag: false })
   }),
   DEEP: Object.freeze({
@@ -42,6 +44,7 @@ export const MODE_CONFIG = Object.freeze({
     windowHours: 24, afterWindow: "COMPLETE", backfillDays: 30, itemsPerCycle: 80, queryVariants: 6,
     startRing: 0, expandAfterEmptyCycles: 1, priceTolerance: 0.25, relatedTypes: true,
     recheckEvery: 1, ai: Object.freeze({ allowed: true, perDay: 30 }),
+    metered: Object.freeze({ everyMinutes: 120, queries: 3 }),
     notify: Object.freeze({ minBand: BAND.VERY_STRONG, throttled: false, summaryOnComplete: true, urgentTag: false })
   }),
   URGENT: Object.freeze({
@@ -49,6 +52,7 @@ export const MODE_CONFIG = Object.freeze({
     windowHours: 72, afterWindow: "DOWNGRADE", backfillDays: 14, itemsPerCycle: 40, queryVariants: 3,
     startRing: 1, expandAfterEmptyCycles: 0, priceTolerance: 0.15, relatedTypes: false,
     recheckEvery: 1, ai: Object.freeze({ allowed: true, perDay: 10 }),
+    metered: Object.freeze({ everyMinutes: 60, queries: 2 }),
     notify: Object.freeze({ minBand: BAND.STRONG, throttled: false, summaryOnComplete: false, urgentTag: true })
   })
 });
@@ -59,22 +63,29 @@ export const MODE_OPTIONS = Object.freeze([
   { id: SCOUT_MODE.URGENT, label: "مستعجل", hint: "أول دورة فورًا وتنبيه لكل فرصة قوية" }
 ]);
 
+/** «وتيرة البحث»: how often the office's general searches look. */
+export const CADENCE_OPTIONS = Object.freeze([
+  { id: 180, label: "كل 3 ساعات" }, { id: 360, label: "كل 6 ساعات" }, { id: 720, label: "كل 12 ساعة" }, { id: 1440, label: "مرة يوميًا" }
+]);
+
 export function modeOf(value) {
   const key = String(value || "").toUpperCase();
   return MODE_CONFIG[key] ? key : SCOUT_MODE.GENERAL;
 }
 
 /** The pace a task runs at right now (an urgent task past its window keeps watching at the general pace). */
-export function taskCadence(task = {}, now = new Date()) {
+export function taskCadence(task = {}, now = new Date(), settings = null) {
   const mode = modeOf(task.mode);
   const config = MODE_CONFIG[mode];
+  // «وتيرة البحث» is the office's: it sets the pace of the general (24/7) searches only.
+  const generalMinutes = CADENCE_OPTIONS.some((o) => o.id === Number(settings?.cadenceMinutes)) ? Number(settings.cadenceMinutes) : MODE_CONFIG.GENERAL.intervalMinutes;
   const until = toDate(task.intensiveUntil);
   const windowOver = Boolean(config.windowHours && until && until.getTime() <= now.getTime());
   if (windowOver && config.afterWindow === "COMPLETE") return { mode, config, windowOver, complete: true, intervalMinutes: 0, priority: config.priority };
   if (windowOver && config.afterWindow === "DOWNGRADE") {
-    return { mode, config, windowOver, complete: false, downgraded: true, intervalMinutes: MODE_CONFIG.GENERAL.intervalMinutes, priority: MODE_CONFIG.GENERAL.priority };
+    return { mode, config, windowOver, complete: false, downgraded: true, intervalMinutes: generalMinutes, priority: MODE_CONFIG.GENERAL.priority };
   }
-  return { mode, config, windowOver: false, complete: false, intervalMinutes: config.intervalMinutes, priority: config.priority };
+  return { mode, config, windowOver: false, complete: false, intervalMinutes: mode === SCOUT_MODE.GENERAL ? generalMinutes : config.intervalMinutes, priority: config.priority };
 }
 
 // ------------------------------------------------------------------ what is searched for, and task states
@@ -105,11 +116,14 @@ export const END_REASON_LABEL = Object.freeze({
   RECORD_MATCHED: "وُجد مقابل مناسب داخل مكتبك",
   DEEP_COMPLETE: "اكتمل البحث العميق",
   BROKER: "أنهاه الوسيط",
-  SCOUT_OFF: "باحث الفرص متوقف"
+  SCOUT_OFF: "الباحث عن الفرص متوقف"
 });
 
 export const OPP_STATUS = Object.freeze({ NEW: "NEW", SAVED: "SAVED", CONTACTED: "CONTACTED", IGNORED: "IGNORED", CONVERTED: "CONVERTED" });
-export const OPP_ACTION = Object.freeze({ CONTACT: "CONTACT", SAVE: "SAVE", IGNORE: "IGNORE", RESTORE: "RESTORE", CONVERTED: "CONVERTED" });
+export const OPP_ACTION = Object.freeze({ CONTACT: "CONTACT", SAVE: "SAVE", IGNORE: "IGNORE", RESTORE: "RESTORE", CONVERTED: "CONVERTED", RECHECK: "RECHECK", FOLLOW_UP: "FOLLOW_UP", OUTCOME: "OUTCOME" });
+export const OUTCOME_OPTIONS = Object.freeze([
+  { id: "INTERESTED", label: "مهتم — نكمل معه" }, { id: "CALL_LATER", label: "طلب التواصل لاحقًا" }, { id: "NO_ANSWER", label: "لم يرد" }, { id: "NOT_INTERESTED", label: "غير مهتم أو غير متاح" }
+]);
 export const SURFACE = Object.freeze({ HIDDEN: "HIDDEN", SHOWN: "SHOWN" });
 
 // ------------------------------------------------------------------ text helpers
@@ -196,6 +210,13 @@ export const QUALITY_OPTIONS = Object.freeze([
   { id: BAND.STRONG, label: "قوية فأعلى" },
   { id: BAND.VERY_STRONG, label: "قوية جدًا فقط" }
 ]);
+/** «نوع الفرصة» the office wants discovered for it (its own records are always searched for, whatever is chosen here). */
+export const KIND_OPTIONS = Object.freeze([{ id: "OFFER", label: "عروض" }, { id: "REQUEST", label: "طلبات" }]);
+/** «حساسية التنبيهات»: from which level a general search alerts. */
+export const ALERT_OPTIONS = Object.freeze([
+  { id: BAND.VERY_STRONG, label: "القوية جدًا فقط" },
+  { id: BAND.STRONG, label: "كل فرصة قوية" }
+]);
 
 const list = (value, max, each = 60) => (Array.isArray(value) ? value : String(value || "").split(/[،,\n]/))
   .map((item) => cleanText(item, each).replace(/^حي\s+/, "")).filter(Boolean).filter((item, i, all) => all.indexOf(item) === i).slice(0, max);
@@ -203,7 +224,8 @@ const list = (value, max, each = 60) => (Array.isArray(value) ? value : String(v
 export function defaultScoutSettings(office = {}) {
   return {
     enabled: false, generalEnabled: true, city: cleanText(office.city, 60), districts: [], propertyTypes: [], purposes: ["sale", "rent"],
-    preferDirectOwner: false, minQuality: BAND.STRONG, notifyPush: true, sources: {}
+    priceMin: 0, priceMax: 0, areaMin: 0, areaMax: 0, kinds: ["OFFER", "REQUEST"], cadenceMinutes: MODE_CONFIG.GENERAL.intervalMinutes,
+    preferDirectOwner: false, minQuality: BAND.STRONG, notify: true, alertLevel: BAND.VERY_STRONG, notifyPush: true, sources: {}
   };
 }
 
@@ -215,9 +237,20 @@ export function normalizeScoutSettings(raw = {}, office = {}) {
   for (const [id, on] of Object.entries(raw.sources && typeof raw.sources === "object" ? raw.sources : {})) {
     if (/^[a-z_]{2,30}$/.test(id)) sources[id] = on !== false;
   }
+  const amount = (value, max) => { const n = Math.round(toNumber(value)); return n > 0 && n <= max ? n : 0; };
+  let [priceMin, priceMax] = [amount(raw.priceMin, 10_000_000_000), amount(raw.priceMax, 10_000_000_000)];
+  if (priceMin && priceMax && priceMin > priceMax) [priceMin, priceMax] = [priceMax, priceMin];
+  let [areaMin, areaMax] = [amount(raw.areaMin, 10_000_000), amount(raw.areaMax, 10_000_000)];
+  if (areaMin && areaMax && areaMin > areaMax) [areaMin, areaMax] = [areaMax, areaMin];
+  const kinds = (Array.isArray(raw.kinds) ? raw.kinds : []).filter((k, i, all) => (k === "OFFER" || k === "REQUEST") && all.indexOf(k) === i);
   return {
     enabled: raw.enabled === true,
     generalEnabled: raw.generalEnabled !== false,
+    priceMin, priceMax, areaMin, areaMax,
+    kinds: kinds.length ? kinds : base.kinds,
+    cadenceMinutes: CADENCE_OPTIONS.some((o) => o.id === Number(raw.cadenceMinutes)) ? Number(raw.cadenceMinutes) : base.cadenceMinutes,
+    notify: raw.notify !== false,
+    alertLevel: raw.alertLevel === BAND.STRONG ? BAND.STRONG : BAND.VERY_STRONG,
     city: cleanText(raw.city, 60) || base.city,
     districts: list(raw.districts, 12),
     propertyTypes: list(raw.propertyTypes, 11, 40).filter((t) => PROPERTY_TYPES.includes(t)),
@@ -265,6 +298,7 @@ function cleanProfile(input = {}) {
     rooms: Math.max(0, Math.min(50, Math.round(toNumber(input.rooms)) || 0)),
     freshnessDays: freshness >= 1 && freshness <= 90 ? freshness : 0,
     preferDirectOwner: input.preferDirectOwner === true,
+    ...(Array.isArray(input.kinds) && input.kinds.length === 1 && ["OFFER", "REQUEST"].includes(input.kinds[0]) ? { kinds: [input.kinds[0]] } : {}),
     allowCityWide: input.allowCityWide === true
   };
 }
@@ -310,7 +344,10 @@ export function profileFromRecord(record = {}) {
 
 /** The office's standing interests (settings) → the discovery search that runs with no record behind it. */
 export function discoveryProfile(settings = {}) {
-  return cleanProfile({ tx: settings.purposes?.length === 1 ? settings.purposes[0] : "", propertyTypes: settings.propertyTypes, city: settings.city, districts: settings.districts, preferDirectOwner: settings.preferDirectOwner });
+  return cleanProfile({
+    tx: settings.purposes?.length === 1 ? settings.purposes[0] : "", propertyTypes: settings.propertyTypes, city: settings.city, districts: settings.districts, preferDirectOwner: settings.preferDirectOwner,
+    priceMin: settings.priceMin, priceMax: settings.priceMax, areaMin: settings.areaMin, areaMax: settings.areaMax, kinds: settings.kinds
+  });
 }
 
 const TX_WORD = { sale: "للبيع", rent: "للإيجار" };
@@ -398,7 +435,7 @@ export function planQueries(task = {}) {
   const near = ring >= RING.ADJACENT ? [...new Set(districts.flatMap(adjacentDistricts))].filter((d) => !districts.map(normDistrict).includes(normDistrict(d))) : [];
   const types = (profile.propertyTypes || []).slice(0, 4);
   const widen = (ratio) => ({ priceMin: profile.priceMin ? Math.round(profile.priceMin * (1 - ratio)) : 0, priceMax: profile.priceMax ? Math.round(profile.priceMax * (1 + ratio)) : 0 });
-  const base = { tx: profile.tx || "", city: profile.city || "", districts, propertyTypes: types, ...widen(0), freshnessDays: profile.freshnessDays || config.backfillDays };
+  const base = { seek: task.seek || "", tx: profile.tx || "", city: profile.city || "", districts, propertyTypes: types, ...widen(0), freshnessDays: profile.freshnessDays || config.backfillDays, preferDirectOwner: profile.preferDirectOwner === true };
   const forms = [{ id: "exact", ...base }];
   if (near.length) forms.push({ id: "adjacent", ...base, districts: near });
   if (config.priceTolerance > 0.10 && (profile.priceMin || profile.priceMax)) forms.push({ id: "price", ...base, ...widen(config.priceTolerance) });
@@ -410,6 +447,46 @@ export function planQueries(task = {}) {
   }
   if (ring >= RING.CITY) forms.push({ id: "city", ...base, districts: [] });
   return forms.slice(0, config.queryVariants + (ring >= RING.CITY ? 1 : 0));
+}
+
+/**
+ * A query form in the words people write ads with — for a web search or a posts search. The price is left out on
+ * purpose (search engines match numbers badly); it is judged afterwards on what comes back.
+ *   offer for sale   «أرض للبيع حي الحمراء المدينة المنورة»
+ *   a buyer          «مطلوب أرض للشراء حي الحمراء المدينة المنورة»
+ */
+export function webQueryText(form = {}) {
+  const rent = form.tx === "rent";
+  const type = (form.propertyTypes || [])[0] || "عقار";
+  const wanted = form.seek === SEEK.REQUEST;
+  const districts = (form.districts || []).slice(0, 2).map((d) => `حي ${d}`).join(" أو ");
+  const intent = wanted ? `مطلوب ${type} ${rent ? "للإيجار" : "للشراء"}` : `${type} ${rent ? "للإيجار" : "للبيع"}`;
+  const owner = !wanted && (form.seek === SEEK.OWNER || form.preferDirectOwner) ? "من المالك مباشرة" : "";
+  return [intent, districts, form.city || "", owner].filter(Boolean).join(" ").replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+/** The same form for a posts search (X): exact words, Arabic posts only, no reposts. */
+export function postsQueryText(form = {}) {
+  const rent = form.tx === "rent";
+  const type = (form.propertyTypes || [])[0] || "";
+  const district = (form.districts || [])[0] || "";
+  const place = district || form.city || "";
+  const intent = form.seek === SEEK.REQUEST ? "مطلوب" : rent ? "(للإيجار OR للايجار)" : "للبيع";
+  return [type ? `"${type}"` : "", place ? `"${place}"` : "", intent, "lang:ar -is:retweet -is:reply"].filter(Boolean).join(" ").slice(0, 400);
+}
+
+const INDEX_PAGE = /^(?:أراضي|اراضي|شقق|فلل|عمائر|عماير|محلات|مكاتب|مزارع|استراحات|عقارات|بيوت|أدوار|ادوار|مستودعات)\s|\d+\s*(?:إعلان|اعلان|عقار|نتيجة|عرض)(?:\s|$)|أفضل\s+\d+|دليل\s/;
+/** A results page («شقق للبيع في … — 250 إعلان») is a list of ads, not an ad: it is never a find. */
+export function looksLikeListingIndex(title = "") {
+  return INDEX_PAGE.test(String(title || "").trim());
+}
+
+/** A cheap first look at a message from a group: is it a property ad at all? (Chatter never reaches the scout.) */
+export function looksLikeAd(value = "") {
+  const body = String(value || "").trim();
+  if (body.length < 25 || body.length > 4000) return false;
+  const candidate = candidateFromRaw({ text: body });
+  return candidate.understood && Boolean(candidate.kind) && Boolean(candidate.propertyType) && Boolean(candidate.price || candidate.area || candidate.district);
 }
 
 // ------------------------------------------------------------------ a found ad → a candidate
@@ -629,11 +706,74 @@ export function scoutScore({ fit = 0, quality = 0, capBand = "" } = {}) {
 }
 
 /** Does this find reach the broker, and does it alert him? (the office's minimum level, the mode, reachability) */
-export function surfaceDecision({ band, contactable, minQuality = BAND.STRONG, mode = SCOUT_MODE.GENERAL, status = OPP_STATUS.NEW } = {}) {
-  if (!contactable || status === OPP_STATUS.IGNORED) return { surface: SURFACE.HIDDEN, notify: false };
+export function surfaceDecision({ band, contactable, minQuality = BAND.STRONG, mode = SCOUT_MODE.GENERAL, status = OPP_STATUS.NEW, pinned = false, alerts = true, alertLevel = BAND.VERY_STRONG } = {}) {
+  if (status === OPP_STATUS.IGNORED) return { surface: SURFACE.HIDDEN, notify: false };
+  // An ad the broker brought himself (a link, one pasted ad) is his own choice: it is on his page whatever its level.
+  if (pinned) return { surface: SURFACE.SHOWN, notify: false };
+  if (!contactable) return { surface: SURFACE.HIDDEN, notify: false };
   const shown = bandRank(band) >= bandRank(minQuality === BAND.VERY_STRONG ? BAND.VERY_STRONG : BAND.STRONG);
-  const notify = shown && bandRank(band) >= bandRank(MODE_CONFIG[modeOf(mode)].notify.minBand);
+  // A general search alerts from the level the office chose; deep and urgent keep their own rule.
+  const from = modeOf(mode) === SCOUT_MODE.GENERAL ? (alertLevel === BAND.STRONG ? BAND.STRONG : BAND.VERY_STRONG) : MODE_CONFIG[modeOf(mode)].notify.minBand;
+  const notify = alerts !== false && shown && bandRank(band) >= bandRank(from);
   return { surface: shown ? SURFACE.SHOWN : SURFACE.HIDDEN, notify };
+}
+
+// ------------------------------------------------------------------ the page's five lists
+
+export const BUCKET = Object.freeze({ NEW: "NEW", MATCHED: "MATCHED", REVIEW: "REVIEW", SAVED: "SAVED", EXCLUDED: "EXCLUDED" });
+export const BUCKET_OPTIONS = Object.freeze([
+  { id: BUCKET.MATCHED, label: "مطابقة" }, { id: BUCKET.NEW, label: "جديدة" }, { id: BUCKET.REVIEW, label: "قيد المراجعة" },
+  { id: BUCKET.SAVED, label: "محفوظة" }, { id: BUCKET.EXCLUDED, label: "مستبعدة" }
+]);
+/** Where a find sits: excluded, saved, under review (the broker opened its contact), matched to one of the office's records, or simply new. */
+export function bucketOf(card = {}) {
+  if (card.status === OPP_STATUS.IGNORED) return BUCKET.EXCLUDED;
+  if (card.status === OPP_STATUS.SAVED) return BUCKET.SAVED;
+  if (card.status === OPP_STATUS.CONTACTED) return BUCKET.REVIEW;
+  return card.recordId ? BUCKET.MATCHED : BUCKET.NEW;
+}
+export function bucketCounts(cards = []) {
+  const counts = Object.fromEntries(Object.values(BUCKET).map((id) => [id, 0]));
+  for (const card of cards) counts[bucketOf(card)] += 1;
+  return counts;
+}
+
+// ------------------------------------------------------------------ what is missing, and how it differs from the office's record
+
+const MISSING_FIELDS = [["propertyType", "نوع العقار"], ["city", "المدينة"], ["district", "الحي"], ["price", "السعر"], ["area", "المساحة"]];
+/** What the ad did not say. Never guessed — listed, so the broker asks for it. */
+export function missingFacts(entity = {}) {
+  const out = MISSING_FIELDS.filter(([field]) => !entity[field]).map(([, label]) => label);
+  if (!normPhone(entity.phone) && !entity.contactRoute) out.push("وسيلة التواصل");
+  if (!entity.publishedAt) out.push("تاريخ النشر");
+  return out;
+}
+export function completenessLabel(entity = {}) {
+  const missing = missingFacts(entity).filter((label) => label !== "تاريخ النشر");
+  return !missing.length ? "البيانات مكتملة" : missing.length <= 2 ? "البيانات شبه مكتملة" : "البيانات ناقصة";
+}
+
+const percent = (a, b) => Math.round((Math.abs(a - b) / b) * 100);
+/** The find beside the office's own record: where price and area differ, in plain words. */
+export function matchDifferences(entity = {}, record = null) {
+  if (!record) return [];
+  const out = [];
+  const ours = Number(record.priceOrBudget ?? record.price ?? record.budget ?? 0) || 0;
+  const theirs = Number(entity.price || 0);
+  if (ours && theirs) {
+    const gap = percent(theirs, ours);
+    if (entity.kind === "OFFER") out.push(gap < 1 ? "السعر يساوي ميزانية عميلك" : theirs > ours ? `السعر أعلى من ميزانية عميلك بـ${gap}%` : `السعر أقل من ميزانية عميلك بـ${gap}%`);
+    else out.push(gap < 1 ? "الميزانية تساوي سعر عرضك" : theirs < ours ? `ميزانيته أقل من سعر عرضك بـ${gap}%` : `ميزانيته أعلى من سعر عرضك بـ${gap}%`);
+  }
+  const ourArea = Number(record.area || 0);
+  const theirArea = Number(entity.area || 0);
+  if (ourArea && theirArea) {
+    const gap = percent(theirArea, ourArea);
+    out.push(gap < 3 ? "المساحة متقاربة" : `المساحة ${theirArea > ourArea ? "أكبر" : "أصغر"} بـ${gap}% (${formatNumber(theirArea)} م² مقابل ${formatNumber(ourArea)} م²)`);
+  }
+  const ourDistrict = normDistrict(String(record.district || ""));
+  if (ourDistrict && entity.district && normDistrict(entity.district) !== ourDistrict) out.push(`الحي مختلف: ${entity.district} بدل ${String(record.district).replace(/^حي\s+/, "")}`);
+  return out;
 }
 
 // ------------------------------------------------------------------ what the broker reads
@@ -666,7 +806,7 @@ export function notificationCopy({ entity = {}, link = {}, recordTitleText = "",
   }
   if (change?.field === "contact") return { title: `${tag}فرصة أصبحت قابلة للتواصل`, body: `${entityHeadline(entity)}: ظهرت لها وسيلة تواصل.` };
   const category = categoryOf(entity, link);
-  if (category === CATEGORY.BUYER) return { title: `${tag}فرصة قوية`, body: `وجد باحث الفرص ${entity.tx === "rent" ? "طلب استئجار" : "طلب شراء"} حديثًا مناسبًا لـ«${recordTitleText || "عرض لديك"}».` };
+  if (category === CATEGORY.BUYER) return { title: `${tag}فرصة قوية`, body: `وجد الباحث عن الفرص ${entity.tx === "rent" ? "طلب استئجار" : "طلب شراء"} حديثًا مناسبًا لـ«${recordTitleText || "عرض لديك"}».` };
   if (category === CATEGORY.PROPERTY) return { title: `${tag}تطابق جديد`, body: `وجدنا ${entity.propertyType || "عقارًا"}${entity.district ? ` في ${entity.district}` : ""} ضمن ميزانية عميلك.` };
   if (category === CATEGORY.OWNER) return { title: `${tag}مالك محتمل`, body: `${entityHeadline(entity)} — مرجّح من المالك مباشرة.` };
   return { title: `${tag}فرصة قوية`, body: `${entityHeadline(entity)}${entity.price ? ` · ${formatNumber(entity.price)} ريال` : ""}.` };
@@ -708,7 +848,7 @@ export function scoutCounters({ board = [], tasks = [], now = new Date() } = {})
   };
 }
 
-/** The line a broker reads when he comes back: «باحث الفرص عمل أثناء غيابك». */
+/** The line a broker reads when he comes back: «الباحث عن الفرص عمل أثناء غيابك». */
 export function awaySummary(board = []) {
   const open = board.filter((c) => c.status === OPP_STATUS.NEW);
   const count = (category) => open.filter((c) => c.category === category).length;

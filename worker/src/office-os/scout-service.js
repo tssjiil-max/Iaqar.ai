@@ -1,5 +1,5 @@
 /**
- * «باحث الفرص» — the office's background researcher (Worker side; rules in public/os/domain/scout-domain.js).
+ * «الباحث عن الفرص» — the office's background researcher (Worker side; rules in public/os/domain/scout-domain.js).
  *
  *   sources → the shared «تعبئة ذكية» understanding → one find per property/request (sightings merged) →
  *   the platform's matching engine against the office's searches and open records → level → the board, and an
@@ -21,8 +21,11 @@ import {
   ADVERTISER_LABEL, BAND, BAND_LABEL, CATEGORY_LABEL, END_REASON_LABEL, MODE_CONFIG, OPP_ACTION, OPP_STATUS, RING, SCOUT_MODE, SEEK, SURFACE, TASK_CONTROL, TASK_ORIGIN, TASK_STATUS,
   allowedRing, awaySummary, bandRank, boardCard, candidateFromRaw, categoryOf, contentKey, discoveryProfile, entityHeadline, freshness, isContactable, mergeSighting,
   modeOf, normPhone, normalizeScoutSettings, strongCount, notificationCopy, parseScoutCommand, planQueries, priceLine, profileFromRecord, profileSummary, scoutCounters, splitDigest,
-  surfaceDecision, taskCadence, taskTitle, taskView, validateCustomSearch
+  surfaceDecision, taskCadence, taskTitle, taskView, validateCustomSearch, webQueryText,
+  BUCKET, bucketCounts, completenessLabel, matchDifferences, missingFacts
 } from "../../../public/os/domain/scout-domain.js";
+import { operationDocumentId } from "../operations-domain.js";
+import { finishTasks } from "./task-service.js";
 import { kindOf, recordTitle } from "../../../public/os/domain/records-domain.js";
 import { consumePublicRateLimit, publicRateLimitKey } from "../public-rate-limit.js";
 import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
@@ -30,7 +33,8 @@ import { alertBrokerOnTelegram } from "./bot-notify.js";
 import { canActOn } from "./permissions.js";
 import { fillListingGaps, smartFillAiStatus } from "./smart-fill-service.js";
 import { entityFromIndex, evaluateFind, findExisting, inInventory, indexEntry, repeatCount } from "./scout-evaluate.js";
-import { nextBackoff, sourceLabel, sourceQuality, sourcesForOffice, sourcesReport, usableSources } from "./scout-sources.js";
+import { SOURCE_STATE, nextBackoff, sourceLabel, sourceQuality, sourcesForOffice, sourcesReport, usableSources } from "./scout-sources.js";
+import { liveSearchAvailable, liveWebSearch, readLinkedPage } from "./scout-web.js";
 import {
   SCOUT_LIMITS, dequeueTask, enqueueTask, findPath, isRunning, loadSchedule, loadSettings, loadState, mutateSchedule, mutateState, officeEntry, recordDigest,
   recordSearchState, scoutAvailable, settingsPath, taskPath
@@ -44,7 +48,7 @@ const SYSTEM_PAUSES = new Set(["RECORD_PAUSED", "RECORD_EXPIRED", "GENERAL_OFF"]
 const DISCOVERY_ID = "st_discovery";
 
 function assertAvailable(ctx) {
-  if (!scoutAvailable(ctx.env)) throw ctx.deps.appError("scout_unavailable", 503, "باحث الفرص غير متاح على هذه البيئة");
+  if (!scoutAvailable(ctx.env)) throw ctx.deps.appError("scout_unavailable", 503, "الباحث عن الفرص غير متاح على هذه البيئة");
 }
 
 async function shortHash(ctx, value, length = 16) {
@@ -230,7 +234,8 @@ export async function scoutRecordChanged(ctx, { officeId, recordId, matches = nu
 
 const FIND_SCALARS = ["id", "officeId", "kind", "purpose", "tx", "propertyType", "city", "district", "price", "area", "rooms", "phone", "contactName", "contactRoute", "title", "text", "url",
   "publishedAt", "firstSeenAt", "lastSeenAt", "sourceCount", "confidence", "badPrice", "advertiser", "score", "band", "surface", "status", "notifiedBand", "notifiedAt",
-  "lastChange", "lastChangeAt", "bestTaskId", "bestRecordId", "bestRecordKind", "engine", "convertedRecordId", "actedBy", "actedAt"];
+  "lastChange", "lastChangeAt", "bestTaskId", "bestRecordId", "bestRecordKind", "engine", "convertedRecordId", "actedBy", "actedAt",
+  "pinned", "outcome", "outcomeNote", "outcomeAt", "outcomeBy", "followUpTaskId", "recheckedAt"];
 
 function encodeFind(entity, now) {
   const out = { schemaVersion: 1, updatedAt: now };
@@ -319,7 +324,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
   const settings = await loadSettings(ctx, officeId, office);
   if (!settings.enabled) return { ok: true, off: true, tasks: {}, enqueue: [] };
   const nowMs = now.getTime();
-  const outcome = { ok: true, tasks: {}, enqueue: [], syncAt: 0, stats: { fetched: 0, fresh: 0, known: 0, merged: 0, discarded: 0, inInventory: 0, notContactable: 0, kept: 0, strong: 0, veryStrong: 0, notified: 0, aiCalls: 0, sourceErrors: 0 }, cards: [] };
+  const outcome = { ok: true, tasks: {}, enqueue: [], syncAt: 0, stats: { fetched: 0, fresh: 0, known: 0, merged: 0, discarded: 0, inInventory: 0, notContactable: 0, kept: 0, strong: 0, veryStrong: 0, notified: 0, aiCalls: 0, outsideQueries: 0, sourceErrors: 0 }, cards: [] };
   if (sync) {
     const synced = await syncOfficeInventory(ctx, officeId, { settings, now });
     outcome.enqueue = synced.queue;
@@ -379,7 +384,8 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
    * One find after it was judged: its links and level are set, it is shown or kept hidden, the broker is alerted
    * when its level and the search's mode call for it, and the office's index and board follow.
    */
-  const settle = async ({ entity, links: fresh, judgedTaskIds, advertiser = null, changes = [], isNew = false }) => {
+  const settle = async ({ entity, links: fresh, judgedTaskIds, advertiser = null, changes = [], isNew = false, pinned = false }) => {
+    if (pinned) entity.pinned = true;
     const kept = (entity.links || []).filter((link) => !fresh.some((l) => (l.taskId || l.recordId) === (link.taskId || link.recordId)) && !judgedTaskIds.includes(link.taskId));
     const links = [...fresh, ...kept].sort((a, b) => b.score - a.score).slice(0, 5);
     const best = links[0] || null;
@@ -390,17 +396,18 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
       ...(advertiser ? { advertiser: advertiser.kind, advertiserReasons: advertiser.reasons } : {})
     });
     // A new find that is weak is dropped (not stored, not shown). One already kept stays, with its new level.
-    if (isNew && bandRank(entity.band) < bandRank(BAND.MEDIUM)) { outcome.stats.discarded += 1; return false; }
+    // (An ad the broker brought himself is kept whatever its level — it is his own choice.)
+    if (isNew && !entity.pinned && bandRank(entity.band) < bandRank(BAND.MEDIUM)) { outcome.stats.discarded += 1; return false; }
     const contactable = isContactable(entity);
     if (!contactable) outcome.stats.notContactable += 1;
-    const decision = surfaceDecision({ band: entity.band, contactable, minQuality: settings.minQuality, mode: best?.mode || SCOUT_MODE.GENERAL, status: entity.status });
+    const decision = surfaceDecision({ band: entity.band, contactable, minQuality: settings.minQuality, mode: best?.mode || SCOUT_MODE.GENERAL, status: entity.status, pinned: entity.pinned === true, alerts: settings.notify, alertLevel: settings.alertLevel });
     const meaningful = changes.find((c) => (c.field === "price" && Number(c.to) < Number(c.from)) || c.field === "contact") || null;
     if (meaningful) { entity.lastChange = meaningful.field === "price" ? "price_drop" : "contact"; entity.lastChangeAt = now.toISOString(); }
     entity.surface = [OPP_STATUS.IGNORED, OPP_STATUS.CONVERTED].includes(entity.status) ? SURFACE.HIDDEN : decision.surface;
     const newlyShown = entity.surface === SURFACE.SHOWN && previous.surface !== SURFACE.SHOWN;
     const raised = bandRank(entity.band) > bandRank(previous.notifiedBand || BAND.WEAK);
     if (decision.notify && entity.surface === SURFACE.SHOWN && (raised || (meaningful && previous.notifiedBand))) {
-      const throttled = MODE_CONFIG[best.mode].notify.throttled && usage.pushAt.length >= SCOUT_LIMITS.generalPushesPer6h;
+      const throttled = MODE_CONFIG[best?.mode || SCOUT_MODE.GENERAL].notify.throttled && usage.pushAt.length >= SCOUT_LIMITS.generalPushesPer6h;
       const record = best.recordId ? recordById.get(best.recordId) : null;
       const sent = await notifyFind(ctx, {
         officeId, entity, link: best, change: meaningful && (previous.notifiedBand || meaningful.field === "price") ? meaningful : null, push: settings.notifyPush && !throttled,
@@ -427,7 +434,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
     const cardAt = board.findIndex((card) => card.id === entity.id);
     if (cardAt >= 0) board.splice(cardAt, 1);
     if (entity.surface === SURFACE.SHOWN) {
-      const card = boardCard(entity, best, { recordTitleText: best?.recordId ? recordById.get(best.recordId)?.title || "" : "", now });
+      const card = boardCard(entity, best || {}, { recordTitleText: best?.recordId ? recordById.get(best.recordId)?.title || "" : "", now });
       board.unshift(card);
       if (newlyShown) outcome.cards.push(card);
     }
@@ -461,17 +468,41 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
 
   // What the sources have since each search last looked (its own cursor; a new search looks back over its mode's window).
   const sources = usableSources(ctx, office, settings, health, now).filter((s) => !onlySource || s.adapter.id === onlySource);
-  const limit = Math.max(...tasks.map((t) => MODE_CONFIG[modeOf(t.mode)].itemsPerCycle));
+  const limit = Math.max(MODE_CONFIG.GENERAL.itemsPerCycle, ...tasks.map((t) => MODE_CONFIG[modeOf(t.mode)].itemsPerCycle));
   const rawItems = [];
   const fetchedUntil = {};
+  const asked = new Map();
   for (const { adapter, backingOff } of sources) {
     if (backingOff && !inline) continue;
     const recheck = (task) => Boolean(adapter.queryable && task.cycle % MODE_CONFIG[modeOf(task.mode)].recheckEvery === 0);
     const sinceOf = (task) => sinceMs || (inline || recheck(task) ? nowMs - (task.profile?.freshnessDays || MODE_CONFIG[modeOf(task.mode)].backfillDays) * DAY : cursorOf(task, adapter.id, now));
-    const starts = tasks.map(sinceOf);
-    const forms = adapter.queryable ? tasks.flatMap(planQueries).filter((form, i, all) => all.findIndex((f) => JSON.stringify(f) === JSON.stringify(form)) === i).slice(0, 6) : [];
+    const starts = tasks.length ? tasks.map(sinceOf) : [sinceMs || nowMs - MODE_CONFIG.GENERAL.backfillDays * DAY];
+    const distinct = (list) => list.filter((form, i, all) => all.findIndex((f) => JSON.stringify(f) === JSON.stringify(form)) === i);
+    let forms = adapter.queryable ? distinct(tasks.flatMap(planQueries)).slice(0, 6) : [];
+    const asking = [];
+    if (adapter.metered) {
+      // A paid outside search: each search asks at its own mode's pace, the most pressing first, and the office
+      // never goes past its daily allowance. A search with nothing specific to ask (no type, no district) does not ask.
+      let left = Math.min(8, Math.max(0, adapter.metered.perDay(ctx.env) - Number(usage[adapter.metered.usageKey] || 0)));
+      forms = [];
+      for (const task of [...tasks].sort((a, b) => MODE_CONFIG[modeOf(b.mode)].priority - MODE_CONFIG[modeOf(a.mode)].priority)) {
+        const pace = (taskCadence(task, now).downgraded ? MODE_CONFIG.GENERAL : MODE_CONFIG[modeOf(task.mode)]).metered;
+        if (left <= 0 || nowMs - (Date.parse(task.metered?.[adapter.id] || "") || 0) < pace.everyMinutes * 60_000) continue;
+        const mine = planQueries(task).filter((form) => (form.propertyTypes || []).length || (form.districts || []).length).slice(0, Math.min(pace.queries, left));
+        if (!mine.length) continue;
+        forms.push(...mine); left -= mine.length; asking.push(task.id);
+      }
+      forms = distinct(forms);
+      if (!forms.length) continue;
+    }
     try {
-      const got = await adapter.fetch(ctx, { officeId, since: new Date(Math.min(...starts)), limit, forms });
+      const got = await adapter.fetch(ctx, { officeId, since: new Date(Math.min(...starts)), limit, forms, now });
+      if (adapter.metered) {
+        const sent = Number(got.queries ?? forms.length) || 0;
+        usage[adapter.metered.usageKey] = Number(usage[adapter.metered.usageKey] || 0) + sent;
+        outcome.stats.outsideQueries += sent;
+        for (const id of asking) asked.set(id, { ...(asked.get(id) || {}), [adapter.id]: now.toISOString() });
+      }
       let items = got.items || [];
       let until = got.until || "";
       // A search that is catching up must not hold back the ones that are up to date: read the newest window too.
@@ -490,16 +521,16 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
     }
   }
 
-  const batch = new Set();
+  // The same ad twice in one round (the same link entered again, a feed row repeated): its latest reading is the one that counts.
+  const latest = new Map(rawItems.map((item, position) => [`${item.sourceId}|${item.externalId}`, position]));
   let processed = 0;
-  for (const item of rawItems) {
+  for (const [position, item] of rawItems.entries()) {
     if (processed >= limit * 2) break;
     const ref = `${item.sourceId}|${item.externalId}`;
-    if (!item.externalId || !String(item.text || "").trim() || batch.has(ref)) continue;
-    batch.add(ref);
+    if (!item.externalId || !String(item.text || "").trim() || latest.get(ref) !== position) continue;
     const itemAt = Date.parse(item.at || "") || nowMs;
     const eligible = tasks.filter((task) => inline || item.mutable || itemAt > cursorOf(task, item.adapterId, now));
-    if (!eligible.length) continue;
+    if (!eligible.length && !item.pinned) continue;
     processed += 1;
     outcome.stats.fetched += 1;
     const seenKey = await shortHash(ctx, ref, 14);
@@ -538,7 +569,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
       entity, tasks: eligible, records: [...recordById.values()], settings, sourceQuality: Math.max(...entity.sources.map((s) => sourceQuality(s.sourceId))),
       repeat: repeatCount(index, entity.phone, entity.id), now
     });
-    const stays = await settle({ entity, links: judged.links, judgedTaskIds: eligible.map((t) => t.id), advertiser: judged.advertiser, changes, isNew: !match });
+    const stays = await settle({ entity, links: judged.links, judgedTaskIds: eligible.map((t) => t.id), advertiser: judged.advertiser, changes, isNew: !match, pinned: item.pinned === true });
     if (stays) seen[seenKey] = `${hash}:k`;
   }
 
@@ -559,14 +590,15 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
       if (moved) patch.cursors = cursors;
       if (task.indexChecked !== true) patch.indexChecked = true;
     }
+    if (asked.has(task.id)) patch.metered = { ...(task.metered || {}), ...asked.get(task.id) };
     if (counter.strong) patch.stats = { strong: Number(task.stats?.strong || 0) + counter.strong, veryStrong: Number(task.stats?.veryStrong || 0) + counter.veryStrong };
     if (Object.keys(patch).length || inline) await ctx.store.set(taskPath(officeId, task.id), { ...patch, lastRunAt: now.toISOString(), updatedAt: now });
-    const cadence = taskCadence(task, now);
+    const cadence = taskCadence(task, now, settings);
     // A search that just widened looks again on the next beat, not after its usual wait.
     outcome.tasks[task.id] = { n: patch.geoRing ? nowMs : nowMs + cadence.intervalMinutes * 60_000, p: cadence.priority, c: task.cycle + 1, e: empty, r: task.recordCheckedAt };
   }
   health = { ...health, lastCycleAt: now.toISOString(), ...(outcome.stats.sourceErrors ? { lastErrorAt: now.toISOString() } : { lastOkAt: now.toISOString() }), cycles: Number(health.cycles || 0) + 1 };
-  const active = outcome.stats.fetched > 0 || outcome.stats.sourceErrors > 0;
+  const active = outcome.stats.fetched > 0 || outcome.stats.sourceErrors > 0 || outcome.stats.outsideQueries > 0;
   if (active || touched.size || inline || nowMs - (Date.parse(state.health?.lastCycleAt || "") || 0) > 3_600_000) {
     const changedIds = new Set(touched.keys());
     await mutateState(ctx, officeId, (current) => ({
@@ -680,16 +712,32 @@ export async function scoutOverview(ctx, { officeId, actor }) {
     .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || MODE_CONFIG[b.mode].priority - MODE_CONFIG[a.mode].priority);
   const board = boardFor(state);
   const failing = Object.values(state.health?.sources || {}).some((s) => Number(s.fails || 0) >= 3);
+  // Every source and its true state — connected, switched off by the office, failing, needing a permission, or not
+  // available — so nobody assumes a site is being read when it is not.
+  const sourceStatus = sourcesReport(ctx, office).filter((source) => source.kind !== "TEST").map((source) => {
+    const seen = state.health?.sources?.[source.id] || {};
+    const status = source.state === SOURCE_STATE.AVAILABLE
+      ? (settings.sources?.[source.id] === false ? "OFF" : Number(seen.fails || 0) >= 1 ? "FAILING" : "CONNECTED")
+      : source.state === SOURCE_STATE.UNAVAILABLE ? "UNAVAILABLE" : "NEEDS_PERMISSION";
+    return { id: source.id, label: source.label, status, reason: text(source.reason, 240), lastOkAt: seen.lastOkAt || "" };
+  });
+  const excluded = (state.index || []).filter((entry) => entry.status === OPP_STATUS.IGNORED).slice(0, 20).map((entry) => {
+    const entity = entityFromIndex(entry);
+    return { id: entry.id, band: entry.band, category: entry.kind === "REQUEST" ? "REQUEST" : "OFFER", headline: entityHeadline(entity), price: priceLine(entity), why: [], recordId: "", recordTitle: "", taskId: "", at: entry.lastSeenAt || entry.firstSeenAt || "", status: OPP_STATUS.IGNORED, urgent: false, sources: Number(entry.sourceCount || 1), changed: "" };
+  });
   return {
     ok: true, available: true, isManager: actor.isManager === true, settings, counters: scoutCounters({ board, tasks, now }), away: awaySummary(board),
-    board: board.slice(0, 30), tasks: tasks.slice(0, 60), sources: sourcesForOffice(ctx, office, settings), health: { failing, lastRoundAt: state.health?.lastCycleAt || "" },
+    board: board.slice(0, 40), excluded, buckets: { ...bucketCounts(board), [BUCKET.EXCLUDED]: excluded.length },
+    tasks: tasks.slice(0, 60), sources: sourcesForOffice(ctx, office, settings), sourceStatus,
+    liveSearch: liveSearchAvailable(ctx.env),
+    health: { failing, lastRoundAt: state.health?.lastCycleAt || "", lastSuccessAt: state.health?.lastOkAt || "" },
     limits: { feedChars: SCOUT_LIMITS.feedChars }, officeCity: text(office.city, 60)
   };
 }
 
 export async function saveScoutSettings(ctx, { actor, officeId, patch = {} }) {
   assertAvailable(ctx);
-  if (!actor?.isManager) throw ctx.deps.appError("forbidden", 403, "إعدادات باحث الفرص لمدير المكتب فقط");
+  if (!actor?.isManager) throw ctx.deps.appError("forbidden", 403, "إعدادات الباحث عن الفرص لمدير المكتب فقط");
   const office = (await ctx.store.get(["offices", officeId])) || {};
   const current = await loadSettings(ctx, officeId, office);
   const allowed = sourcesForOffice(ctx, office, current).map((s) => s.id);
@@ -763,7 +811,7 @@ async function requireOn(ctx, officeId) {
   assertAvailable(ctx);
   const office = (await ctx.store.get(["offices", officeId])) || {};
   const settings = await loadSettings(ctx, officeId, office);
-  if (!settings.enabled) throw ctx.deps.appError("scout_off", 409, "باحث الفرص متوقف في هذا المكتب — يشغّله مدير المكتب من الإعدادات");
+  if (!settings.enabled) throw ctx.deps.appError("scout_off", 409, "الباحث عن الفرص متوقف في هذا المكتب — يشغّله مدير المكتب من الإعدادات");
   return { office, settings };
 }
 
@@ -892,7 +940,8 @@ export async function searchDetail(ctx, { officeId, taskId }) {
   const now = ctx.now();
   return {
     ok: true, task: { ...taskView(task, now), summary: profileSummary(task.profile, task.seek), nlText: text(task.nlText, 600), startedAt: task.startedAt || "", intensiveUntil: task.intensiveUntil || "", veryStrong: Number(task.stats?.veryStrong || 0) },
-    board: boardFor(state).filter((card) => card.taskId === id || (task.recordId && card.recordId === task.recordId)).slice(0, 20)
+    board: boardFor(state).filter((card) => card.taskId === id || (task.recordId && card.recordId === task.recordId)).slice(0, 20),
+    liveSearch: liveSearchAvailable(ctx.env)
   };
 }
 
@@ -903,7 +952,9 @@ function confidenceLabel(entity) {
   return c >= 0.8 ? "ثقة مرتفعة في قراءة الإعلان" : c >= 0.5 ? "ثقة متوسطة في قراءة الإعلان" : "قراءة الإعلان غير مكتملة — تحقق من التفاصيل";
 }
 
-function findView(ctx, entity, { recordTitleText = "", now }) {
+const OUTCOME_LABEL = Object.freeze({ INTERESTED: "مهتم — نكمل معه", CALL_LATER: "طلب التواصل لاحقًا", NO_ANSWER: "لم يرد", NOT_INTERESTED: "غير مهتم أو غير متاح" });
+
+function findView(ctx, entity, { recordTitleText = "", record = null, now }) {
   const best = entity.links?.[0] || {};
   const phone = normPhone(entity.phone);
   const fresh = freshness(entity, now);
@@ -911,6 +962,12 @@ function findView(ctx, entity, { recordTitleText = "", now }) {
     id: entity.id, headline: entityHeadline(entity), price: priceLine(entity), area: entity.area ? `${formatNumber(entity.area)} م²` : "", rooms: Number(entity.rooms || 0),
     band: entity.band, bandLabel: BAND_LABEL[entity.band] || "", category: categoryOf(entity, best), categoryLabel: CATEGORY_LABEL[categoryOf(entity, best)],
     why: entity.reasons || [], notes: entity.warnings || [],
+    // An estimate from stated rules (the matching engine's fit with the office's record or search) — never a certainty.
+    fit: best.recordId || best.taskId ? Math.round(Number(best.fit || 0)) : 0,
+    differences: matchDifferences(entity, record), missing: missingFacts(entity), completeness: completenessLabel(entity),
+    discoveredAt: entity.firstSeenAt || "", publishedAt: entity.publishedAt || "", pinned: entity.pinned === true,
+    outcome: entity.outcome || "", outcomeLabel: OUTCOME_LABEL[entity.outcome] || "", outcomeNote: text(entity.outcomeNote, 300), outcomeAt: entity.outcomeAt || "",
+    followUpTaskId: entity.followUpTaskId || "",
     recordId: best.recordId || "", recordTitle: recordTitleText, taskId: best.taskId || "",
     sources: [...new Set((entity.sources || []).map((s) => s.label || sourceLabel(s.sourceId, ctx.env)))], sourceCount: Number(entity.sourceCount || 1),
     url: (entity.sources || []).map((s) => s.url).find((u) => /^https:\/\//.test(u || "")) || "",
@@ -941,7 +998,61 @@ export async function findDetail(ctx, { officeId, opportunityId }) {
   const entity = await loadFind(ctx, officeId, opportunityId);
   const recordId = entity.links?.[0]?.recordId || "";
   const record = recordId ? await ctx.store.get(["offices", officeId, "opportunities", recordId]).catch(() => null) : null;
-  return { ok: true, find: findView(ctx, entity, { recordTitleText: record ? recordTitle(record) : "", now: ctx.now() }) };
+  let followUpOpen = false;
+  if (entity.followUpTaskId) {
+    const task = await ctx.store.get(["offices", officeId, "operations", entity.followUpTaskId]).catch(() => null);
+    followUpOpen = Boolean(task) && !["COMPLETED", "DISMISSED", "EXPIRED"].includes(String(task.status || "").toUpperCase());
+  }
+  return { ok: true, find: { ...findView(ctx, entity, { recordTitleText: record ? recordTitle(record) : "", record, now: ctx.now() }), followUpOpen } };
+}
+
+/** «ابحث عن مطابقات»: this one find against the office's open records and running searches, now. */
+async function recheckFind(ctx, { officeId, entity, now }) {
+  const office = (await ctx.store.get(["offices", officeId])) || {};
+  const [settings, state, rows] = await Promise.all([loadSettings(ctx, officeId, office), loadState(ctx, officeId), ctx.store.list(["offices", officeId, "scoutTasks"], 100)]);
+  const running = rows.filter(isRunning).map((task) => ({ ...task, emptyCycles: 0 }));
+  const judged = evaluateFind({
+    entity, tasks: running, records: state.records || [], settings, sourceQuality: Math.max(0, ...(entity.sources || []).map((s) => sourceQuality(s.sourceId))) || 0.6,
+    repeat: repeatCount(state.index || [], entity.phone, entity.id), now
+  });
+  const links = judged.links.slice(0, 5);
+  const best = links[0] || null;
+  const next = {
+    ...entity, links, band: best ? best.band : BAND.WEAK, score: best ? best.score : 0, reasons: best ? best.reasons : [], warnings: best ? best.warnings : [],
+    bestTaskId: best?.taskId || "", bestRecordId: best?.recordId || "", bestRecordKind: best?.recordKind || "", advertiser: judged.advertiser.kind, advertiserReasons: judged.advertiser.reasons, recheckedAt: now.toISOString()
+  };
+  // A find the broker already has on his page stays there; a hidden one appears only if it now deserves to.
+  const decided = surfaceDecision({ band: next.band, contactable: isContactable(next), minQuality: settings.minQuality, status: next.status, pinned: next.pinned === true }).surface;
+  next.surface = [OPP_STATUS.IGNORED, OPP_STATUS.CONVERTED].includes(next.status) ? SURFACE.HIDDEN : entity.surface === SURFACE.SHOWN ? SURFACE.SHOWN : decided;
+  const record = best?.recordId ? (state.records || []).find((r) => r.id === best.recordId) : null;
+  await ctx.store.set(findPath(officeId, entity.id), encodeFind(next, now));
+  await mutateState(ctx, officeId, (current) => {
+    const board = current.board.filter((card) => card.id !== entity.id);
+    if (next.surface === SURFACE.SHOWN) board.unshift(boardCard(next, best || {}, { recordTitleText: record?.title || "", now }));
+    return { ...current, board, index: current.index.map((entry) => (entry.id === entity.id ? indexEntry(next) : entry)) };
+  });
+  return { next, matched: links.filter((link) => link.recordId).length };
+}
+
+/** «أنشئ مهمة متابعة»: one task in the office's Daily Tasks for this find (the same one if pressed again). */
+async function followUpTask(ctx, { actor, officeId, entity, now }) {
+  const key = `SCOUT|${officeId}|${entity.id}|FOLLOW_UP`;
+  const id = await operationDocumentId(key);
+  const segments = ["offices", officeId, "operations", id];
+  const existing = await ctx.store.get(segments);
+  const open = existing && !["COMPLETED", "DISMISSED", "EXPIRED"].includes(String(existing.status || "").toUpperCase());
+  if (open) return { id, created: false };
+  const title = entityHeadline(entity);
+  const reason = "تواصل مع المعلن وتحقق من التفاصيل، ثم سجّل نتيجة التواصل.";
+  await ctx.store.set(segments, {
+    schemaVersion: 1, id, officeId, assignedBrokerId: actor.uid, type: "SCOUT_FOLLOW_UP", sourceEntityType: "scout", sourceEntityId: entity.id,
+    // The office's own record this find was matched with (if any) — so the card shows whose request or offer it serves.
+    opportunityId: entity.bestRecordId || "", titleText: "متابعة فرصة خارجية", summaryText: reason, recommendedActionText: "فتح الفرصة", priority: "NORMAL", status: "OPEN",
+    deduplicationKey: key, createdAt: existing?.createdAt ? new Date(existing.createdAt) : now, updatedAt: now, dueAt: new Date(now.getTime() + DAY), createdBySystem: false,
+    completedAt: null, dismissedAt: null, operationVersion: Number(existing?.operationVersion || 0) + 1,
+    metadataJson: JSON.stringify({ findId: entity.id, opportunityTitle: title, reason, actionLabel: "فتح الفرصة", lastEvent: "أُنشئت من الباحث عن الفرص", lastEventAt: now.toISOString() }), missingFieldsJson: "[]"
+  });
+  return { id, created: true };
 }
 
 /**
@@ -949,13 +1060,29 @@ export async function findDetail(ctx, { officeId, opportunityId }) {
  * nothing to anyone, ever. «تجاهل» takes it off the board for good; «حفظ» keeps it; a find turned into a record
  * is marked so and continues as any record of the office.
  */
-export async function actOnFind(ctx, { actor, officeId, opportunityId, action, recordId = "" }) {
+export async function actOnFind(ctx, { actor, officeId, opportunityId, action, recordId = "", result = "", note = "" }) {
   assertAvailable(ctx);
   const entity = await loadFind(ctx, officeId, opportunityId);
   const verb = OPP_ACTION[String(action || "").toUpperCase()];
   if (!verb) throw ctx.deps.appError("find_action_invalid", 400, "إجراء غير معروف");
   const now = ctx.now();
+  if (verb === OPP_ACTION.RECHECK) {
+    const { next, matched } = await recheckFind(ctx, { officeId, entity, now });
+    await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.SCOUT_FIND_ACTION, actorUid: actor.uid, entityType: "scout", entityId: entity.id, key: `${verb}|${now.toISOString()}`, details: { action: verb, matched } });
+    return { ok: true, status: next.status, matched, band: next.band };
+  }
   const patch = { actedBy: actor.uid, actedAt: now.toISOString() };
+  let task = null;
+  if (verb === OPP_ACTION.FOLLOW_UP) {
+    task = await followUpTask(ctx, { actor, officeId, entity, now });
+    patch.followUpTaskId = task.id;
+    if (entity.status === OPP_STATUS.NEW) patch.status = OPP_STATUS.SAVED;
+  } else if (verb === OPP_ACTION.OUTCOME) {
+    const chosen = String(result || "").toUpperCase();
+    if (!OUTCOME_LABEL[chosen]) throw ctx.deps.appError("outcome_invalid", 400, "اختر نتيجة التواصل");
+    Object.assign(patch, { outcome: chosen, outcomeNote: text(note, 300), outcomeAt: now.toISOString(), outcomeBy: actor.uid });
+    if ([OPP_STATUS.NEW, OPP_STATUS.SAVED].includes(entity.status)) patch.status = OPP_STATUS.CONTACTED;
+  }
   if (verb === OPP_ACTION.CONTACT) {
     if (!isContactable(entity)) throw ctx.deps.appError("find_not_contactable", 409, "لا توجد وسيلة تواصل لهذه الفرصة");
     if ([OPP_STATUS.NEW, OPP_STATUS.SAVED].includes(entity.status)) patch.status = OPP_STATUS.CONTACTED;
@@ -963,13 +1090,17 @@ export async function actOnFind(ctx, { actor, officeId, opportunityId, action, r
   } else if (verb === OPP_ACTION.SAVE) patch.status = OPP_STATUS.SAVED;
   else if (verb === OPP_ACTION.IGNORE) Object.assign(patch, { status: OPP_STATUS.IGNORED, surface: SURFACE.HIDDEN });
   else if (verb === OPP_ACTION.RESTORE) {
-    const settings = await loadSettings(ctx, officeId);
-    Object.assign(patch, { status: OPP_STATUS.NEW, surface: surfaceDecision({ band: entity.band, contactable: isContactable(entity), minQuality: settings.minQuality, status: OPP_STATUS.NEW }).surface });
+    // Taken back by the broker himself: it returns to his page (he chose it), as a new find.
+    Object.assign(patch, { status: OPP_STATUS.NEW, surface: SURFACE.SHOWN });
   } else if (verb === OPP_ACTION.CONVERTED) {
     const saved = text(recordId, 120);
     const record = saved ? await ctx.store.get(["offices", officeId, "opportunities", saved]) : null;
     if (!record || String(record.officeId || officeId) !== officeId) throw ctx.deps.appError("record_not_found", 404, "السجل غير موجود");
     Object.assign(patch, { status: OPP_STATUS.CONVERTED, surface: SURFACE.HIDDEN, convertedRecordId: saved });
+  }
+  // The follow-up task ends with the find: its result was recorded, it was excluded, or it became a record of the office.
+  if (entity.followUpTaskId && [OPP_ACTION.OUTCOME, OPP_ACTION.IGNORE, OPP_ACTION.CONVERTED].includes(verb)) {
+    await finishTasks(ctx.store, { officeId, taskIds: [entity.followUpTaskId], status: verb === OPP_ACTION.IGNORE ? "DISMISSED" : "COMPLETED", reason: verb === OPP_ACTION.IGNORE ? "استُبعدت الفرصة" : "", completedBy: actor.uid, now }).catch(() => {});
   }
   const next = { ...entity, ...patch };
   await ctx.store.set(findPath(officeId, entity.id), { ...patch, updatedAt: now });
@@ -980,7 +1111,36 @@ export async function actOnFind(ctx, { actor, officeId, opportunityId, action, r
     return { ...state, board, index: state.index.map((entry) => (entry.id === entity.id ? { ...entry, status: next.status, surface: next.surface } : entry)) };
   });
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.SCOUT_FIND_ACTION, actorUid: actor.uid, entityType: "scout", entityId: entity.id, key: `${verb}|${now.toISOString()}`, details: { action: verb, recordId: patch.convertedRecordId || "" } });
-  return { ok: true, status: next.status, contact: verb === OPP_ACTION.CONTACT ? { phone: normPhone(entity.phone), route: entity.contactRoute || "" } : undefined };
+  return { ok: true, status: next.status, contact: verb === OPP_ACTION.CONTACT ? { phone: normPhone(entity.phone), route: entity.contactRoute || "" } : undefined, taskId: task?.id || undefined, taskCreated: task ? task.created : undefined };
+}
+
+/**
+ * «ابحث في الويب الآن»: the broker asks, Google Search answers (through the Gemini API), and the answer is shown
+ * to him as it came — with its sources and Google's own search suggestions. Google's terms allow exactly this and
+ * forbid collecting or keeping the results, so nothing here is stored, scored or turned into a find; the question
+ * is built from the search itself (type, district, city, price) and carries no client's name or number.
+ */
+export async function liveSearchForTask(ctx, { actor, officeId, taskId }) {
+  await requireOn(ctx, officeId);
+  if (!liveSearchAvailable(ctx.env)) throw ctx.deps.appError("live_search_unavailable", 503, "البحث المباشر في الويب غير متاح على هذه البيئة");
+  const id = text(taskId, 80);
+  const task = /^st_[A-Za-z0-9_]{3,60}$/.test(id) ? await ctx.store.get(taskPath(officeId, id)) : null;
+  if (!task || String(task.officeId || officeId) !== officeId) throw ctx.deps.appError("search_not_found", 404, "البحث غير موجود");
+  const mine = consumePublicRateLimit(publicRateLimitKey({ route: "scout-live", ip: actor.uid, officeId }), { limit: 6, windowMs: 10 * 60_000 });
+  const office = consumePublicRateLimit(publicRateLimitKey({ route: "scout-live-office", ip: "office", officeId }), { limit: SCOUT_LIMITS.livePerOfficeDay, windowMs: DAY });
+  if (!mine.ok || !office.ok) throw ctx.deps.appError("rate_limited", 429, "بحثت في الويب كثيرًا خلال وقت قصير — حاول بعد قليل");
+  const form = planQueries(task).find((f) => (f.propertyTypes || []).length || (f.districts || []).length);
+  if (!form) throw ctx.deps.appError("search_too_wide", 400, "حدّد نوع العقار أو الحي في هذا البحث أولًا");
+  const profile = task.profile || {};
+  const price = profile.priceMax ? ` بسعر حتى ${formatNumber(profile.priceMax)} ريال` : profile.priceMin ? ` بسعر من ${formatNumber(profile.priceMin)} ريال` : task.exactPrice ? ` بسعر قريب من ${formatNumber(task.exactPrice)} ريال` : "";
+  const question = `${webQueryText(form)}${price} — إعلانات حديثة`;
+  const result = await liveWebSearch(ctx.env, { question });
+  if (!result.ok) {
+    if (result.code === "quota") throw ctx.deps.appError("live_search_quota", 429, "بلغ البحث المباشر حدّه الآن — حاول لاحقًا");
+    throw ctx.deps.appError("live_search_unavailable", 503, result.code === "not_available" ? "البحث المباشر في الويب غير مفعّل على هذه البيئة" : "تعذر البحث في الويب الآن — حاول بعد قليل");
+  }
+  await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.SCOUT_SEARCH_CONTROLLED, actorUid: actor.uid, entityType: "scout", entityId: task.id, key: `live|${ctx.now().toISOString()}`, details: { action: "LIVE_WEB", grounded: result.grounded } });
+  return { ok: true, question, grounded: result.grounded, answer: result.answer, sources: result.sources, suggestions: result.suggestions };
 }
 
 /**
@@ -988,7 +1148,7 @@ export async function actOnFind(ctx, { actor, officeId, opportunityId, action, r
  * against every running search and the office's open records, and answers with the few worth his time — instead
  * of forty records to review. The text stays the office's own.
  */
-export async function feedScout(ctx, { actor, officeId, text: raw, channel = "" }) {
+export async function feedScout(ctx, { actor, officeId, text: raw, channel = "", link = "" }) {
   await requireOn(ctx, officeId);
   const limited = consumePublicRateLimit(publicRateLimitKey({ route: "scout-feed", ip: actor.uid, officeId }), { limit: SCOUT_LIMITS.feedPerHour, windowMs: 3_600_000 });
   if (!limited.ok) throw ctx.deps.appError("rate_limited", 429, "زوّدت الباحث كثيرًا خلال الساعة — حاول لاحقًا");
@@ -996,16 +1156,60 @@ export async function feedScout(ctx, { actor, officeId, text: raw, channel = "" 
   if (body.length < 20) throw ctx.deps.appError("text_too_short", 400, "الصق إعلانًا واحدًا على الأقل بتفاصيله");
   if (body.length > SCOUT_LIMITS.feedChars) throw ctx.deps.appError("text_too_long", 413, `النص طويل — الحد ${SCOUT_LIMITS.feedChars} حرف في المرة الواحدة`);
   const now = ctx.now();
-  const ads = splitDigest(body).length;
+  const blocks = splitDigest(body);
+  const ads = blocks.length;
+  // One ad (a link, or one pasted ad) is the broker's own choice: it is kept on his page whatever its level.
+  // A digest of many is filtered as usual — only what deserves his time is kept.
+  const pinned = ads === 1;
+  const source = /^https:\/\/[^\s]{4,480}$/.test(String(link || "")) && pinned ? String(link) : "";
+  // What was read from each ad — shown back to the broker, with what the ad did not say (nothing is guessed).
+  const read = blocks.slice(0, 6).map((block) => {
+    const c = candidateFromRaw({ text: block });
+    return { understood: Boolean(c.understood && c.kind), headline: c.understood && c.kind ? entityHeadline(c) : "", kind: c.kind || "", tx: c.tx || "", propertyType: c.propertyType || "", city: c.city || "", district: c.district || "", price: Number(c.price || 0), area: Number(c.area || 0), missing: c.understood && c.kind ? missingFacts({ ...c, contactRoute: source }) : [] };
+  });
   const id = `sf_${String(9_999_999_999_999 - now.getTime()).padStart(13, "0")}_${await shortHash(ctx, `${officeId}|${actor.uid}|${now.getTime()}`, 6)}`;
-  await ctx.store.set(["offices", officeId, "scoutFeed", id], { officeId, text: body, channel: ["WHATSAPP", "TELEGRAM", "OTHER"].includes(channel) ? channel : "", createdBy: actor.uid, createdAt: now });
+  await ctx.store.set(["offices", officeId, "scoutFeed", id], { officeId, text: body, channel: ["WHATSAPP", "TELEGRAM", "LINK", "FILE", "OTHER"].includes(channel) ? channel : "", link: source, pinned, createdBy: actor.uid, createdAt: now });
   const running = (await ctx.store.list(["offices", officeId, "scoutTasks"], 100)).filter(isRunning)
     .sort((a, b) => MODE_CONFIG[modeOf(b.mode)].priority - MODE_CONFIG[modeOf(a.mode)].priority).slice(0, 12).map((t) => t.id);
-  if (!running.length) return { ok: true, ads, strong: 0, kept: 0, cards: [], note: "حُفظ النص — لا توجد عمليات بحث نشطة الآن، وسيُقرأ عند بدء أول بحث." };
+  if (!running.length && !pinned) return { ok: true, ads, read, strong: 0, kept: 0, cards: [], note: "حُفظ النص — لا توجد عمليات بحث نشطة الآن، وسيُقرأ عند بدء أول بحث." };
   const schedule = await loadSchedule(ctx);
   const outcome = await runOfficeCycle(ctx, officeId, { taskIds: running, runtime: schedule.entries[officeId]?.t || {}, inline: true, onlySource: "broker_feed", sinceMs: now.getTime() - 1000, now });
   // A fed round does not move the searches' own clocks (their next scheduled round stays where it was).
-  return { ok: true, ads, strong: Number(outcome.stats?.strong || 0), kept: Number(outcome.stats?.kept || 0), inInventory: Number(outcome.stats?.inInventory || 0), cards: (outcome.cards || []).slice(0, 10) };
+  return {
+    ok: true, ads, read, strong: Number(outcome.stats?.strong || 0), kept: Number(outcome.stats?.kept || 0), merged: Number(outcome.stats?.merged || 0) + Number(outcome.stats?.known || 0),
+    inInventory: Number(outcome.stats?.inInventory || 0), cards: (outcome.cards || []).slice(0, 10)
+  };
+}
+
+const LINK_REASON = Object.freeze({
+  restricted: "هذا الموقع لا يسمح بقراءة صفحاته آليًا — الصق نص الإعلان، ويُحفظ الرابط معه مصدرًا له.",
+  robots: "هذا الموقع يمنع القراءة الآلية لهذه الصفحة — الصق نص الإعلان، ويُحفظ الرابط معه مصدرًا له.",
+  unreadable: "لم أجد في الصفحة وصفًا كافيًا للإعلان — الصق نص الإعلان، ويُحفظ الرابط معه مصدرًا له.",
+  failed: "تعذر فتح الصفحة الآن — الصق نص الإعلان، ويُحفظ الرابط معه مصدرًا له."
+});
+
+/**
+ * «أدخل رابط الإعلان»: the broker gives the ad's address. Where the site allows a page to be read (its robots.txt,
+ * and it is not one of the sites whose terms forbid it) the page's own title and description are read — one page,
+ * once, because he asked. Where it does not, he pastes the ad's text and the link is kept as its source.
+ */
+export async function importScoutLink(ctx, { actor, officeId, url, text: raw = "" }) {
+  await requireOn(ctx, officeId);
+  const link = String(url || "").trim();
+  let target = null;
+  try { target = new URL(link); } catch (_) { /* handled below */ }
+  if (!target || target.protocol !== "https:" || link.length > 480) throw ctx.deps.appError("link_invalid", 400, "الرابط غير صالح — يبدأ بـ https://");
+  let body = typeof raw === "string" ? raw.trim() : "";
+  let readFrom = "text";
+  if (body.length < 20) {
+    const limited = consumePublicRateLimit(publicRateLimitKey({ route: "scout-link", ip: actor.uid, officeId }), { limit: 20, windowMs: 3_600_000 });
+    if (!limited.ok) throw ctx.deps.appError("rate_limited", 429, "أدخلت روابط كثيرة خلال الساعة — حاول لاحقًا");
+    const page = await readLinkedPage(ctx.env, target.toString());
+    if (!page.ok) return { ok: true, needsText: true, reason: page.reason, message: LINK_REASON[page.reason] || LINK_REASON.failed };
+    body = page.text;
+    readFrom = "page";
+  }
+  return { ...(await feedScout(ctx, { actor, officeId, text: body, channel: "LINK", link: target.toString() })), readFrom };
 }
 
 /** Platform observability (admin only): is the scheduler beating, which sources are usable and why not — no office data. */

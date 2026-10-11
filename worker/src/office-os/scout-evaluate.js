@@ -1,5 +1,5 @@
 /**
- * «باحث الفرص» — judging one find. Pure functions (no storage, no network), used by the scout service and its tests.
+ * «الباحث عن الفرص» — judging one find. Pure functions (no storage, no network), used by the scout service and its tests.
  *
  *   • Fit comes from the platform's matching engine (scoreMatch) — the same rules that match the office's own
  *     offers and requests. The scout only prepares the two sides and adds what the engine has no notion of:
@@ -30,6 +30,13 @@ export function fitFor({ profile = {}, seek = SEEK.OFFER, exactPrice = 0, entity
   if (!entity.kind) return null;
   if ((seek === SEEK.OFFER || seek === SEEK.OWNER) && entity.kind !== "OFFER") return null;
   if (seek === SEEK.REQUEST && entity.kind !== "REQUEST") return null;
+  // The office's standing radar: its chosen kinds and its price and area range are plain filters (not a price to match).
+  const any = seek === SEEK.ANY;
+  if (any) {
+    if ((profile.kinds || []).length && !profile.kinds.includes(entity.kind)) return null;
+    if (entity.price && ((profile.priceMax && entity.price > profile.priceMax) || (profile.priceMin && entity.price < profile.priceMin))) return null;
+    if (entity.area && ((profile.areaMax && entity.area > profile.areaMax) || (profile.areaMin && entity.area < profile.areaMin))) return null;
+  }
   if (profile.tx && entity.tx && profile.tx !== entity.tx) return null;
   if (profile.city && entity.city && normText(profile.city) !== normText(entity.city)) return null;
   const types = profile.propertyTypes || [];
@@ -46,15 +53,15 @@ export function fitFor({ profile = {}, seek = SEEK.OFFER, exactPrice = 0, entity
   const ourKind = entity.kind === "OFFER" ? "REQUEST" : "OFFER";
   const wantedDistrict = !(profile.districts || []).length ? "" : place.ring === RING.SAME ? entity.district : profile.districts[0];
   const wantedType = !types.length ? "" : exactType ? (entity.propertyType || types[0]) : types[0];
-  const ourPrice = ourKind === "REQUEST" ? profile.priceMax : (exactPrice || profile.priceMax);
+  const ourPrice = any ? 0 : ourKind === "REQUEST" ? profile.priceMax : (exactPrice || profile.priceMax);
   // The mode's price tolerance: a general round is strict, an urgent one a little wider, a deep one the widest.
   if (ourKind === "REQUEST" && ourPrice && entity.price && entity.price > ourPrice * (1 + config.priceTolerance)) return null;
   if (ourKind === "OFFER" && ourPrice && entity.price && entity.price < ourPrice * (1 - config.priceTolerance)) return null;
   const ours = {
     opportunityKind: ourKind, purpose: ourKind === "REQUEST" ? (tx === "rent" ? "LEASE_REQUEST" : "PURCHASE") : (tx === "rent" ? "RENT" : "SALE"),
     city: profile.city || entity.city || "", district: wantedDistrict, propertyType: wantedType,
-    ...(ourKind === "REQUEST" ? ceilingRange(profile.priceMax, profile.priceMin) : { priceOrBudget: ourPrice || 0 }),
-    area: mid(profile.areaMin, profile.areaMax), rooms: profile.rooms || 0, lifecycleStatus: "ACTIVE"
+    ...(any ? { priceOrBudget: 0 } : ourKind === "REQUEST" ? ceilingRange(profile.priceMax, profile.priceMin) : { priceOrBudget: ourPrice || 0 }),
+    area: any ? 0 : mid(profile.areaMin, profile.areaMax), rooms: profile.rooms || 0, lifecycleStatus: "ACTIVE"
   };
   const theirs = {
     opportunityKind: entity.kind, purpose: entity.kind === "OFFER" ? (tx === "rent" ? "RENT" : "SALE") : (tx === "rent" ? "LEASE_REQUEST" : "PURCHASE"),

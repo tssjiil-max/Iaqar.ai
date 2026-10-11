@@ -23,7 +23,7 @@ import { scoutHomeCard } from "./scout.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){return taskPathStep(task);}
-function openTask(task,model){if(model.opens==="deal")go(dealRoute(task));else if(model.opens==="community")go("community");else if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else openGeneralTask(task);}
+function openTask(task,model){if(model.opens==="deal")go(dealRoute(task));else if(model.opens==="scout"&&task.sourceEntityId)go("scout/opp/"+task.sourceEntityId);else if(model.opens==="community")go("community");else if(model.opens==="review")go("review/"+task.matchId);else if(model.opens==="session"&&model.journeyId)go("session/"+model.journeyId);else if(model.journeyId)go("journey/"+model.journeyId);else if(task.opportunityId)go("record/"+task.opportunityId);else openGeneralTask(task);}
 export function mine(){return sortTasks(filterTasks(state.tasks.filter(t=>visibleToActor(t,{uid:session.user?.uid,isManager:session.isManager,officeId:session.officeId})),"all"));}
 export function taskRecord(task){const meta=parseMeta(task);return recordById(task.offerId||meta.ownerOfferId)||recordById(task.opportunityId)||recordById(task.requestId||meta.clientRequestId);}
 export function photo(record={},extra=""){
@@ -240,7 +240,7 @@ export function renderOffice(container){
       h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
       agentCard(),
       h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)),
-      // «باحث الفرص»: shown only where it is available; opens its own page.
+      // «الباحث عن الفرص»: shown only where it is available; opens its own page.
       scoutHomeCard()),
 
     h("section", { class: "os-card ref-office-section" },

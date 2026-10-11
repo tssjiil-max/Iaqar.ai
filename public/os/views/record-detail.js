@@ -74,7 +74,7 @@ export function renderRecordDetail(container, { recordId }) {
   // Built once per visit: a redraw (live data) must not ask the server again or drop a link just made.
   let botRow = null;
   let botRowFor = "";
-  // «باحث الفرص» for this record: built once per visit (its state is asked from the server once, then follows the presses).
+  // «الباحث عن الفرص» for this record: built once per visit (its state is asked from the server once, then follows the presses).
   let scoutRow = null;
   const draw = () => {
     const record = recordById(recordId);

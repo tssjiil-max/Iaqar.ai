@@ -1,5 +1,5 @@
 /**
- * «باحث الفرص» — storage. Everything the scout owns, and nothing else:
+ * «الباحث عن الفرص» — storage. Everything the scout owns, and nothing else:
  *
  *   offices/{o}/scoutSettings/main        the office's switches and interests (the manager, through the Worker)
  *   offices/{o}/scoutTasks/{st_*}         one search: mode, what it looks for, status, cursors, results count
@@ -22,7 +22,7 @@ import { UNAVAILABLE_SET, isOpenForMatching } from "../../../public/os/domain/va
 export const SCOUT_LIMITS = Object.freeze({
   activeTasks: 40, autoTasks: 25, customTasks: 15, index: 400, board: 40, seen: 800, records: 300,
   officesPerTick: 6, leaseMinutes: 4, syncHours: 6, recordCheckMinutes: 60, generalPushesPer6h: 2,
-  feedChars: 12000, feedPerHour: 12, opportunityTtlDays: 45, taskTtlDays: 14, aiPerOfficeDay: 40, runsKept: 60
+  feedChars: 12000, feedPerHour: 12, opportunityTtlDays: 45, taskTtlDays: 14, aiPerOfficeDay: 40, runsKept: 60, livePerOfficeDay: 40
 });
 
 export const scoutAvailable = (env = {}) => String(env?.OPPORTUNITY_SCOUT || "").toLowerCase() === "enabled";

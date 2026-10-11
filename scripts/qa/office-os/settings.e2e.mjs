@@ -50,9 +50,9 @@ try {
   const page = await openAs(OWNER_A, "settings");
   await page.route("**/worker/os/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", state: "CONNECTED", stateLabel: "مرتبط", signupEnabled: true, actions: ["reconnect", "disconnect"], number: "••••••1234", inboundToday: 3, webhookReady: true, webhookLabel: "يعمل — تصل الرسائل", onboardingMode: "coexistence", detail: "", note: "" }, { id: "telegram", state: "DISCONNECTED", stateLabel: "غير مرتبط", configured: true, actions: ["connect"], detail: "", botUsername: "iaqar_bot", note: "" }] }) }));
   await page.locator(".os-set-row").first().waitFor();
-  // «باحث الفرص» joins the list only where it is available (it is, on this harness); the eight standing pages are always there.
+  // «الباحث عن الفرص» joins the list only where it is available (it is, on this harness); the eight standing pages are always there.
   await page.locator('.os-set-row[data-settings="scout"]').waitFor();
-  check("hub lists the eight settings pages, and «باحث الفرص» after «مدير المكتب الذكي» where it is available", (await page.locator('.os-set-row:not([data-settings="scout"])').count()) === 8 && (await page.locator('.os-set-row[data-settings="agent"] + .os-set-row[data-settings="scout"]').count()) === 1);
+  check("hub lists the eight settings pages, and «الباحث عن الفرص» after «مدير المكتب الذكي» where it is available", (await page.locator('.os-set-row:not([data-settings="scout"])').count()) === 8 && (await page.locator('.os-set-row[data-settings="agent"] + .os-set-row[data-settings="scout"]').count()) === 1);
   check("settings hub has no link to the old app", (await page.locator("a[href*='legacy']").count()) === 0);
   await shot(page, "01-hub");
 

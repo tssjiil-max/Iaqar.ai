@@ -274,7 +274,7 @@ export const PUSH_TYPE_CATEGORIES = Object.freeze({
   viewing: "appointmentNotifications",
   operation: "systemNotifications",
   system: "systemNotifications",
-  // «باحث الفرص»: a strong find for one of the office's offers or requests follows the office's match preference.
+  // «الباحث عن الفرص»: a strong find for one of the office's offers or requests follows the office's match preference.
   scout: "matchNotifications"
 });
 

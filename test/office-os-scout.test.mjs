@@ -1,4 +1,4 @@
-// «باحث الفرص» — rules, sources, scoring, merging, the scheduler and the office isolation.
+// «الباحث عن الفرص» — rules, sources, scoring, merging, the scheduler and the office isolation.
 // Through the real Worker on the in-memory Firestore double (scripts/qa/office-os/server.mjs). No site is contacted.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -228,7 +228,7 @@ test("one property or request seen twice is one find; two properties of one adve
   assert.equal(c.price, 0, "a placeholder price is not a price"); assert.equal(c.phone, "0551234567");
 });
 
-test("sources: only what the office may read. عقار and حراج are registered as unavailable with the reason, and have no access path", () => {
+test("sources: only what the office may read. عقار، حراج، بيوت and وصلت need a permission (with the reason), and have no access path", () => {
   const ctx = { env: { DEPLOYMENT_ENV: "staging" } };
   const state = (id, office = {}) => SOURCE_ADAPTERS.find((a) => a.id === id).availability(ctx, office);
   assert.equal(state("office_inbox").state, SOURCE_STATE.AVAILABLE);
@@ -237,12 +237,15 @@ test("sources: only what the office may read. عقار and حراج are register
   assert.equal(state("qa_fixture").state, SOURCE_STATE.UNAVAILABLE, "the test source is not for real offices");
   assert.equal(state("qa_fixture", { isTestFixture: true }).state, SOURCE_STATE.AVAILABLE);
   assert.equal(SOURCE_ADAPTERS.find((a) => a.id === "qa_fixture").availability({ env: { DEPLOYMENT_ENV: "production" } }, { isTestFixture: true }).state, SOURCE_STATE.UNAVAILABLE, "never in production");
-  for (const id of ["aqar", "haraj"]) {
+  for (const id of ["aqar", "haraj", "bayut", "wasalt"]) {
     const adapter = SOURCE_ADAPTERS.find((a) => a.id === id);
-    assert.equal(state(id).state, SOURCE_STATE.UNAVAILABLE);
-    assert.match(state(id).reason, /اتفاقية وصول/);
+    assert.equal(state(id).state, SOURCE_STATE.NEEDS_PERMISSION, `${id} is read only after a permission`);
+    assert.match(state(id).reason, /اتفاقية وصول|ترخيصًا|بتصريح/);
+    assert.match(state(id).reason, /أدخل رابط الإعلان مع نصه/, "and the working alternative is named");
     assert.equal(adapter.access.method, "none");
   }
+  assert.equal(state("whatsapp_groups").state, SOURCE_STATE.UNAVAILABLE, "private WhatsApp groups have no official way in");
+  assert.equal(state("telegram_groups").state, SOURCE_STATE.NEEDS_PERMISSION);
   for (const adapter of SOURCE_ADAPTERS) assert.ok(adapter.access?.basis, `${adapter.id} documents its basis`);
 });
 
@@ -618,7 +621,7 @@ test("«زوّد الباحث»: a pasted digest is read at once against every r
   assert.equal(fed.cards[0].category, "PROPERTY");
   const owner = finds().find((f) => f.phone === "0559004002");
   assert.equal(owner.advertiser, "OWNER_HIGH");
-  assert.ok(JSON.parse(owner.sourcesJson)[0].label === "ما يلصقه المكتب للباحث");
+  assert.ok(JSON.parse(owner.sourcesJson)[0].label === "ما يضيفه المكتب (رابط، نص، ملف)");
   assert.ok((await ok("/os/scout/find", { opportunityId: owner.id })).find.freshness.startsWith("رُصدت"), "a pasted ad is «seen», never claimed as «published»");
   assert.equal(h.store.list(`offices/${OFFICE_A}/opportunities`).length, recordsBefore, "no record is created from a digest");
   assert.equal((await call("/os/scout/feed", { text: "قصير" })).status, 400);

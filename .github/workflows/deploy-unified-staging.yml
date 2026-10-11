@@ -158,10 +158,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # «باحث الفرص»: the whole chain on the deployed Worker and app — search task → the Worker's own cron → source
+      # «الباحث عن الفرص»: the whole chain on the deployed Worker and app — search task → the Worker's own cron → source
       # adapter (QA test source) → merge → level → matching → find → alert → opened from the broker's office.
       # Runs whenever the deploy itself succeeded, so an unrelated earlier check cannot hide its evidence.
-      - name: «باحث الفرص» live check on Staging (isolated QA offices, real cron)
+      - name: «الباحث عن الفرص» live check on Staging (isolated QA offices, real cron)
         if: ${{ !cancelled() && steps.deploy.outcome == 'success' }}
         timeout-minutes: 30
         env:
@@ -172,7 +172,7 @@ jobs:
           npx playwright install --with-deps chromium
           node scripts/qa/office-os/scout-live.e2e.mjs
 
-      - name: Upload «باحث الفرص» Staging live evidence
+      - name: Upload «الباحث عن الفرص» Staging live evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
