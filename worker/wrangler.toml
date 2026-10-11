@@ -49,6 +49,11 @@ VALIDITY_SWEEP = "enabled"
 # «الباحث عن الفرص»: the scout's routes and its scheduler beat run on Staging only. Each office still has its own
 # switch (off by default). Not set for production: there every scout route answers «غير متاح» and no round runs.
 OPPORTUNITY_SCOUT = "enabled"
+# Serper free-credit pilot: only this named environment; key is a Worker secret.
+SCOUT_SEARCH_PROVIDER = "serper"
+SCOUT_SEARCH_DAILY_PER_OFFICE = "5"
+SERPER_GLOBAL_DAILY_LIMIT = "10"
+SERPER_TOTAL_LIMIT = "100"
 # Kapso WhatsApp Sandbox (Staging only): the ONE test office its messages go to, the sandbox number they must be
 # addressed to, and the only sender accepted (the owner's test session). Secrets: KAPSO_WEBHOOK_SECRET, KAPSO_API_KEY.
 KAPSO_OFFICE_ID = "qa-office-kapso"

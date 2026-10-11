@@ -36,10 +36,10 @@ export const SEARCH_EXCLUDED_DOMAINS = Object.freeze(["aqar.fm", "haraj.com.sa",
 const DOMAIN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 export function searchConfig(env = {}) {
   const provider = text(env.SCOUT_SEARCH_PROVIDER, 20).toLowerCase() || "tavily";
-  const key = text(env.SCOUT_SEARCH_KEY, 500);
+  const key = text(provider === "serper" ? env.SERPER_API_KEY : env.SCOUT_SEARCH_KEY, 500);
   const extra = text(env.SCOUT_SEARCH_EXCLUDE, 600).toLowerCase().split(/[\s,]+/).filter((d) => DOMAIN.test(d));
-  const perDay = Math.max(0, Math.min(500, Number(env.SCOUT_SEARCH_DAILY_PER_OFFICE) || 40));
-  return { provider, key, ready: Boolean(key && WEB_DRIVERS[provider]), excluded: [...new Set([...SEARCH_EXCLUDED_DOMAINS, ...extra])].slice(0, 40), perDay };
+  const perDay = provider === "serper" ? serperLimit(env.SCOUT_SEARCH_DAILY_PER_OFFICE, 5) : Math.max(0, Math.min(500, Number(env.SCOUT_SEARCH_DAILY_PER_OFFICE) || 40));
+  return { provider, key, ready: Boolean(key && WEB_DRIVERS[provider] && (provider !== "serper" || env.DEPLOYMENT_ENV === "staging")), excluded: [...new Set([...SEARCH_EXCLUDED_DOMAINS, ...extra])].slice(0, 40), perDay };
 }
 
 const hostOf = (url) => { try { const u = new URL(url); return u.protocol === "https:" ? u.hostname.toLowerCase().replace(/^www\./, "") : ""; } catch (_) { return ""; } };
@@ -55,6 +55,13 @@ async function readJson(response, code) {
 
 /** provider → (query, options) → [{ title, url, snippet, publishedAt }] */
 const WEB_DRIVERS = {
+  async serper({ key, query, excluded }) {
+    const body = await readJson(await fetch("https://google.serper.dev/search", {
+      method: "POST", headers: { "X-API-KEY": key, "Content-Type": "application/json" }, signal: AbortSignal.timeout(9000), redirect: "error",
+      body: JSON.stringify({ q: `${query} ${excluded.map(domain => `-site:${domain}`).join(" ")}`, gl: "sa", hl: "ar", num: 10 })
+    }), "search");
+    return (Array.isArray(body?.organic) ? body.organic : []).slice(0, 10).map(row => ({ title: row?.title, url: row?.link, snippet: row?.snippet, publishedAt: row?.date }));
+  },
   async tavily({ key, query, days, excluded }) {
     const body = await readJson(await fetch("https://api.tavily.com/search", {
       method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(9000), redirect: "error",
@@ -72,31 +79,69 @@ const WEB_DRIVERS = {
   }
 };
 
+// Free-credit protection: durable, shared reservations; failures count too. No automatic refill.
+const serperLimit = (value, ceiling) => value == null || value === "" ? ceiling : Math.max(0, Math.min(ceiling, Math.floor(Number(value) || 0)));
+async function cachedSerper(ctx, { config, query, days, now, officeId }) {
+  if (!ctx.store?.create || !ctx.store?.update || !ctx.deps?.sha256Hex) throw fail("serper_budget_unavailable");
+  const day = new Date(now.getTime() + 3 * 3600000).toISOString().slice(0, 10);
+  const hash = await ctx.deps.sha256Hex(JSON.stringify([query.replace(/\s+/g, " ").trim(), days, config.excluded]));
+  // Cache/claim belongs to the office, preserving office isolation. A claim prevents concurrent duplicate calls.
+  const path = ["offices", officeId, "scoutSerperCache", `${day}_${hash}`];
+  const saved = await ctx.store.get(path);
+  if (saved) return { rows: JSON.parse(saved.rowsJson || "[]"), queries: 0 };
+  if (!await ctx.store.create(path, { status: "reserved", createdAt: now })) return { rows: [], queries: 0 };
+  const budgetPath = ["_system", "scoutSerperBudget"];
+  await ctx.store.create(budgetPath, { total: 0, day, daily: 0, officesJson: "{}" });
+  const reservation = await ctx.store.update(budgetPath, current => {
+    const daily = current.day === day ? Number(current.daily || 0) : 0;
+    const total = Number(current.total || 0);
+    const offices = current.day === day ? JSON.parse(current.officesJson || "{}") : {};
+    const officeCalls = Number(offices[officeId] || 0);
+    if (daily >= serperLimit(ctx.env.SERPER_GLOBAL_DAILY_LIMIT, 10) || total >= serperLimit(ctx.env.SERPER_TOTAL_LIMIT, 100) || officeCalls >= config.perDay) return null;
+    offices[officeId] = officeCalls + 1;
+    return { total: total + 1, day, daily: daily + 1, officesJson: JSON.stringify(offices), updatedAt: now };
+  });
+  if (!reservation?.patch) return { rows: [], queries: 0 };
+  // Never log the key, query, response body or error message.
+  console.info("[scout] serper reserved", { daily: reservation.next.daily, total: reservation.next.total });
+  try {
+    const rows = await WEB_DRIVERS.serper({ key: config.key, query, days, excluded: config.excluded });
+    await ctx.store.set(path, { status: "complete", rowsJson: JSON.stringify(rows), updatedAt: now });
+    return { rows, queries: 1 };
+  } catch (error) {
+    await ctx.store.set(path, { status: "failed", code: error?.code || "search_failed", updatedAt: now });
+    throw error;
+  }
+}
+
 const stripTags = (value) => String(value || "").replace(/<[^>]{0,200}>/g, " ").replace(/&[a-z#0-9]{2,8};/gi, " ").replace(/\s+/g, " ").trim();
 
 export const webSearchAdapter = {
   id: "web_search",
   label: "بحث الويب",
   kind: "WEB",
-  access: { method: "web-search API (Tavily or Brave) with the platform's key — titles, excerpts and links only", basis: "اشتراك المنصة في خدمة بحث ويب وفق شروطها؛ لا تُفتح صفحات النتائج آليًا، وتُستبعد المواقع التي تمنع شروطها جمع إعلاناتها" },
+  access: { method: "web-search API (Serper, Tavily or Brave) with the platform's key — titles, excerpts and links only", basis: "اشتراك المنصة في خدمة بحث ويب وفق شروطها؛ لا تُفتح صفحات النتائج آليًا، وتُستبعد المواقع التي تمنع شروطها جمع إعلاناتها" },
   quality: 0.5,
   mutable: true,
   queryable: true,
   metered: { usageKey: "webCalls", perDay: (env) => searchConfig(env).perDay },
   availability: (ctx) => (searchConfig(ctx.env).ready ? { state: "AVAILABLE", reason: "" } : { state: "NOT_CONFIGURED", reason: "خدمة بحث مدفوعة لم تُفعَّل — تحتاج موافقة إدارة المنصة على اشتراكها. لا تُقرأ بها المواقع التي تمنع شروطها ذلك." }),
   /** One request per query form. `queries` in the answer is what was really sent (and is what the budget counts). */
-  async fetch(ctx, { forms = [], now = new Date() }) {
+  async fetch(ctx, { forms = [], now = new Date(), officeId = "" }) {
     const config = searchConfig(ctx.env);
     if (!config.ready) return { items: [], scanned: 0, queries: 0 };
     const items = [];
     const seen = new Set();
     let queries = 0;
     let scanned = 0;
-    for (const form of forms) {
+    for (const form of (config.provider === "serper" ? forms.slice(0, 1) : forms)) {
       const query = webQueryText(form);
       if (!query) continue;
-      queries += 1;
-      const rows = await WEB_DRIVERS[config.provider]({ key: config.key, query, days: Number(form.freshnessDays) || 7, excluded: config.excluded });
+      const options = { config, query, days: Number(form.freshnessDays) || 7, now, officeId };
+      const result = config.provider === "serper" ? await cachedSerper(ctx, options)
+        : { rows: await WEB_DRIVERS[config.provider]({ key: config.key, query, days: options.days, excluded: config.excluded }), queries: 1 };
+      queries += result.queries;
+      const rows = result.rows;
       for (const row of rows.slice(0, 20)) {
         scanned += 1;
         const url = text(row.url, 500);

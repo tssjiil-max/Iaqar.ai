@@ -98,6 +98,11 @@ echo "--- Cloudflare Worker (staging env only) ---"
   npx wrangler deploy --env staging
 )
 
+# Serper has its own Staging secret; never reuse another search provider's key.
+if [ -n "${SERPER_API_KEY:-}" ]; then
+  ( cd worker && printf '%s' "$SERPER_API_KEY" | npx wrangler secret put SERPER_API_KEY --env staging ) # // pragma: allowlist secret
+fi
+
 echo "--- Sync derived Worker staging secrets (values not printed) ---"
 (
   cd worker
