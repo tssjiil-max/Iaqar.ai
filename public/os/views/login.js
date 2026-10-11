@@ -1,5 +1,6 @@
 /** «دخول المكتب» — office owners and brokers only. Clients/owners never need an account. */
 
+import { stopMetrics } from "../../tour/metrics.js";
 import { h, ic } from "../core/dom.js";
 import { signInOffice } from "../core/session.js";
 import { runAction } from "../core/ui.js";
@@ -7,6 +8,7 @@ import { renderBrokerApplication, renderForgotPassword } from "./auth-flows.js";
 import { authField, authShell, passwordControl } from "./auth-shell.js";
 
 export function renderLogin(root, { onSignedIn, message = "", entry = "" } = {}) {
+  if (entry !== "register") stopMetrics();
   const back = () => renderLogin(root, { onSignedIn });
   if (entry === "register") return renderBrokerApplication(root, { onBack: back });
   if (entry === "forgot") return renderForgotPassword(root, { onBack: back });

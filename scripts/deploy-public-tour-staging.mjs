@@ -8,7 +8,12 @@ const project='iaqar-ai-staging';
 const expected='fc68af7bec1eab191b560119346c6cb188418cb5';
 const version=async base=>{const r=await fetch(base+'/version.json',{signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('Version unavailable');return r.json();};
 const before=await version(HOST);const productionBefore=await version(PROD);
-if(before.fullSha!==expected)throw new Error('Staging advanced; rebase and review before deploying. Refusing stale tree.');
+const git=(args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
+if(!/^[a-f0-9]{40}$/.test(before.fullSha||''))throw new Error('Invalid Staging SHA');
+try{git(['merge-base','--is-ancestor',expected,before.fullSha]);git(['merge-base','--is-ancestor',before.fullSha,'HEAD']);}catch{throw new Error('Staging is not an ancestor of this release; refusing stale tree.');}
+const allowed=new Set(['public/index.html','public/os/app.js','public/os/views/login.js','public/os/views/auth-flows.js','public/tour.html','test/public-tour.test.mjs','scripts/qa/public-tour.e2e.mjs','scripts/qa/office-os/live-preview.e2e.mjs','scripts/deploy-public-tour-staging.mjs','.github/workflows/public-product-tour.yml','docs/qa/public-product-tour-20261011.md']);
+const changes=git(['diff','--name-only',expected,'HEAD']).split('\n').filter(Boolean);
+if(changes.some(p=>!allowed.has(p)&&!p.startsWith('public/tour/')))throw new Error('Release includes unrelated changes; refusing Hosting replacement.');
 if(process.env.GITHUB_REF!=='refs/heads/codex/public-product-tour-20261011')throw new Error('This deploy is restricted to the product-tour branch.');
 if(!process.env.FIREBASE_SERVICE_ACCOUNT_JSON)throw new Error('Missing Staging credential');
 const credential='/tmp/iaqar-public-tour-gac.json';

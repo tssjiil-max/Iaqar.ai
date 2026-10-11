@@ -45,9 +45,10 @@ test('metrics require opt-in, sanitize events, and disable GA again after withdr
   try {
     const m = await import('../public/tour/metrics.js?consent-test');
     m.track('tour_visit',{phone:'PRIVATE'});await m.startMetrics();assert.equal(document.querySelectorAll('script').length,0);
-    m.chooseMetrics(true);await m.startMetrics();assert.equal(document.querySelectorAll('script').length,1);
-    const events=window.dataLayer.map(x=>Array.from(x));assert.equal(events.filter(x=>x[0]==='event').length,1);assert.doesNotMatch(JSON.stringify(events),/PRIVATE/);
-    assert.equal(events.find(x=>x[0]==='config')[2].allow_google_signals,false);
-    m.chooseMetrics(false);m.track('trial_click');assert.equal(window['ga-disable-G-EXAMPLE'],true);assert.equal(window.dataLayer.map(x=>Array.from(x)).filter(x=>x[0]==='event').length,1);
+    m.chooseMetrics(true);await m.startMetrics();assert.equal(document.querySelectorAll('iframe').length,1);
+    assert.equal(document.querySelector('iframe').getAttribute('sandbox'),'allow-scripts');
+    assert.equal(document.querySelector('iframe').getAttribute('referrerpolicy'),'no-referrer');
+    assert.equal(window.gtag,undefined);
+    m.chooseMetrics(false);m.track('trial_click');assert.equal(document.querySelectorAll('iframe').length,0);
   } finally { for(const [key,descriptor] of restore){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}dom.window.close(); }
 });

@@ -7,6 +7,7 @@
  *   #/deal/<journeyId> (متابعة الصفقة) · #/inbox · #/search · #/audit · #/tools/<forms|guide|services|calculator|market> · #/settings[/profile|link|cooperation|channels|notifications|brokers]
  */
 
+import { stopMetrics } from "../tour/metrics.js";
 import { h, clear, append } from "./core/dom.js";
 import { api, firebaseReady } from "./core/runtime.js";
 import { ACCESS_MESSAGES, loadOfficeAccess, preferredOfficeId, session, signOutOffice, waitForAuth } from "./core/session.js";
@@ -189,6 +190,7 @@ async function startOfficeApp() {
 
 let entered = false;
 function enterOffice() {
+  stopMetrics();
   if (entered) { render(); return; }
   entered = true;
   document.title = session.office?.officeName || "المكتب";
