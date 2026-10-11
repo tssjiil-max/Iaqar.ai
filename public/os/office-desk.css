@@ -450,6 +450,7 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 /* ------------------------------------------------------------------ «باحث الفرص»
    Same petrol identity and frames as the rest of the office: the home card reuses the office-manager card, the page
    uses the standard cards, badges and lists. Only what is specific to the scout is added here. */
+.ref-scout-card { margin: 10px 0 0; }
 .ref-scout-card[hidden] { display: none; }
 .os-scout-state { display: grid; gap: 10px; }
 .os-scout-away { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--ok-tint); color: var(--brand-dark); }

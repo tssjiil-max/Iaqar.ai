@@ -50,7 +50,9 @@ try {
   const page = await openAs(OWNER_A, "settings");
   await page.route("**/worker/os/channels/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, automationMode: "ASSISTED", outboundEnabled: false, channels: [{ id: "whatsapp", state: "CONNECTED", stateLabel: "مرتبط", signupEnabled: true, actions: ["reconnect", "disconnect"], number: "••••••1234", inboundToday: 3, webhookReady: true, webhookLabel: "يعمل — تصل الرسائل", onboardingMode: "coexistence", detail: "", note: "" }, { id: "telegram", state: "DISCONNECTED", stateLabel: "غير مرتبط", configured: true, actions: ["connect"], detail: "", botUsername: "iaqar_bot", note: "" }] }) }));
   await page.locator(".os-set-row").first().waitFor();
-  check("hub lists the eight settings pages", (await page.locator(".os-set-row").count()) === 8);
+  // «باحث الفرص» joins the list only where it is available (it is, on this harness); the eight standing pages are always there.
+  await page.locator('.os-set-row[data-settings="scout"]').waitFor();
+  check("hub lists the eight settings pages, and «باحث الفرص» after «مدير المكتب الذكي» where it is available", (await page.locator('.os-set-row:not([data-settings="scout"])').count()) === 8 && (await page.locator('.os-set-row[data-settings="agent"] + .os-set-row[data-settings="scout"]').count()) === 1);
   check("settings hub has no link to the old app", (await page.locator("a[href*='legacy']").count()) === 0);
   await shot(page, "01-hub");
 
@@ -197,7 +199,8 @@ try {
     const row = h.store.get(`publicOffices/${OFFICE_A}`);
     return row?.sharePreviewFormat === "immutable-v2" && row?.shareCardNonce && row.shareCardNonce !== nonceAfter ? row.shareCardNonce : null;
   }, "photo removal publishes a new fallback version");
-  check("without a photo the link page still has a generated preview card", !(await page.locator("[data-share-card-preview]").isHidden()));
+  // The card is shown when the page receives the answer — a moment after the stored version changes.
+  check("without a photo the link page still has a generated preview card", await page.locator("[data-share-card-preview]").waitFor({ state: "visible", timeout: 10000 }).then(() => true, () => false));
   og = await (await fetch(`${h.origin}/worker/m/${slugNow}`, { headers: { "user-agent": "WhatsApp/2.23" } })).text();
   const fbUrl = (og.match(/og:image" content="([^"]+)"/) || [])[1] || "";
   const fbRes = fbUrl ? await fetch(fbUrl.replace(/^https?:\/\/[^/]+/, `${h.origin}/worker`)) : null;

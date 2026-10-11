@@ -239,9 +239,9 @@ export function renderOffice(container){
     h("section", { class: "os-card ref-office-section" },
       h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
       agentCard(),
+      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)),
       // «باحث الفرص»: shown only where it is available; opens its own page.
-      scoutHomeCard(),
-      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard))),
+      scoutHomeCard()),
 
     h("section", { class: "os-card ref-office-section" },
       h("button", { type: "button", class: "os-home-community", "data-community-entry": "", onClick: () => go("community") },
