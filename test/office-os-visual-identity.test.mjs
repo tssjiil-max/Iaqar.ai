@@ -1,4 +1,4 @@
-// Visual identity (Staging): IBM Plex Sans Arabic self-hosted, light petrol frames, the icon set
+// Visual identity (Staging): Noto Naskh Arabic self-hosted («خط النسخ»), light petrol frames, the icon set
 // from the approved sheet (+ official WhatsApp / Telegram marks), and the office page order.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -9,22 +9,42 @@ import { BRAND_ICONS, iconMarkup } from "../public/os/core/icons.js";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), "utf8");
 
-test("IBM Plex Sans Arabic is the app font, self-hosted with its licence, and preloaded", () => {
+test("Noto Naskh Arabic is the app font: one self-hosted variable file with its licence, preloaded on every entry page", () => {
   const css = read("public/os/os.css");
-  const faces = [...css.matchAll(/@font-face \{ font-family: "IBM Plex Sans Arabic"; src: url\("([^"]+)"\)/g)].map((m) => m[1]);
-  assert.equal(faces.length, 4);
-  for (const url of faces) {
-    const file = path.join(ROOT, "public", url);
-    assert.ok(fs.existsSync(file), url);
-    const bytes = fs.readFileSync(file);
-    assert.equal(bytes.subarray(0, 4).toString("latin1"), "wOF2", `${url} is a real woff2`);
-  }
+  const faces = [...css.matchAll(/@font-face \{ font-family: "Noto Naskh Arabic"; src: url\("([^"]+)"\) format\("woff2"\); font-weight: 400 700;/g)].map((m) => m[1]);
+  assert.deepEqual(faces, ["/fonts/noto-naskh-arabic/noto-naskh-arabic-var.woff2"]);
+  const bytes = fs.readFileSync(path.join(ROOT, "public", faces[0]));
+  assert.equal(bytes.subarray(0, 4).toString("latin1"), "wOF2", "a real woff2");
+  assert.ok(bytes.length < 140 * 1024, `one file under 140 KB (${bytes.length})`);
   assert.match(css, /font-display: swap/);
-  assert.match(css, /body \{[^}]*font-family: "IBM Plex Sans Arabic"/);
-  assert.doesNotMatch(css, /font-family: "Tajawal"/);
-  assert.ok(fs.existsSync(path.join(ROOT, "public/fonts/ibm-plex-sans-arabic/LICENSE.txt")));
-  assert.match(read("public/fonts/ibm-plex-sans-arabic/LICENSE.txt"), /SIL Open Font License/);
-  assert.match(read("public/index.html"), /rel="preload" href="\/fonts\/ibm-plex-sans-arabic\/ibm-plex-sans-arabic-400\.woff2"/);
+  assert.match(css, /--font: "Noto Naskh Arabic", "Geeza Pro", system-ui,/);
+  assert.match(css, /body \{[^}]*font-family: var\(--font\)/);
+  assert.doesNotMatch(css, /font-family: "(Tajawal|IBM Plex Sans Arabic)"/);
+  assert.match(read("public/fonts/noto-naskh-arabic/LICENSE.txt"), /SIL Open Font License/);
+  assert.match(read("public/fonts/noto-naskh-arabic/LICENSE.txt"), /The Noto Project Authors/);
+  for (const page of ["public/index.html", "public/r.html", "public/s.html"]) {
+    assert.match(read(page), /rel="preload" href="\/fonts\/noto-naskh-arabic\/noto-naskh-arabic-var\.woff2" as="font" type="font\/woff2" crossorigin/, page);
+    assert.doesNotMatch(read(page), /ibm-plex/, page);
+  }
+});
+
+test("type scale for Naskh: real weights only, a named size scale off the root, and line heights that fit the face", () => {
+  const sheets = ["public/os/os.css", "public/os/reference-layout.css", "public/os/office-desk.css"].map((p) => [p, read(p)]);
+  for (const [name, css] of sheets) {
+    // The face has four cuts (400–700): nothing asks for a weight it does not have.
+    assert.doesNotMatch(css, /font-weight:\s*(800|900)\b/, `${name}: heaviest weight is 700`);
+    // Nothing is set under 13px, and no line of text is tighter than the face allows (digits-only badges set px line heights).
+    for (const m of css.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)) assert.ok(Number(m[1]) >= 13 || /mono/.test(css.slice(m.index - 120, m.index)), `${name}: ${m[0]}`);
+    for (const m of css.matchAll(/line-height:\s*(\d\.\d+)\b/g)) assert.ok(Number(m[1]) >= 1.45 || Number(m[1]) <= 1.2, `${name}: ${m[0]}`);
+  }
+  const os = sheets[0][1];
+  assert.match(os, /html \{[^}]*font-size: 112\.5%/, "root 18px, so the reader's own text size still applies");
+  for (const token of ["--fs-name: 1.6rem", "--fs-h1: 1.33rem", "--fs-h2: 1.2rem", "--fs-btn: 1.03rem", "--fs-body: 1rem", "--fs-label: .97rem", "--fs-desc: .875rem", "--fs-meta: .82rem", "--fs-2xs: .75rem", "--lh-body: 1.75", "--lh-title: 1.5", "--lh-ui: 1.45"]) assert.ok(os.includes(`${token};`), token);
+  // Sizes come from the scale: after :root, no raw rem size is left outside clamp().
+  const rules = os.slice(os.indexOf("color-scheme: light;"));
+  assert.deepEqual([...rules.matchAll(/font-size:\s*[\d.]+rem/g)].map((m) => m[0]), []);
+  // Secondary, success, warning and error text pass WCAG AA on white and on the tinted surfaces.
+  for (const colour of ["--muted: #566E77", "--faint: #5B7279", "--ok: #23764B", "--warn: #96571A", "--bad: #B03A3A"]) assert.ok(os.includes(`${colour};`), colour);
 });
 
 test("cards share one light petrol frame; tiles inside use the softer one", () => {

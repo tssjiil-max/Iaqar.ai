@@ -98,7 +98,7 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
     field("نوع العقار", h("div", {}, typeInput, types)),
     h("div", { class: "os-row2" },
       field("المدينة", h("input", { class: "os-input", name: "city", value: values.city || session.office?.city || "", autocomplete: "address-level2" })),
-      field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "حي أو أكثر: الملقا، النرجس" }))
+      field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "الملقا، النرجس" }))
     ),
     priceLabel,
     priceStatusBox,

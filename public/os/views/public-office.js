@@ -66,9 +66,9 @@ function officeHeader(office) {
 function successView(root, office, kind) {
   clear(root);
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب.`);
-  append(root, h("main", { class: "os-app", style: { maxWidth: "560px" } },
+  append(root, h("main", { class: "os-app os-public-page", style: { maxWidth: "560px" } },
     officeHeader(office),
-    h("div", { class: "os-card", style: { textAlign: "center" } },
+    h("div", { class: "os-card os-public-done", style: { textAlign: "center" } },
       h("div", { class: "os-task-icon", style: { margin: "0 auto 8px", background: "var(--ok-tint)", color: "var(--ok)" } }, ic("check-circle")),
       h("h2", { class: "os-h2", style: { justifyContent: "center" }, text: "تم استلام بياناتك" }),
       h("p", { class: "os-sub", text: `شكرًا لك. سيتواصل معك ${office.brokerName || "الوسيط"} عند وجود خيار مناسب.` }),
@@ -123,7 +123,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       field("نوع العقار", h("div", {}, h("input", { class: "os-input", name: "propertyType", list: "pub-types", autocomplete: "off", placeholder: "شقة، فيلا، أرض…" }), h("datalist", { id: "pub-types" }, PROPERTY_TYPES.map((t) => h("option", { value: t }))))),
       h("div", { class: "os-row2" },
         field("المدينة", h("input", { class: "os-input", name: "city", value: office.city || "" })),
-        field("الحي", h("input", { class: "os-input", name: "district", placeholder: "حي أو أكثر: الملقا، النرجس" }))),
+        field("الحي", h("input", { class: "os-input", name: "district", placeholder: "الملقا، النرجس" }))),
       field(kind === "owner" ? "السعر المطلوب (ريال)" : "الميزانية (ريال)", price),
       kind === "owner" ? priceStatusField() : null,
       h("div", { class: "os-row2" },
@@ -250,7 +250,7 @@ export async function renderPublicOffice(root, target) {
       h("div", { class: "os-page-head" },
         h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"),
         h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), h("span")),
-      h("p", { class: "os-sub", style: { textAlign: "center", marginBottom: "10px" }, text: office.officeName || "" }),
+      h("p", { class: "os-public-office-name", text: office.officeName || "" }),
       intakeForm(root, office, kind, { switchKind: choose, carry }));
     window.scrollTo({ top: 0 });
     if (carry?.text) main.querySelector("[data-smart-analyze]")?.click();

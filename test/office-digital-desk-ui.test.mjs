@@ -52,9 +52,9 @@ test("additional-tools heading follows the same title/description row rhythm as 
 });
 
 test("office icons match the monochrome offer/request icon treatment", () => {
-  // One icon frame for main and extra tools (reference): 44px frame, 23px glyph, tint + brand colour, light border, no shadow.
+  // One icon frame for main and extra tools (reference): 44px frame, 24px glyph (the app's icon scale is 16 · 18 · 20 · 24 · 28), tint + brand colour, light border, no shadow.
   assert.match(css, /\.ref-office-tool-icon,\s*\.ref-office-extra-icon\s*\{[^}]*width\s*:\s*44px[^}]*height\s*:\s*44px[^}]*background\s*:\s*var\(--brand-tint\)[^}]*color\s*:\s*var\(--brand-primary\)[^}]*border\s*:\s*1px\s+solid\s+var\(--brand-line\)[^}]*box-shadow\s*:\s*none/s, "main and extra icon frames must be the same size and treatment");
-  assert.match(css, /\.ref-office-tool-icon svg,\s*\.ref-office-extra-icon svg\s*\{[^}]*width\s*:\s*23px[^}]*height\s*:\s*23px/s, "main and extra glyphs must be the same 23px");
+  assert.match(css, /\.ref-office-tool-icon svg,\s*\.ref-office-extra-icon svg\s*\{[^}]*width\s*:\s*24px[^}]*height\s*:\s*24px/s, "main and extra glyphs must be the same 24px");
   assert.doesNotMatch(css, /\.ref-office-tool-icon\s*\{[^}]*width/s, "no separate (larger) size for the main tool icons");
   assert.match(css, /\.ref-office-tool-icon \.t2,\s*\.ref-office-extra-icon \.t2\s*\{[^}]*opacity\s*:\s*1/s, "office-only secondary icon layers must be flattened to one monochrome tone");
 });
