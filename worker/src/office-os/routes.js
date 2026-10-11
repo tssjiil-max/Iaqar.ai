@@ -25,6 +25,7 @@ import { analyzeOfficeText, analyzePublicText } from "./smart-fill-service.js";
 import { applyAvailabilityAnswer, reactivateRecord, setRecordValidity, sweepValidityNow } from "./validity-service.js";
 import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker, linkBrokerWithTelegramLogin } from "./bot-service.js";
 import { actOnFind, controlSearch, createSearch, feedScout, findDetail, importScoutLink, liveSearchForTask, parseSearchText, recordSearch, saveScoutSettings, scoutOverview, scoutRecordChanged, searchDetail } from "./scout-service.js";
+import { startScoutChatLink, unlinkScoutChat } from "./scout-telegram.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
@@ -124,6 +125,8 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/scout/find/act": (ctx, b, actor) => actOnFind(ctx, { actor, officeId: ctx.officeId, opportunityId: text(b.opportunityId), action: text(b.action), recordId: text(b.recordId), result: text(b.result), note: typeof b.note === "string" ? b.note : "" }),
   "/os/scout/import": (ctx, b, actor) => importScoutLink(ctx, { actor, officeId: ctx.officeId, url: typeof b.url === "string" ? b.url : "", text: typeof b.text === "string" ? b.text : "" }),
   "/os/scout/web/live": (ctx, b, actor) => liveSearchForTask(ctx, { actor, officeId: ctx.officeId, taskId: text(b.taskId) }),
+  "/os/scout/telegram/link": (ctx, b, actor) => startScoutChatLink(ctx, { actor, officeId: ctx.officeId }),
+  "/os/scout/telegram/unlink": (ctx, b, actor) => unlinkScoutChat(ctx, { actor, officeId: ctx.officeId, chatId: text(b.chatId) }),
   "/os/scout/feed": (ctx, b, actor) => feedScout(ctx, { actor, officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", channel: text(b.channel).toUpperCase() }),
   "/os/support/status": (ctx) => supportStatus(ctx),
   "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } })

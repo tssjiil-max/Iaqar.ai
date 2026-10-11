@@ -33,3 +33,6 @@ export const feedScout = (officeId, text, channel = "") => changed(api("/os/scou
 export const importScoutLink = (officeId, url, text = "") => changed(api("/os/scout/import", { officeId, url, text }));
 /** «ابحث في الويب الآن»: Google's answer for this search, shown once and never stored. */
 export const liveWebSearch = (officeId, taskId) => api("/os/scout/web/live", { officeId, taskId });
+/** «قروبات وقنوات تيليجرام»: a one-time link to add the platform's bot to a group, and unlinking one. */
+export const linkScoutTelegramChat = (officeId) => api("/os/scout/telegram/link", { officeId });
+export const unlinkScoutTelegramChat = (officeId, chatId) => changed(api("/os/scout/telegram/unlink", { officeId, chatId }));

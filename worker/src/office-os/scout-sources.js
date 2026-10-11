@@ -99,6 +99,29 @@ const brokerFeed = {
   }
 };
 
+export const telegramGroupsReady = (env = {}) => Boolean(text(env.TELEGRAM_BOT_TOKEN, 200) && text(env.TELEGRAM_WEBHOOK_SECRET, 300) && text(env.TELEGRAM_BOT_USERNAME, 60));
+
+/**
+ * Telegram groups and channels the office linked to its scout: the platform's bot is added there by an admin of
+ * the group (Telegram's official Bot API), and only messages that read as property ads are kept for the office.
+ */
+const telegramGroups = {
+  id: "telegram_groups",
+  label: "قروبات وقنوات تيليجرام",
+  kind: "APP",
+  access: { method: "Telegram Bot API → offices/{officeId}/scoutPosts", basis: "بوت المنصة يُضاف إلى القروب أو القناة من مشرفها (واجهة تيليجرام الرسمية للبوتات)؛ لا يُقرأ حساب شخصي ولا قروب لم يُضَف إليه البوت" },
+  quality: 0.65,
+  availability: (ctx) => (telegramGroupsReady(ctx.env) ? { state: SOURCE_STATE.AVAILABLE, reason: "" } : { state: SOURCE_STATE.NOT_CONFIGURED, reason: "بوت المنصة على تيليجرام غير مفعّل على هذه البيئة بعد." }),
+  async fetch(ctx, { officeId, since, limit }) {
+    const docs = await ctx.store.queryAfter(["offices", officeId], "scoutPosts", { field: "createdAt", after: since, limit });
+    const items = docs.filter((doc) => typeof doc.text === "string" && doc.text.trim()).map((doc) => ({
+      sourceId: "telegram_groups", externalId: text(doc.id, 120), text: doc.text.slice(0, 2000), url: text(doc.link, 500), contactRoute: text(doc.link, 500),
+      publishedAt: iso(doc.postedAt), at: iso(doc.createdAt)
+    }));
+    return { items, scanned: docs.length, until: iso(docs.at(-1)?.createdAt) };
+  }
+};
+
 function feedConfig(env = {}) {
   const url = text(env.SCOUT_FEED_URL, 400);
   const key = text(env.SCOUT_FEED_KEY, 500);
@@ -194,6 +217,7 @@ const BY_LINK = "البديل الآن: أدخل رابط الإعلان مع ن
 export const SOURCE_ADAPTERS = Object.freeze([
   officeInbox,
   brokerFeed,
+  telegramGroups,
   webSearchAdapter,
   postsSearchAdapter,
   partnerFeed,
@@ -206,8 +230,6 @@ export const SOURCE_ADAPTERS = Object.freeze([
     "شروط الاستخدام (البند 8) تمنع الروبوتات والزواحف وتكوين قواعد بيانات من المحتوى، وrobots.txt يمنع /property/*؛ لا يوجد API عام."),
   unavailable("wasalt", "وصلت", `لم يتأكد لنا أن شروط الموقع تجيز القراءة الآلية، ولا يوفر واجهة رسمية معلنة. لا يُقرأ إلا بتصريح من المنصة. ${BY_LINK}`,
     "robots.txt يسمح بصفحات الإعلانات ويمنع /search، لكن تعذر التحقق من شروط الاستخدام ولا يوجد API عام معلن — يُعامل كمصدر يحتاج تصريحًا."),
-  unavailable("telegram_groups", "قروبات وقنوات تيليجرام", "تُقرأ فقط بإضافة بوت المنصة إلى القروب بموافقة مشرفه، وهذه الإضافة لم تُعتمد بعد. البديل الآن: أعد توجيه الإعلانات إلى محادثة المكتب المرتبطة، أو الصقها.",
-    "واجهة Bot API الرسمية تسمح بذلك بعد إضافة البوت من مشرف القروب؛ التنفيذ يتطلب تعديلًا في webhook البوت المركزي، وهو مؤجل حتى موافقة المالك."),
   unavailable("whatsapp_groups", "قروبات واتساب", "لا توجد وسيلة رسمية لقراءة القروبات الخاصة. يُقرأ فقط ما يصل رقم المكتب المرتبط رسميًا. البديل: الصق الإعلانات أو استورد ملف المحادثة.",
     "لا توفر واجهات واتساب الرسمية قراءة قروبات المستخدمين الخاصة.", SOURCE_STATE.UNAVAILABLE)
 ]);

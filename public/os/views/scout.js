@@ -13,7 +13,7 @@ import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../core/ui.js";
 import {
-  actOnScoutFind, controlScoutSearch, createScoutSearch, feedScout, importScoutLink, liveWebSearch, loadScout, parseScoutText, saveScoutSettings, scoutFind, scoutForRecord, scoutSearchDetail
+  actOnScoutFind, controlScoutSearch, createScoutSearch, feedScout, importScoutLink, linkScoutTelegramChat, liveWebSearch, loadScout, unlinkScoutTelegramChat, parseScoutText, saveScoutSettings, scoutFind, scoutForRecord, scoutSearchDetail
 } from "../core/scout.js";
 import { buildWhatsAppUrl, formatDateTime, relativeAgo } from "../domain/format-domain.js";
 import { PROPERTY_TYPES, RECORD_KIND, kindOf } from "../domain/records-domain.js";
@@ -540,6 +540,28 @@ export function renderScoutSettings(container) {
     const alerts = h("input", { type: "checkbox", "data-scout-alerts": "" }); alerts.checked = s.notify !== false;
     const alertLevel = segmented("alertLevel", ALERT_OPTIONS, s.alertLevel);
     const sourceBoxes = overview.sources.map((source) => { const box = h("input", { type: "checkbox", "data-scout-source": source.id }); box.checked = source.on; return { id: source.id, box, label: source.label }; });
+    const telegram = overview.telegram;
+    const addChat = h("button", { type: "button", class: "os-btn secondary block", "data-scout-chat-add": "" }, ic("send"), "أضف قروبًا أو قناة");
+    addChat.addEventListener("click", () => runAction(addChat, async () => {
+      const link = await linkScoutTelegramChat(OFFICE());
+      if (link.state !== "PENDING") { toast(link.message || "بوت المنصة غير مفعّل على هذه البيئة"); return; }
+      const line = h("input", { class: "os-input", readonly: true, dir: "ltr", "data-scout-chat-command": "", value: link.command });
+      openSheet("ربط قروب أو قناة تيليجرام", h("div", { class: "os-form" },
+        h("p", { class: "os-sub", text: "القروب: اضغط الزر واختر القروب — يُضاف بوت المنصة إليه ويكتمل الربط. ثم اجعل البوت مشرفًا ليقرأ الإعلانات." }),
+        h("a", { class: "os-btn primary block", href: link.groupLink, target: "_blank", rel: "noopener noreferrer", "data-scout-chat-link": "" }, ic("send"), "اختر القروب في تيليجرام"),
+        h("p", { class: "os-sub", text: `القناة: أضف @${link.botUsername} مشرفًا فيها، ثم انشر هذا السطر في القناة:` }),
+        line,
+        h("p", { class: "os-sub", text: "الرابط صالح لربع ساعة ولمرة واحدة. لا تُحفظ إلا الرسائل التي تُقرأ كإعلان عقاري، ولا يرسل البوت شيئًا في القروب." })), { onClose: reload });
+    }));
+    const chatRow = (chat) => {
+      const remove = h("button", { type: "button", class: "os-btn soft", "data-scout-chat-remove": chat.chatId }, ic("x"), "فصل");
+      remove.addEventListener("click", async () => {
+        if (!(await confirmDialog({ title: "فصل هذا القروب؟", text: "يتوقف الباحث عن قراءة إعلاناته. الفرص التي وُجدت تبقى.", confirmLabel: "فصل", danger: true }))) return;
+        await runAction(remove, () => unlinkScoutTelegramChat(OFFICE(), chat.chatId), { success: "فُصل القروب" });
+        reload();
+      });
+      return h("div", { class: "os-pref-row", "data-scout-chat": chat.chatId }, h("span", { dir: "auto", text: `${chat.title}${chat.type === "channel" ? " · قناة" : ""}` }), remove);
+    };
     const save = h("button", { type: "button", class: "os-btn primary block", "data-scout-save": "" }, ic("check"), "حفظ الإعدادات");
     save.addEventListener("click", () => runAction(save, async () => {
       await saveScoutSettings(OFFICE(), {
@@ -583,6 +605,11 @@ export function renderScoutSettings(container) {
         h("h2", { class: "os-h2", text: "المصادر" }),
         h("p", { class: "os-sub", text: "تظهر هنا المصادر التي تم التحقق من جواز استخدامها فقط." }),
         h("div", { class: "os-pref-list" }, sourceBoxes.map((x) => h("label", { class: "os-pref-row" }, h("span", { text: x.label }), x.box)))),
+      telegram?.configured ? h("section", { class: "os-card", "data-scout-chats": "" },
+        h("h2", { class: "os-h2", text: "قروبات وقنوات تيليجرام" }),
+        h("p", { class: "os-sub", text: "أضف بوت المنصة إلى قروب عقاري أو قناة أنت فيها، فيقرأ الباحث إعلاناتها تلقائيًا بدل اللصق اليدوي. يحتاج موافقة مشرف القروب." }),
+        telegram.chats.length ? h("div", { class: "os-pref-list" }, telegram.chats.map(chatRow)) : null,
+        telegram.chats.length < telegram.limit ? addChat : h("p", { class: "os-sub", text: `الحد ${telegram.limit} قروبات أو قنوات.` })) : null,
       save);
   };
   const reload = () => loadScout(OFFICE(), { fresh: true }).then(draw).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل إعدادات الباحث عن الفرص." })); });

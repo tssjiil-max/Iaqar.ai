@@ -22,6 +22,7 @@ import { botStatus, completeBotLink, handleBotCallback, handleBotChatMessage } f
 import { handleVisitorCallback, handleVisitorMessage, isVisitorCallback, startVisitor } from "./visitor-service.js";
 import { parseOfficeStart } from "../../../public/os/domain/visitor-domain.js";
 import { handleValidityCallback, isValidityCallback } from "./validity-service.js";
+import { completeScoutChatLink, handleScoutChatPost } from "./scout-telegram.js";
 
 const text = (value) => String(value ?? "").trim();
 
@@ -241,6 +242,14 @@ export async function handleCentralTelegramWebhook({ request, env, store, deps, 
   }
   const code = parseStartCommand(message.text);
   if (code) {
+    // «الباحث عن الفرص»: a group or a channel being linked as one of an office's sources (its own kind of code).
+    try {
+      const scoutLink = await completeScoutChatLink({ store, deps: bot?.deps || deps, env, now }, { code, chat });
+      if (scoutLink.handled) return { ok: true, status: 200, linked: scoutLink.ok === true, kind: "scout_chat", reason: scoutLink.ok ? "" : scoutLink.reason };
+    } catch (error) {
+      console.error("[office-os] scout chat link failed", error?.code || error?.message);
+      return { ok: true, status: 200, linked: false, reason: "scout_error" };
+    }
     if (bot) {
       try {
         const botLink = await completeBotLink(bot, { code, chat, from: message.from || {} });
@@ -262,6 +271,13 @@ export async function handleCentralTelegramWebhook({ request, env, store, deps, 
   }
   const officeId = await officeForTelegramChat({ store, deps }, chat.id);
   if (!officeId) {
+    // A group or a channel linked to «الباحث عن الفرص»: an ad is kept for the offices that linked it, chatter is dropped.
+    if (chat.type && chat.type !== "private") {
+      try {
+        const post = await handleScoutChatPost({ store, env, now }, { message, chat });
+        if (post) return post;
+      } catch (error) { console.error("[office-os] scout chat post failed", error?.code || error?.message); }
+    }
     // Not an office's intake chat: it may be a side's own chat with the bot.
     if (bot && update.message) {
       // A transaction being collected by the office manager comes first (the same person may already be a linked side).

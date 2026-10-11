@@ -47,7 +47,7 @@ service cloud.firestore {
         // مدير المكتب الذكي — للـ Worker فقط.
         'agentSettings', 'agentChats', 'agentStats', 'agentPreview',
         // باحث الفرص — للـ Worker فقط (المتصفح يقرأ ويغيّر عبر مسارات /os/scout بعد التحقق من العضوية).
-        'scoutSettings', 'scoutState', 'scoutTasks', 'scoutOpportunities', 'scoutFeed', 'scoutFixtures', 'scoutRuns'
+        'scoutSettings', 'scoutState', 'scoutTasks', 'scoutOpportunities', 'scoutFeed', 'scoutFixtures', 'scoutRuns', 'scoutPosts', 'scoutChats'
       ];
     }
     function validOfficeProfile() {
@@ -593,6 +593,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /telegramOfficeLinks/{officeId} {
+      allow read, write: if false;
+    }
+    // الباحث عن الفرص: القروبات والقنوات المرتبطة به (أي المكاتب ربطت أي محادثة) — للـ Worker فقط.
+    match /telegramScoutChats/{chatId} {
       allow read, write: if false;
     }
     // بوت المكتب: الأطراف والوسطاء المرتبطون بالبوت وأسئلة المطابقة — للـ Worker فقط.

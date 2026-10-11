@@ -241,7 +241,11 @@ try {
   const overviewNow = (await api("/os/scout/overview", {}, owner.uid)).body;
   const sourceState = Object.fromEntries((overviewNow.sourceStatus || []).map((s) => [s.id, s.status]));
   check("live: every source shows its true state — the office's own are connected; عقار، حراج، بيوت، وصلت need a permission; private WhatsApp groups are not available",
-    sourceState.office_inbox === "CONNECTED" && sourceState.broker_feed === "CONNECTED" && ["aqar", "haraj", "bayut", "wasalt", "telegram_groups"].every((id) => sourceState[id] === "NEEDS_PERMISSION") && sourceState.whatsapp_groups === "UNAVAILABLE" && !("qa_fixture" in sourceState), JSON.stringify(sourceState));
+    sourceState.office_inbox === "CONNECTED" && sourceState.broker_feed === "CONNECTED" && ["aqar", "haraj", "bayut", "wasalt"].every((id) => sourceState[id] === "NEEDS_PERMISSION") && ["CONNECTED", "NEEDS_PERMISSION"].includes(sourceState.telegram_groups) && sourceState.whatsapp_groups === "UNAVAILABLE" && !("qa_fixture" in sourceState), JSON.stringify(sourceState));
+  // Telegram groups: connected where the platform's bot is active; the manager can then ask for a one-time group link.
+  const groupLink = await api("/os/scout/telegram/link", {}, owner.uid);
+  check("live: Telegram groups — the manager gets a one-time link to add the platform's bot to a group (or is told the bot is not active here)",
+    groupLink.status === 200 && (sourceState.telegram_groups === "CONNECTED" ? groupLink.body.state === "PENDING" && /^https:\/\/t\.me\/[A-Za-z0-9_]+\?startgroup=[A-Za-z0-9_-]{43}$/.test(groupLink.body.groupLink || "") : groupLink.body.state === "NOT_CONFIGURED"), `telegram_groups=${sourceState.telegram_groups} · ${groupLink.body.state}`);
   console.log(`paid doors on this environment (informational): web_search=${sourceState.web_search} x_search=${sourceState.x_search} liveSearch=${overviewNow.liveSearch}`);
   const AD = `https://sa.aqar.fm/ad/qa-scout-live-${RUN}`;
   const refused = await api("/os/scout/import", { url: AD }, owner.uid);

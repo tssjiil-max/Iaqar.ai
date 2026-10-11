@@ -245,7 +245,8 @@ test("sources: only what the office may read. عقار، حراج، بيوت and
     assert.equal(adapter.access.method, "none");
   }
   assert.equal(state("whatsapp_groups").state, SOURCE_STATE.UNAVAILABLE, "private WhatsApp groups have no official way in");
-  assert.equal(state("telegram_groups").state, SOURCE_STATE.NEEDS_PERMISSION);
+  assert.equal(state("telegram_groups").state, SOURCE_STATE.NOT_CONFIGURED, "Telegram groups wait for the platform's bot");
+  assert.equal(SOURCE_ADAPTERS.find((a) => a.id === "telegram_groups").availability({ env: { TELEGRAM_BOT_TOKEN: "1:x", TELEGRAM_WEBHOOK_SECRET: "s", TELEGRAM_BOT_USERNAME: "bot" } }).state, SOURCE_STATE.AVAILABLE);
   for (const adapter of SOURCE_ADAPTERS) assert.ok(adapter.access?.basis, `${adapter.id} documents its basis`);
 });
 
