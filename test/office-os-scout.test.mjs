@@ -800,7 +800,7 @@ test("keeping time: a find nobody acted on for a month and a half leaves, a save
   assert.ok(h.store.list(`offices/${OFFICE_A}/scoutRuns`).length <= 60, "the round log is a short ring, not a growing list");
 });
 
-test("production is untouched: without the environment switch every scout route answers «غير متاح» and no round runs", async () => {
+test("the environment switch: without it every scout route answers «غير متاح» and no round runs; it is set for Staging and, by the owner's approval, for iaqar.ai — with no paid door", async () => {
   const saved = h.env.OPPORTUNITY_SCOUT;
   delete h.env.OPPORTUNITY_SCOUT;
   try {
@@ -823,7 +823,8 @@ test("production is untouched: without the environment switch every scout route 
   } finally { h.env.OPPORTUNITY_SCOUT = saved; }
   const toml = (await import("node:fs")).readFileSync(path.join(ROOT, "worker/wrangler.toml"), "utf8");
   const [production, rest] = toml.split("[env.staging]");
-  assert.equal(/OPPORTUNITY_SCOUT/.test(production), false, "not set for production");
+  assert.match(production, /^OPPORTUNITY_SCOUT = "enabled"$/m, "set for production by the owner's approval");
+  assert.equal(/SCOUT_SEARCH_KEY|SCOUT_X_BEARER|SCOUT_LIVE_SEARCH|SCOUT_FEED/.test(toml), false, "no paid door is configured anywhere");
   assert.match(rest.split("[env.preview]")[0], /OPPORTUNITY_SCOUT = "enabled"/, "set for Staging");
 });
 
