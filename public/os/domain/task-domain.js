@@ -40,6 +40,8 @@ export const TASK_TYPES = Object.freeze({
   // صلاحية العروض والطلبات: the office manager asked the side (a known wait), or an exception for the broker.
   AVAILABILITY_CHECK: { badge: "تأكيد التوفر", button: "عرض السجل", icon: "clock", opens: "record", needsBroker: false, waiting: true },
   AVAILABILITY_ATTENTION: { badge: "صلاحية وتوفر", button: "مراجعة السجل", icon: "alert", opens: "record", needsBroker: true },
+  // «الباحث عن الفرص»: a follow-up the broker asked for on an outside find (opens the find itself).
+  SCOUT_FOLLOW_UP: { badge: "متابعة فرصة خارجية", button: "فتح الفرصة", icon: "search", opens: "scout", needsBroker: true },
   SYSTEM_ACTION: { badge: "إجراء", button: "عرض التفاصيل", icon: "info", opens: "legacy", needsBroker: false }
 });
 
@@ -201,7 +203,7 @@ export function taskPathStep(task = {}) {
   if (type === "MATCH_REVIEW") return 0;
   if (/VIEWING/.test(type)) return 3;
   if (type === "DEAL_ACTION") return 4;
-  if (type === "AWAITING_REPLY") return 1;
+  if (type === "AWAITING_REPLY" || type === "SCOUT_FOLLOW_UP") return 1;
   return 2;
 }
 

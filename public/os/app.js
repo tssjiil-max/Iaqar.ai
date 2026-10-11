@@ -4,7 +4,7 @@
  *   everything else                                → «دخول المكتب» + office app
  * Office app routes (hash): #/office (default) · #/tasks · #/task/<id> · #/repo · #/record/<id> · #/record/new ·
  *   #/record/<id>/edit · #/review/<matchId> · #/journey/<id> · #/session/<journeyId> · #/community · #/library ·
- *   #/deal/<journeyId> (متابعة الصفقة) · #/inbox · #/search · #/audit · #/scout[/new|/opp/<id>|/task/<id>] (باحث الفرص) · #/tools/<forms|guide|services|calculator|market> · #/settings[/profile|link|cooperation|channels|notifications|brokers]
+ *   #/deal/<journeyId> (متابعة الصفقة) · #/inbox · #/search · #/audit · #/scout[/new|/opp/<id>|/task/<id>] (الباحث عن الفرص) · #/tools/<forms|guide|services|calculator|market> · #/settings[/profile|link|cooperation|channels|notifications|brokers]
  */
 
 import { h, clear, append } from "./core/dom.js";
@@ -68,7 +68,7 @@ function view() {
   if (section === "library") return { name: "library", run: renderLibrary };
   if (section === "tools") return { name: "tool", run: (el) => renderOfficeTool(el, { tool: id }) };
   if (section === "inbox") return { name: "tool", run: renderInbox };
-  // «باحث الفرص»: the board, a new search, one find, one search.
+  // «الباحث عن الفرص»: the board, a new search, one find, one search.
   if (section === "scout" && id === "new") return { name: "tool", run: renderScoutNew };
   if (section === "scout" && id === "opp" && sub) return { name: "tool", run: (el) => renderScoutFind(el, { id: sub }) };
   if (section === "scout" && id === "task" && sub) return { name: "tool", run: (el) => renderScoutTask(el, { id: sub }) };
@@ -147,7 +147,7 @@ function applyDeepLink() {
   const clean = new URL(location.href);
   ["openOperation", "openOpportunity", "openMatch", "openDailyTask", "openAppointment", "focusFollowUp"].forEach((k) => clean.searchParams.delete(k));
   history.replaceState({}, "", `${clean.pathname}${clean.search}`);
-  // A push from «باحث الفرص» opens the find itself.
+  // A push from «الباحث عن الفرص» opens the find itself.
   if (operationId && operationId.startsWith("scout:")) {
     const findId = operationId.slice("scout:".length);
     if (/^so_[A-Za-z0-9_]{6,60}$/.test(findId)) { go(`scout/opp/${findId}`); return; }

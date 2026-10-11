@@ -1,4 +1,4 @@
-# «باحث الفرص» — Opportunity Scout
+# «الباحث عن الفرص» — Opportunity Scout
 
 A background research employee inside the broker's office. It watches the sources the office is allowed to
 use, reads what appears there, discards what is weak, merges what is repeated, and puts only the few finds
@@ -15,6 +15,7 @@ scout — that is the state of Production. Inside Staging each office still has 
 |---|---|
 | Shared rules (modes, parsing, merging, scoring, wording) — one copy for Worker and browser | `public/os/domain/scout-domain.js` |
 | Source adapters and their registry | `worker/src/office-os/scout-sources.js` |
+| Web search, X, the live Google search and the link reader | `worker/src/office-os/scout-web.js` |
 | Fit (through the existing matching engine) and levels | `worker/src/office-os/scout-evaluate.js` |
 | Storage, limits, the platform schedule | `worker/src/office-os/scout-store.js` |
 | The rounds, the scheduler beat, the routes' logic | `worker/src/office-os/scout-service.js` |
@@ -87,18 +88,47 @@ same rich text) → classify the advertiser → score → link to searches and r
 Adapter contract (`scout-sources.js`): `id`, `label`, `kind`, `access { method, basis }`, `quality`,
 `availability(ctx, office) → { state, reason }`, `fetch(ctx, { officeId, since, limit, forms }) → { items, until }`.
 Health per source is kept per office (last success, last failure, back-off 10 min × 2ⁿ up to 6 h).
+The scout page lists every source with its true state for every member of the office («حالة المصادر»).
 
 | Source | State | Basis |
 |---|---|---|
-| `office_inbox` — قنوات المكتب الرسمية | available | messages that reached the office through its own official integration (WhatsApp Business, Telegram bot). The office's own data |
-| `broker_feed` — ما يلصقه المكتب للباحث | available | ads the broker received and pasted himself. No account or group is read automatically |
-| `partner_feed` — تغذية مرخّصة | not configured | a JSON feed under a signed data agreement. Works once `SCOUT_FEED_URL` + `SCOUT_FEED_KEY` are set on the Worker |
+| `office_inbox` — قنوات المكتب الرسمية | **connected** | messages that reached the office through its own official integration (WhatsApp Business, Telegram bot). The office's own data |
+| `broker_feed` — ما يضيفه المكتب (رابط، نص، ملف) | **connected** | an ad whose link the broker entered, text he pasted, or a file he imported. No account or group is read automatically |
+| `web_search` — بحث الويب | needs activation (paid) | a web-search API (Tavily, or Brave with a storage-rights plan). Titles, excerpts and links only; result pages are never opened; the listing sites below are excluded from the results too. Off until `SCOUT_SEARCH_KEY` is set |
+| `x_search` — منصة X | needs activation (paid) | X API v2 recent search, billed per post read. Off until `SCOUT_X_BEARER` is set |
+| `partner_feed` — تغذية مرخّصة | needs an agreement | a JSON feed under a signed data agreement. Works once `SCOUT_FEED_URL` + `SCOUT_FEED_KEY` are set |
+| `aqar` — عقار | needs a permission | robots.txt disallows search, city, district, category and advertiser pages; the terms forbid collecting the platform's data; no public API |
+| `haraj` — حراج | needs a permission | the usage agreement forbids copying listings, collecting data and aggregation tools; no public API |
+| `bayut` — بيوت السعودية | needs a permission | terms (section 8) forbid bots, crawlers and compiling databases from the content; robots.txt disallows `/property/*`; no public API |
+| `wasalt` — وصلت | needs a permission | robots.txt allows listing pages (not `/search`), but the terms could not be verified and no public API is announced — treated as needing a permission |
+| `telegram_groups` — قروبات وقنوات تيليجرام | needs the owner's approval | possible through Telegram's official Bot API after a group admin adds the platform's bot; it needs a small addition to the central bot's webhook, which is not changed without approval. Built and tested on branch `claude/scout-telegram-groups-draft`. Until then: forward ads to the office's linked chat, or paste them |
+| `whatsapp_groups` — قروبات واتساب | **not available** | WhatsApp offers no official way to read private groups. Only what reaches the office's officially linked number is read |
 | `qa_fixture` — مصدر اختبار | Staging QA offices only | isolated test data; proves the chain end to end without touching any site |
-| `aqar` — عقار | **unavailable** | robots.txt disallows search, city, district, category and advertiser pages; the terms forbid collecting the platform's and its users' data; no public API. Needs an access agreement |
-| `haraj` — حراج | **unavailable** | the usage agreement forbids copying listings, collecting data and aggregation tools. Needs an access agreement |
 
-There is no fetch code for عقار or حراج — they are registered so the report and the settings screen say honestly
-why they are off. Personal WhatsApp and private groups are never read.
+There is no fetch code for عقار، حراج، بيوت or وصلت. Personal WhatsApp and private groups are never read.
+
+### By the broker's own hand («أضف إعلانًا»)
+
+The path that always works, whatever the sites allow:
+
+- **Link** (`/os/scout/import`): the page's own title and description are read — one page, once, because he asked —
+  only if the address is a public https page, the site's robots.txt allows it, and the site is not one of the
+  listing platforms above or a sign-in site. Otherwise nothing is fetched, the broker pastes the ad's text, and the
+  link is kept as the ad's source. The link is the ad's identity: entering it again updates the same find (a new
+  price is recorded as a change), never a second one.
+- **Text**: one ad, or a digest of many.
+- **File**: a `.txt` or `.csv` the office has the right to use (each row of a CSV is one ad).
+
+One ad is kept on the broker's page whatever its level (it is his own choice) under «جديدة» until it is matched;
+a digest is filtered as usual. What was read is shown back, with what the ad did not say — nothing is guessed.
+
+### Paid doors (all off by default — no cost without approval)
+
+| Door | Switch | Cost when on |
+|---|---|---|
+| Web search | `SCOUT_SEARCH_KEY` (+ `SCOUT_SEARCH_PROVIDER=tavily\|brave`) | per request to the provider; capped at 40 requests per office per day (`SCOUT_SEARCH_DAILY_PER_OFFICE`); paced per mode (general 1/day, deep 3 every 2 h, urgent 2/hour) |
+| X | `SCOUT_X_BEARER` | about $0.005 per post read, ≤ 10 posts per query, capped at 10 queries per office per day |
+| «ابحث في الويب الآن» (Google Search through Gemini) | `SCOUT_LIVE_SEARCH=enabled` | a paid Google Search request per press; shown to the broker as it came and **never stored or scored** (Google's terms forbid collecting grounded results) |
 
 ### Connecting a licensed feed
 
@@ -109,8 +139,18 @@ Authorization: Bearer <SCOUT_FEED_KEY>
                 "area", "rooms", "publishedAt", "advertiserType", "contact": { "phone", "name", "url" } }] }
 ```
 
-Set `SCOUT_FEED_URL`, `SCOUT_FEED_KEY` (secret) and optionally `SCOUT_FEED_NAME` on the Staging Worker. HTTPS and a
-public host only. No code change is needed; the source appears in the office's settings by itself.
+## What the broker sees and does
+
+- **Lists**: الكل · مطابقة (matched with a record of the office) · جديدة · قيد المراجعة (he opened the contact or
+  recorded its result) · محفوظة · مستبعدة (can be taken back). Last successful search and each source's state on the same page.
+- **A find**: what it is, the estimated fit (the matching engine's score — shown as an estimate, never a certainty),
+  why, the differences in price and area from the office's record, what the ad left out, source link, discovery
+  and publication dates, the advertiser's capacity as read («غير واضحة» when it is not stated).
+- **Actions**: تواصل · فتح المصدر الأصلي · إضافة للمتابعة · استبعاد · ابحث عن مطابقات · أنشئ مهمة متابعة (one task in
+  Daily Tasks, type `SCOUT_FOLLOW_UP`, step «تواصل», opens the find) · سجّل نتيجة التواصل (closes the task) ·
+  اعتماد الفرصة بعد التحقق (opens the normal record form pre-filled — nothing becomes an official record by itself).
+- **Office settings**: city, districts, property types, sale/rent, kinds (offers / requests), price and area range,
+  pace of the general searches (3 h / 6 h / 12 h / daily), alerts on/off and their level, sources. Any city of the Kingdom.
 
 ## Control and lifecycle
 
@@ -134,6 +174,7 @@ office instead of scanning collections · an idle scheduler beat costs one read 
 | | |
 |---|---|
 | `test/office-os-scout.test.mjs` | rules, the 15 scenarios, sources, isolation, limits, Production off |
+| `test/office-os-scout-sources.test.mjs` | link / text / file, web search and X (doubles), live search, settings, lists, differences, follow-up tasks |
 | `scripts/qa/office-os/scout.e2e.mjs` | the broker's screens in a real browser on the local harness |
 | `test/emulator/office-os-rules.emulator.test.mjs` | the scout's collections are closed to every client |
 | `scripts/qa/office-os/scout-live.e2e.mjs` | after each Staging deploy: the whole chain on the deployed Worker with its real cron |

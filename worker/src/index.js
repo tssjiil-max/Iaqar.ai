@@ -520,7 +520,7 @@ export default {
           // allowed on this environment AND the office switched its bot on AND the person pressed Start.
           outboundMessaging: false,
           telegramBot: botOutboundConfig(env).available ? "per_office_switch" : "off",
-          // «باحث الفرص»: available on this environment or not (each office still has its own switch, off by default).
+          // «الباحث عن الفرص»: available on this environment or not (each office still has its own switch, off by default).
           opportunityScout: scoutAvailable(env) ? "per_office_switch" : "off",
           deploymentEnvironment,
           firebaseConfigured,
@@ -931,7 +931,7 @@ export default {
         return await handleAdminSession(request, env, requestId, getAdminHelpers());
       }
 
-      // «باحث الفرص» observability for the platform admin: scheduler beat, sources and why each is or is not usable,
+      // «الباحث عن الفرص» observability for the platform admin: scheduler beat, sources and why each is or is not usable,
       // counts of offices and searches. No office data, no contact details, no secrets.
       if (request.method === "GET" && url.pathname === "/admin/scout/health") {
         assertFirebaseSecrets(env);
@@ -1101,7 +1101,7 @@ export default {
     if (String(env.VALIDITY_SWEEP || "").toLowerCase() === "enabled" && new Date(scheduledTime || Date.now()).getUTCMinutes() < 5) {
       ctx.waitUntil(runValiditySweep(env).catch((error) => console.warn("[office-os] validity sweep", error?.message)));
     }
-    // «باحث الفرص»: one beat of its scheduler on every cron run, only where it is switched on for the environment
+    // «الباحث عن الفرص»: one beat of its scheduler on every cron run, only where it is switched on for the environment
     // (Staging). An idle beat reads one small document; offices whose scout is off cost nothing.
     if (scoutAvailable(env)) {
       ctx.waitUntil(runScoutBeat(env).catch((error) => console.warn("[scout] beat failed", error?.code || error?.message)));
@@ -6132,7 +6132,7 @@ export const PUSH_TYPE_NOTIFICATION_CATEGORIES = Object.freeze({
   viewing: "appointmentNotifications",
   operation: "systemNotifications",
   system: "systemNotifications",
-  // «باحث الفرص»: a strong find for one of the office's offers or requests follows the office's match preference.
+  // «الباحث عن الفرص»: a strong find for one of the office's offers or requests follows the office's match preference.
   scout: "matchNotifications"
 });
 

@@ -1,5 +1,5 @@
 /**
- * «باحث الفرص» — source adapters.
+ * «الباحث عن الفرص» — source adapters.
  *
  * One small contract, so a source is added (or switched off) without touching the scout itself:
  *
@@ -15,15 +15,25 @@
  * Rules of this file:
  *   • Only sources the office is entitled to read. A website is never read against its terms or its robots.txt,
  *     and nothing here logs in, rotates addresses or imitates a browser to get around a refusal.
- *   • عقار and حراج are registered as UNAVAILABLE with the reason found when their terms were checked; they have
- *     no fetch code. They become usable only through a data agreement, which then arrives as «تغذية مرخّصة».
+ *   • عقار، حراج، بيوت and وصلت are registered as needing a permission, with the reason found when their terms were
+ *     checked; they have no fetch code. They become usable only through a data agreement, which then arrives as
+ *     «تغذية مرخّصة». Until then the broker enters an ad's link with its text himself.
  *   • WhatsApp is not crawled: only messages that reached the office through its official integration are read.
+ *   • The open web is asked through a web-search API only (scout-web.js): result pages are never opened, and
+ *     sites that forbid collecting their listings are left out of the results too.
  *   • Logs carry counts and codes — never a phone, a name or an ad's text.
  */
 
 import { splitDigest } from "../../../public/os/domain/scout-domain.js";
+import { postsSearchAdapter, webSearchAdapter } from "./scout-web.js";
 
-export const SOURCE_STATE = Object.freeze({ AVAILABLE: "AVAILABLE", NOT_CONFIGURED: "NOT_CONFIGURED", UNAVAILABLE: "UNAVAILABLE" });
+/**
+ * AVAILABLE          connected: the scout reads it now
+ * NOT_CONFIGURED     ready in the code, waiting for a key the platform has not set (a paid service is never switched on by itself)
+ * NEEDS_PERMISSION   the site's terms forbid automated reading; usable only after an access agreement
+ * UNAVAILABLE        there is no official way to read it at all
+ */
+export const SOURCE_STATE = Object.freeze({ AVAILABLE: "AVAILABLE", NOT_CONFIGURED: "NOT_CONFIGURED", NEEDS_PERMISSION: "NEEDS_PERMISSION", UNAVAILABLE: "UNAVAILABLE" });
 
 const text = (value, max = 200) => String(value ?? "").trim().slice(0, max);
 const iso = (value) => { const t = new Date(value || 0).getTime(); return Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : ""; };
@@ -62,17 +72,29 @@ const officeInbox = {
   }
 };
 
+const linkHost = (url) => { try { return new URL(url).hostname.toLowerCase().replace(/^www\./, "").replace(/[^a-z0-9.-]/g, "").slice(0, 60); } catch (_) { return ""; } };
+
 const brokerFeed = {
   id: "broker_feed",
-  label: "ما يلصقه المكتب للباحث",
+  label: "ما يضيفه المكتب (رابط، نص، ملف)",
   kind: "OFFICE",
-  access: { method: "Firestore: offices/{officeId}/scoutFeed", basis: "إعلانات وصلت للوسيط في قروباته أو محادثاته وألصقها بنفسه — يقدّمها المكتب، ولا يُقرأ أي حساب أو قروب آليًا" },
+  access: { method: "Firestore: offices/{officeId}/scoutFeed", basis: "إعلان أدخل الوسيط رابطه، أو نص ألصقه، أو ملف استورده بنفسه — يقدّمها المكتب، ولا يُقرأ أي حساب أو قروب آليًا" },
   quality: 0.6,
   availability: () => ({ state: SOURCE_STATE.AVAILABLE, reason: "" }),
   async fetch(ctx, { officeId, since, limit }) {
     const docs = await ctx.store.queryAfter(["offices", officeId], "scoutFeed", { field: "createdAt", after: since, limit: Math.min(20, limit) });
     const items = [];
-    for (const doc of docs) items.push(...itemsFromText({ sourceId: "broker_feed", docId: doc.id, body: String(doc.text || ""), at: iso(doc.createdAt) }));
+    for (const doc of docs) {
+      const found = itemsFromText({ sourceId: "broker_feed", docId: doc.id, body: String(doc.text || ""), at: iso(doc.createdAt) });
+      // One ad the broker brought himself: kept for him whatever its level. With a link, the link is the ad's identity
+      // (the same address entered again is the same ad — an update, never a second find).
+      if (found.length === 1 && doc.pinned === true) {
+        const link = /^https:\/\//.test(String(doc.link || "")) ? String(doc.link).slice(0, 500) : "";
+        const host = link ? linkHost(link) : "";
+        Object.assign(found[0], { pinned: true }, host ? { sourceId: `link_${host}`, externalId: link.replace(/^https:\/\/(www\.)?/, "").replace(/#.*$/, "").slice(-120), url: link, contactRoute: link } : {});
+      }
+      items.push(...found);
+    }
     return { items, scanned: docs.length, until: iso(docs.at(-1)?.createdAt) };
   }
 };
@@ -100,7 +122,7 @@ const partnerFeed = {
   quality: 0.8,
   mutable: true,
   queryable: true,
-  availability: (ctx) => (feedConfig(ctx.env).ready ? { state: SOURCE_STATE.AVAILABLE, reason: "" } : { state: SOURCE_STATE.NOT_CONFIGURED, reason: "لا توجد تغذية مرخّصة مضبوطة على هذه البيئة" }),
+  availability: (ctx) => (feedConfig(ctx.env).ready ? { state: SOURCE_STATE.AVAILABLE, reason: "" } : { state: SOURCE_STATE.NOT_CONFIGURED, reason: "تعمل بعد توقيع اتفاقية بيانات مع مزوّد مرخّص وتفعيلها من إدارة المنصة." }),
   async fetch(ctx, { since, limit, forms = [] }) {
     const config = feedConfig(ctx.env);
     if (!config.ready) return { items: [], scanned: 0 };
@@ -157,31 +179,50 @@ const qaFixture = {
   }
 };
 
-/** Checked against each site's own published terms and robots.txt (October 2026). No fetch code exists for them. */
-const unavailable = (id, label, reason) => ({
+/**
+ * Checked against each site's own published terms and robots.txt (October 2026). No fetch code exists for them.
+ * `reason` is what the office reads; `basis` is what was found when the terms were checked (for the platform's report).
+ */
+const unavailable = (id, label, reason, basis, state = SOURCE_STATE.NEEDS_PERMISSION) => ({
   id, label, kind: "EXTERNAL", quality: 0,
-  access: { method: "none", basis: reason },
-  availability: () => ({ state: SOURCE_STATE.UNAVAILABLE, reason }),
+  access: { method: "none", basis },
+  availability: () => ({ state, reason }),
   fetch: async () => ({ items: [], scanned: 0 })
 });
+const BY_LINK = "البديل الآن: أدخل رابط الإعلان مع نصه.";
 
 export const SOURCE_ADAPTERS = Object.freeze([
   officeInbox,
   brokerFeed,
+  webSearchAdapter,
+  postsSearchAdapter,
   partnerFeed,
   qaFixture,
-  unavailable("aqar", "عقار", "robots.txt يمنع صفحات البحث والمدن والأحياء والتصنيفات ومعلومات المعلن، والشروط تمنع جمع بيانات المنصة ومستخدميها؛ لا يوجد API عام. يحتاج اتفاقية وصول."),
-  unavailable("haraj", "حراج", "اتفاقية الاستخدام تمنع نسخ العروض وجمع البيانات وأدوات التجميع. يحتاج اتفاقية وصول.")
+  unavailable("aqar", "عقار", `شروط الموقع تمنع القراءة الآلية لإعلاناته، ولا يوفر واجهة رسمية للبيانات. يحتاج اتفاقية وصول. ${BY_LINK}`,
+    "robots.txt يمنع صفحات البحث والمدن والأحياء والتصنيفات ومعلومات المعلن، والشروط تمنع جمع بيانات المنصة ومستخدميها؛ لا يوجد API عام."),
+  unavailable("haraj", "حراج", `اتفاقية الاستخدام تمنع نسخ العروض وجمعها آليًا. يحتاج اتفاقية وصول. ${BY_LINK}`,
+    "اتفاقية الاستخدام تمنع نسخ العروض وجمع البيانات وأدوات التجميع؛ لا يوجد API عام."),
+  unavailable("bayut", "بيوت السعودية", `شروط الموقع تمنع البرامج الآلية وتكوين قواعد بيانات من محتواه. يحتاج ترخيصًا من المنصة. ${BY_LINK}`,
+    "شروط الاستخدام (البند 8) تمنع الروبوتات والزواحف وتكوين قواعد بيانات من المحتوى، وrobots.txt يمنع /property/*؛ لا يوجد API عام."),
+  unavailable("wasalt", "وصلت", `لم يتأكد لنا أن شروط الموقع تجيز القراءة الآلية، ولا يوفر واجهة رسمية معلنة. لا يُقرأ إلا بتصريح من المنصة. ${BY_LINK}`,
+    "robots.txt يسمح بصفحات الإعلانات ويمنع /search، لكن تعذر التحقق من شروط الاستخدام ولا يوجد API عام معلن — يُعامل كمصدر يحتاج تصريحًا."),
+  unavailable("telegram_groups", "قروبات وقنوات تيليجرام", "تُقرأ فقط بإضافة بوت المنصة إلى القروب بموافقة مشرفه، وهذه الإضافة لم تُعتمد بعد. البديل الآن: أعد توجيه الإعلانات إلى محادثة المكتب المرتبطة، أو الصقها.",
+    "واجهة Bot API الرسمية تسمح بذلك بعد إضافة البوت من مشرف القروب؛ التنفيذ يتطلب تعديلًا في webhook البوت المركزي، وهو مؤجل حتى موافقة المالك."),
+  unavailable("whatsapp_groups", "قروبات واتساب", "لا توجد وسيلة رسمية لقراءة القروبات الخاصة. يُقرأ فقط ما يصل رقم المكتب المرتبط رسميًا. البديل: الصق الإعلانات أو استورد ملف المحادثة.",
+    "لا توفر واجهات واتساب الرسمية قراءة قروبات المستخدمين الخاصة.", SOURCE_STATE.UNAVAILABLE)
 ]);
 
 const BY_ID = new Map(SOURCE_ADAPTERS.map((adapter) => [adapter.id, adapter]));
-const adapterOf = (sourceId) => BY_ID.get(String(sourceId || "").startsWith("qa_") ? "qa_fixture" : String(sourceId || "")) || null;
+const adapterOf = (sourceId) => { const id = String(sourceId || ""); return BY_ID.get(id.startsWith("qa_") ? "qa_fixture" : id.startsWith("web_") && id !== "web_search" ? "web_search" : id.startsWith("link_") ? "broker_feed" : id) || null; };
 
 export function sourceLabel(sourceId, env = {}) {
   const adapter = adapterOf(sourceId);
   if (!adapter) return "مصدر";
   if (adapter.id === "partner_feed") return feedConfig(env).name;
   if (adapter.id === "qa_fixture") return `مصدر اختبار (${String(sourceId).slice(3) || "fixture"})`;
+  if (adapter.id === "broker_feed" && String(sourceId).startsWith("link_")) return `رابط أدخله المكتب · ${String(sourceId).slice(5)}`;
+  // A web find names the site it was found on («وُجدت في مصدرين» then means two different sites).
+  if (adapter.id === "web_search" && sourceId !== "web_search") return `الويب · ${String(sourceId).slice(4)}`;
   return adapter.label;
 }
 
