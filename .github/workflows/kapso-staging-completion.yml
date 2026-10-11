@@ -1,0 +1,56 @@
+name: Kapso Staging completion
+on:
+  push:
+    branches: [codex/kapso-staging-e2e-20261011]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: iaqar-kapso-staging-completion
+  cancel-in-progress: false
+jobs:
+  kapso:
+    if: github.ref == 'refs/heads/codex/kapso-staging-e2e-20261011'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      KAPSO_WEBHOOK_SECRET: ${{ secrets.KAPSO_WEBHOOK_SECRET_STAGING }}
+      KAPSO_API_KEY: ${{ secrets.KAPSO_API_KEY_STAGING }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm ci --prefix worker
+      - name: Verify local integration before touching Staging
+        run: node --test test/office-os-kapso.test.mjs && node scripts/qa/office-os/kapso.e2e.mjs
+      - name: Sync only the two Kapso secrets on the existing Staging Worker
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KAPSO_WEBHOOK_SECRET"
+          test -n "$KAPSO_API_KEY"
+          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
+          test "$CLOUDFLARE_ACCOUNT_ID" = '66b8fc5b9d25b9ed0f3177d6b8160fad'
+          printf '%s' "$KAPSO_WEBHOOK_SECRET" | tr -d '\r\n' | npx wrangler secret put KAPSO_WEBHOOK_SECRET --env staging
+          printf '%s' "$KAPSO_API_KEY" | tr -d '\r\n' | npx wrangler secret put KAPSO_API_KEY --env staging
+      - name: Verify fixture and live signature isolation
+        run: node scripts/staging-kapso-setup.mjs
+      - name: Configure Kapso and verify live persistence and matching
+        env:
+          KAPSO_REPORT_PATH: ${{ runner.temp }}/kapso-result.json
+        run: node scripts/staging-kapso-completion.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kapso-staging-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/kapso-result.json
+          if-no-files-found: warn
+          retention-days: 7
