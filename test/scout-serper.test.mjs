@@ -21,6 +21,7 @@ test('Serper caches repeats and reserves global credits before failed calls',asy
  try {
   const first=await webSearchAdapter.fetch(ctx,{forms:[form,form],now:new Date('2026-10-11T12:00:00Z')});
   assert.equal(first.queries,1);assert.equal(count,1);assert.ok(first.items.length);
+  assert.ok([...ctx.docs.keys()].some(k=>k.includes("/scoutState/serper_")), "cache must use the existing Worker-only collection");
   const repeat=await webSearchAdapter.fetch(ctx,{forms:[form],now:new Date('2026-10-11T12:10:00Z')});
   assert.equal(repeat.queries,0);assert.equal(count,1);assert.equal(repeat.items[0].url,first.items[0].url);
   await webSearchAdapter.fetch(ctx,{forms:[{...form,districts:['شوران']}],now:new Date('2026-10-11T12:20:00Z')});assert.equal(count,1);

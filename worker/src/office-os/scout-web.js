@@ -86,10 +86,10 @@ async function cachedSerper(ctx, { config, query, days, now, officeId }) {
   const day = new Date(now.getTime() + 3 * 3600000).toISOString().slice(0, 10);
   const hash = await ctx.deps.sha256Hex(JSON.stringify([query.replace(/\s+/g, " ").trim(), days, config.excluded]));
   // Cache/claim belongs to the office, preserving office isolation. A claim prevents concurrent duplicate calls.
-  const path = ["offices", officeId, "scoutSerperCache", `${day}_${hash}`];
+  const path = ["offices", officeId, "scoutState", `serper_${day}_${hash}`];
   const saved = await ctx.store.get(path);
   if (saved) return { rows: JSON.parse(saved.rowsJson || "[]"), queries: 0 };
-  if (!await ctx.store.create(path, { status: "reserved", createdAt: now })) return { rows: [], queries: 0 };
+  if (!await ctx.store.create(path, { cacheProvider: "serper", status: "reserved", createdAt: now })) return { rows: [], queries: 0 };
   const budgetPath = ["_system", "scoutSerperBudget"];
   await ctx.store.create(budgetPath, { total: 0, day, daily: 0, officesJson: "{}" });
   const reservation = await ctx.store.update(budgetPath, current => {
@@ -109,8 +109,9 @@ async function cachedSerper(ctx, { config, query, days, now, officeId }) {
     await ctx.store.set(path, { status: "complete", rowsJson: JSON.stringify(rows), updatedAt: now });
     return { rows, queries: 1 };
   } catch (error) {
-    await ctx.store.set(path, { status: "failed", code: error?.code || "search_failed", updatedAt: now });
-    throw error;
+    const code = error?.code || ({ TimeoutError: "serper_timeout", AbortError: "serper_aborted", TypeError: "serper_transport_error" }[error?.name]) || "search_failed";
+    await ctx.store.set(path, { status: "failed", code, updatedAt: now });
+    throw fail(code);
   }
 }
 

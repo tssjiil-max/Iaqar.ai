@@ -31,12 +31,12 @@ try{
  token=(await signed.json()).idToken;if(!token)throw new Error('QA sign-in failed');
  await call('/os/scout/settings',{settings:{enabled:true,notify:false,sources:{office_inbox:false,broker_feed:false,partner_feed:false,qa_fixture:false,x_search:false,web_search:true}}});
  const before=await budget();
- const started=await call('/os/scout/search',{search:{mode:'GENERAL',seek:'OFFER',tx:'sale',propertyTypes:['عمارة'],city:'المدينة المنورة',districts:'الهجرة',nlText:report.query},requestKey:`serper-${run}`});
+ const started=await call('/os/scout/search',{search:{mode:'GENERAL',seek:'OFFER',tx:'sale',propertyTypes:['عمارة'],city:'المدينة المنورة',districts:'الهجرة',preferDirectOwner:true,nlText:report.query},requestKey:`serper-${run}`});
  report.taskId=started.taskId;
  // GENERAL queues its first source round; explicitly run it before reading evidence.
  await call('/os/scout/search/control',{taskId:started.taskId,action:'RUN_NOW'});
  const overview=await call('/os/scout/overview');
- const caches=(await ref.collection('scoutSerperCache').get()).docs.map(d=>d.data());
+ const caches=(await ref.collection('scoutState').where('cacheProvider','==','serper').get()).docs.map(d=>d.data());
  report.providerConnected=caches.some(d=>d.status==='complete');
  report.providerErrors=caches.filter(d=>d.status==='failed').map(d=>d.code);
  report.realResults=caches.flatMap(d=>JSON.parse(d.rowsJson||'[]')).map(r=>({title:r.title,url:r.url,snippet:r.snippet}));
