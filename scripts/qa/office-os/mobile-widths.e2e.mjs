@@ -15,7 +15,8 @@ fs.mkdirSync(OUT, { recursive: true });
 const { startOfficeOsHarness, OWNER_A, OFFICE_A } = await import(path.join(ROOT, "scripts/qa/office-os/server.mjs"));
 const { seedStates } = await import(path.join(ROOT, "scripts/qa/office-os/seed.mjs"));
 
-const WIDTHS = [320, 360, 375, 390, 412, 430];
+// Phones, then a tablet and a small laptop. WIDTHS=390,768 (env) narrows a local run; SCREENS=public-office,login narrows the screens.
+const WIDTHS = process.env.WIDTHS ? process.env.WIDTHS.split(",").map(Number).filter(Boolean) : [320, 360, 375, 390, 412, 430, 768, 1024];
 const h = await startOfficeOsHarness();
 // «بوت المكتب» is available here so its cards and the side's link row are measured too. Nothing is sent:
 // the office's switch stays off and Telegram is never called.
@@ -33,9 +34,19 @@ await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), 
 await callWorker(h, "/os/session/act", { token: linkToken(negLinks.owner.url), action: "term_accept", termId: "transfer_time", optionId: "two_weeks", submissionId: "widths-term-3" }, "");
 await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), action: "intervention", message: "أحتاج مهلة قصيرة لترتيب التمويل قبل الرد على السعر النهائي، هل يمكن ذلك؟", submissionId: "widths-request-1" }, "");
 
+const SMART_OFFER = "للبيع فيلا في حي النرجس بالرياض مساحة ٤٥٠ م٢، ٥ غرف، واجهة شمالية، السعر 2.3 مليون";
+const SMART_REQUEST = "مطلوب عمارة في شوران أو الهجرة أو الرانوناء، الميزانية مليونين، شراء، مستعجل.";
 const SCREENS = [
   { name: "public-office", url: "/o/sultan", wait: "text=لدي عقار", auth: false },
   { name: "public-form", url: "/o/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.getByRole("button", { name: /لدي عقار/ }).click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
+  // The two public forms in every state a visitor meets: «تعبئة ذكية» empty and analysed, «تعبئة يدوية», the
+  // cooperating-broker fields, the validation messages. Test data only; nothing is sent.
+  { name: "public-form-smart", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').waitFor(); } },
+  { name: "public-form-smart-review", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').fill(SMART_OFFER); await p.locator("[data-smart-analyze]").click(); await p.locator("[data-smart-review]").waitFor(); } },
+  { name: "public-request-form", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
+  { name: "public-request-smart-review", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('[name="smartText"]').fill(SMART_REQUEST); await p.locator("[data-smart-analyze]").click(); await p.locator("[data-smart-review]").waitFor(); } },
+  { name: "public-form-coop-broker", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('[data-testid="submitter-role"]').selectOption("EXTERNAL_BROKER"); await p.locator('input[name="externalBrokerLicense"]').waitFor(); } },
+  { name: "public-form-errors", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.locator(".os-field.invalid").first().waitFor(); } },
   { name: "login", url: "/", wait: 'input[name="phone"]', auth: false },
   { name: "register", url: "/#/register", wait: "[data-broker-form]", auth: false },
   { name: "register-states", url: "/#/register", wait: "[data-broker-form]", auth: false, act: async (p) => { await p.fill('input[name="email"]', "x"); await p.fill('input[name="password"]', "short"); await p.fill('input[name="phone"]', "0512345678"); await p.locator('input[name="brokerName"]').focus(); await p.locator('[data-field="password"].invalid').waitFor(); } },
@@ -54,6 +65,9 @@ const SCREENS = [
   { name: "tool-forms", url: "/#/tools/forms", wait: ".os-page-title" },
   { name: "record-detail", url: `/#/record/${s.review.offerId}`, wait: "text=تفاصيل السجل" },
   { name: "record-form", url: `/#/record/${s.review.requestId}/edit`, wait: 'input[name="district"]' },
+  { name: "record-form-new-smart", url: "/#/record/new?kind=OFFER", wait: '[name="smartText"]' },
+  { name: "record-form-new-manual", url: "/#/record/new?kind=REQUEST", wait: '[name="smartText"]', act: async (p) => { await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
+  { name: "quick-add", url: "/#/quick-add", wait: ".os-page-title" },
   { name: "review", url: `/#/review/${s.review.matchId}`, wait: "text=أسباب التوافق" },
   { name: "journey-negotiation", url: `/#/journey/${s.negotiation.journeyId}`, wait: "text=المطلوب الآن" },
   { name: "party-proposal", url: `/#/journey/${s.negotiation.journeyId}`, wait: "text=المطلوب الآن", act: async (p) => { await p.getByRole("button", { name: "إرسال مقترح إلى المالك", exact: true }).click(); await p.locator(".os-sheet").waitFor(); } },
@@ -89,7 +103,15 @@ const SCREENS = [
   { name: "bot-cards", url: "/#/settings/channels", wait: "[data-bot]", act: async (p) => { await p.locator("[data-bot-alerts-state]").waitFor(); } },
   { name: "bot-switch-confirm", url: "/#/settings/channels", wait: "[data-bot-toggle]", act: async (p) => { await p.locator("[data-bot-toggle]").click(); await p.locator(".os-dialog").waitFor(); } },
   { name: "bot-alerts-link", url: "/#/settings/notifications", wait: "[data-bot-alerts-link]", act: async (p) => { await p.locator("[data-bot-alerts-link]").click(); await p.locator("[data-bot-alerts-open]").waitFor(); } },
-  { name: "record-bot-link", url: `/#/record/${s.review.requestId}`, wait: "[data-bot-party-link]", act: async (p) => { await p.locator("[data-bot-party-link]").click(); await p.locator("[data-bot-party-url]").waitFor(); } }
+  { name: "record-bot-link", url: `/#/record/${s.review.requestId}`, wait: "[data-bot-party-link]", act: async (p) => { await p.locator("[data-bot-party-link]").click(); await p.locator("[data-bot-party-url]").waitFor(); } },
+  // Last: «المراجعة والإرسال» to the end. It stores one isolated test intake in the in-memory office (a district no seed uses).
+  { name: "public-form-sent", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => {
+    await p.locator('[data-path="client"]').click(); await p.locator('[data-fill-mode="manual"]').click();
+    await p.getByRole("button", { name: "استئجار", exact: true }).click();
+    await p.locator('[name="propertyType"]').fill("استراحة"); await p.locator('[name="district"]').fill("حي اختبار العرض"); await p.locator('[name="price"]').fill("45000");
+    await p.locator('[name="contactName"]').fill("زائر اختباري"); await p.locator('[name="contactPhone"]').fill(`05599${String(p.viewportSize().width).padStart(5, "0")}`);
+    await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.getByRole("heading", { name: "تم استلام بياناتك" }).waitFor();
+  } }
 ];
 
 function layoutIssues() {
@@ -162,6 +184,64 @@ function layoutIssues() {
   return issues;
 }
 
+// Typography of «خط النسخ» on the rendered page: the face really is Noto Naskh Arabic, nothing is set under 13px, every
+// Arabic line has room for its marks and tails (line-height ≥ 1.4, the measured minimum of the face), text meets
+// WCAG AA contrast against the background it really sits on, and the page reads right-to-left.
+function typeIssues() {
+  const issues = [];
+  const add = (kind, el, detail) => {
+    const name = `${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".") : ""}`;
+    issues.push(`${kind} ${name} ${detail}`);
+  };
+  if (document.documentElement.dir !== "rtl") issues.push("not-rtl <html>");
+  const family = getComputedStyle(document.body).fontFamily;
+  if (!/^"?Noto Naskh Arabic/.test(family)) issues.push(`font-family ${family.slice(0, 40)}`);
+  if (!document.fonts.check('600 18px "Noto Naskh Arabic"', "عقار")) issues.push("font-not-loaded Noto Naskh Arabic");
+  const parse = (c) => { const m = String(c).match(/rgba?\(([^)]+)\)/); if (!m) return null; const v = m[1].split(/[,\s/]+/).filter(Boolean).map(Number); return { r: v[0], g: v[1], b: v[2], a: v.length > 3 ? v[3] : 1 }; };
+  const mix = (top, under) => ({ r: top.r * top.a + under.r * (1 - top.a), g: top.g * top.a + under.g * (1 - top.a), b: top.b * top.a + under.b * (1 - top.a), a: 1 });
+  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+  const backgroundOf = (el) => {
+    const layers = [];
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      const c = parse(getComputedStyle(n).backgroundColor);
+      if (c && c.a > 0) { layers.push(c); if (c.a >= 1) break; }
+    }
+    let base = { r: 255, g: 255, b: 255, a: 1 };
+    for (const layer of layers.reverse()) base = mix(layer, base);
+    return base;
+  };
+  const opacityOf = (el) => { let o = 1; for (let n = el; n && n.nodeType === 1; n = n.parentElement) o *= Number(getComputedStyle(n).opacity || 1); return o; };
+  const scope = document.querySelector(".os-overlay") || document.body;
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+  const seen = new Set();
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.nodeValue.trim();
+    const el = node.parentElement;
+    if (!text || !el || seen.has(el)) continue;
+    seen.add(el);
+    if (el.closest("script,style,noscript,[hidden],.sr-only,.os-toast,option,select") || (el.closest("details:not([open])") && !el.closest("summary"))) continue;
+    const cs = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    if (!box.width || !box.height || cs.visibility === "hidden" || cs.display === "none") continue;
+    const size = parseFloat(cs.fontSize);
+    const arabic = /[\u0600-\u06FF]/.test(text);
+    if (size < 12.95) add("small-text", el, `${size}px "${text.slice(0, 18)}"`);
+    const line = cs.lineHeight === "normal" ? 1.7 : parseFloat(cs.lineHeight) / size;
+    if (arabic && line < 1.395) add("tight-line", el, `${line.toFixed(2)} "${text.slice(0, 18)}"`);
+    if (el.closest("[disabled],[aria-disabled='true']")) continue;
+    const fg = parse(cs.color);
+    if (!fg) continue;
+    const bg = backgroundOf(el);
+    const ink = mix({ ...fg, a: fg.a * opacityOf(el) }, bg);
+    const ratio = (Math.max(lum(ink), lum(bg)) + 0.05) / (Math.min(lum(ink), lum(bg)) + 0.05);
+    const large = size >= 24 || (size >= 18.66 && Number(cs.fontWeight) >= 700);
+    if (ratio < (large ? 3 : 4.5) - 0.02) add("contrast", el, `${ratio.toFixed(2)} ${cs.color}→rgb(${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)}) "${text.slice(0, 14)}"`);
+  }
+  return issues;
+}
+
+const ONLY = process.env.SCREENS ? new Set(process.env.SCREENS.split(",")) : null;
+if (ONLY) SCREENS.splice(0, SCREENS.length, ...SCREENS.filter((x) => ONLY.has(x.name)));
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 const results = [];
 const consoleErrors = [];
@@ -181,7 +261,8 @@ for (const width of WIDTHS) {
       await page.locator(screen.wait).first().waitFor();
       if (screen.act) await screen.act(page);
       await page.waitForTimeout(400);
-      issues = await page.evaluate(layoutIssues);
+      await page.evaluate(() => document.fonts.ready);
+      issues = [...await page.evaluate(layoutIssues), ...await page.evaluate(typeIssues)];
       await page.screenshot({ path: path.join(OUT, `${width}-${screen.name}.png`), fullPage: true });
     } catch (error) {
       issues = [`failed to render: ${String(error.message).split("\n")[0]}`];

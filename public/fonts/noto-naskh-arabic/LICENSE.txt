@@ -1,8 +1,13 @@
-Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+Noto Naskh Arabic — Version 2.021 (variable, wght 400–700), from the official Google Fonts release
+(github.com/google/fonts, ofl/notonaskharabic). The file here is a subset (Arabic, Arabic presentation forms,
+Basic Latin and Latin-1) saved as WOFF2; glyph outlines and layout tables are unchanged.
+
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-http://scripts.sil.org/OFL
+https://openfontlicense.org
+
 
 -----------------------------------------------------------
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
