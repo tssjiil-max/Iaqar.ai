@@ -1,5 +1,7 @@
 {
   "mode": "preflight",
   "confirm": "",
-  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>."
+  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>.",
+  "requestedAt": "2026-10-11T19:00+03:00",
+  "approved": "owner: «انشر كل ما على Staging» — read-only preflight for f51057d first"
 }

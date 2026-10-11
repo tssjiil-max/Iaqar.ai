@@ -33,6 +33,16 @@ jobs:
       FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON || secrets.FIREBASE_SERVICE_ACCOUNT_JSON_PRODUCTION }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_PRODUCTION || secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN_PRODUCTION || secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET_PRODUCTION || secrets.TELEGRAM_WEBHOOK_SECRET }}
+      META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+      META_WEBHOOK_VERIFY_TOKEN: ${{ secrets.META_WEBHOOK_VERIFY_TOKEN }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_PRODUCTION || secrets.GEMINI_API_KEY }}
+      # Production Worker settings (public values) applied on every production Worker deploy.
+      PRODUCTION_VARS: >-
+        --var META_APP_ID:1315826203671419 --var META_CONFIG_ID:935400705477695 --var META_ONBOARDING_MODE:coexistence
+        --var GEMINI_MODEL:gemini-3.1-flash-lite --var TELEGRAM_OUTBOUND:enabled
+        --var FCM_WEB_PUSH_VAPID_KEY:BOboNFtqDOuO8XqldC_qmcF2YgHCQqg3cz-UOeehJ3z9fsO4h57KVz5ASj0YvF4TYXmHvRzstbaCcuyfPTL0rVo
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,10 +55,20 @@ jobs:
           REQ=.github/production-pilot-request.json
           MODE="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).mode||"")' "$REQ")"
           CONFIRM="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).confirm||"")' "$REQ")"
-          [ "$MODE" = "preflight" ] || [ "$MODE" = "deploy" ] || { echo "::error title=refused::mode must be preflight or deploy"; exit 1; }
+          case "$MODE" in preflight|deploy|channels-inspect|channels-connect|quick-check) ;; *) echo "::error title=refused::unknown mode $MODE"; exit 1;; esac
           # The last commit may change ONLY the request file; its parent must be on the tested staging lineage.
+          # Besides the request, the release commit may only carry launch tooling (never app code); that tooling
+          # is kept aside and run from there, while the deployed tree is exactly the parent commit.
           CHANGED="$(git diff --name-only HEAD^ HEAD)"
-          [ "$CHANGED" = "$REQ" ] || { echo "::error title=refused::the release commit must change only $REQ (changed: $CHANGED)"; exit 1; }
+          OTHER="$(printf '%s\n' "$CHANGED" | grep -vxE '\.github/production-pilot-request\.json|\.github/workflows/production-pilot\.yml|scripts/production-pilot-[a-z-]+\.mjs|scripts/qa/office-os/live-preview\.e2e\.mjs|firestore\.indexes\.json|firebase\.json' || true)"
+          [ -z "$OTHER" ] || { echo "::error title=refused::the release commit may change only the request and launch tooling (also changed: $OTHER)"; exit 1; }
+          TOOLS="$RUNNER_TEMP/tooling/scripts"
+          mkdir -p "$TOOLS"
+          cp scripts/production-pilot-*.mjs scripts/production-credentials.mjs scripts/staging-credentials.mjs "$TOOLS/"
+          cp scripts/qa/office-os/live-preview.e2e.mjs "$TOOLS/live-preview.e2e.mjs"
+          cp firestore.indexes.json "$TOOLS/firestore.indexes.json"
+          cp firebase.json "$TOOLS/firebase.json"
+          echo "TOOLS=$TOOLS" >> "$GITHUB_ENV"
           PARENT="$(git rev-parse HEAD^)"
           git fetch -q origin codex/unified-staging-lineage-2026-08-29
           git merge-base --is-ancestor "$PARENT" FETCH_HEAD || { echo "::error title=refused::$PARENT is not on the tested staging lineage"; exit 1; }
@@ -56,7 +76,7 @@ jobs:
           if [ "$MODE" = "deploy" ] && [ "$CONFIRM" != "DEPLOY-$SHORT" ]; then echo "::error title=refused::deploy needs confirm = DEPLOY-$SHORT"; exit 1; fi
           [ -n "${FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON:-}" ] || { echo "::error title=missing secret::FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON (service account of aqar-b5d76) is not set"; exit 1; }
           node -e 'const sa=JSON.parse(process.env.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON);if(sa.project_id!=="aqar-b5d76"){console.log("::error title=refused::the production secret is not a service account of aqar-b5d76");process.exit(1)}console.log("production service account: project aqar-b5d76 (values not printed)")'
-          if [ "$MODE" = "deploy" ]; then
+          if [ "$MODE" = "deploy" ] || [ "$MODE" = "channels-connect" ]; then
             [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ] || { echo "::error title=missing secret::Cloudflare token/account for the production Worker"; exit 1; }
           fi
           git checkout -q "$PARENT"
@@ -66,31 +86,54 @@ jobs:
           echo "sha=$PARENT" >> "$GITHUB_ENV"
           echo "::notice title=production pilot::$MODE · commit $SHORT"
 
-      - uses: actions/setup-node@v4
+      - name: Quick check — bot switches, Telegram links, central bot health, broken logos
+        if: env.MODE == 'quick-check'
+        run: node "$TOOLS/production-pilot-quick.mjs"
+
+      - name: Channels — read-only inspection (credentials seen, Worker secret names, bot + Meta webhooks)
+        if: env.MODE == 'channels-inspect'
+        run: |
+          node "$TOOLS/production-pilot-channels.mjs"
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            NAMES="$(cd worker && npx --yes wrangler@4 secret list --name iaqar-macrodroid-intake 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).map(x=>x.name).join(", "))}catch{console.log("(could not list)")}})')"
+            echo "::notice title=production Worker secret names::$NAMES"
+          fi
+          echo "::notice title=channels inspected::nothing was changed"
+          exit 0
+
+      - if: env.MODE != 'channels-inspect' && env.MODE != 'quick-check'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
       - name: Install
+        if: env.MODE != 'channels-inspect' && env.MODE != 'quick-check'
         run: npm ci && npm ci --prefix worker
 
       - name: Live before the change (read-only)
+        if: env.MODE != 'channels-inspect' && env.MODE != 'quick-check'
         run: |
           curl -fsS https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/health | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s);console.log(`::notice title=production Worker before::${h.deploymentEnvironment} · ${h.projectId} · backendReady=${h.backendReady}`)})'
           curl -fsS -o /dev/null -w "iaqar.ai HTTP %{http_code}\n" https://iaqar.ai/
 
-      - name: Rollback point (live Hosting version + live rules)
-        run: node scripts/production-pilot-rollback.mjs record "$OUT_DIR"
+      - name: Rollback point (live Hosting version + live rules + pilot switch)
+        if: env.MODE != 'channels-inspect' && env.MODE != 'quick-check'
+        run: |
+          node "$TOOLS/production-pilot-rollback.mjs" record "$OUT_DIR"
+          node "$TOOLS/production-pilot-access.mjs" record "$OUT_DIR"
 
       - name: Data snapshot to the production bucket + compatibility of production offices
-        run: node scripts/production-pilot-backup.mjs
+        if: env.MODE != 'channels-inspect' && env.MODE != 'quick-check'
+        run: node "$TOOLS/production-pilot-backup.mjs"
 
       - name: Existing production preflight (informational)
+        if: env.MODE != 'channels-inspect' && env.MODE != 'quick-check'
         continue-on-error: true
         run: node scripts/preflight-production-blockers.mjs
 
       - name: Record the live Worker version
-        if: env.MODE == 'deploy'
+        if: env.MODE == 'deploy' || env.MODE == 'channels-connect'
         working-directory: worker
         run: |
           set -euo pipefail
@@ -107,17 +150,36 @@ jobs:
           npm test --prefix worker
           node --test test/office-os-visitor.test.mjs test/office-os-visitor-conversation.test.mjs test/office-os-agent.test.mjs test/office-os-validity.test.mjs test/office-os-security.test.mjs
 
-      - name: Deploy — Worker, Firestore rules/indexes, Hosting (aqar-b5d76)
+      - name: Deploy 1/2 — production Worker
         id: deploy
         if: env.MODE == 'deploy'
         run: |
-          set -euo pipefail
+          set -o pipefail
           node scripts/write-staging-version.mjs --channel=production
-          (cd worker && npx wrangler deploy)
+          if ! (cd worker && npx wrangler deploy $PRODUCTION_VARS) > "$RUNNER_TEMP/worker-deploy.log" 2>&1; then
+            echo "::error title=Worker deploy failed::$(tail -n 25 "$RUNNER_TEMP/worker-deploy.log" | grep -v -i "token" | tr '\n' ' ' | cut -c1-3000)"
+            exit 1
+          fi
+          tail -n 6 "$RUNNER_TEMP/worker-deploy.log"
+          echo "::notice title=Worker deployed::$sha"
+
+      - name: Deploy 2/2 — Firestore rules/indexes + Hosting (aqar-b5d76)
+        id: deploy_firebase
+        if: env.MODE == 'deploy'
+        run: |
+          set -o pipefail
+          # Deploy configuration fix carried by the release commit (a single-field index must be a field override).
+          cp "$TOOLS/firestore.indexes.json" firestore.indexes.json
+          # Office links stay on iaqar.ai (no hop through the Worker's workers.dev address, which Chrome flags as a look-alike).
+          cp "$TOOLS/firebase.json" firebase.json
           GAC="$(mktemp /tmp/iaqar-prod-gac.XXXXXX)"
           trap 'rm -f "$GAC"' EXIT
           node -e 'require("fs").writeFileSync(process.argv[1], process.env.FIREBASE_PRODUCTION_SERVICE_ACCOUNT_JSON, { mode: 0o600 })' "$GAC"
-          GOOGLE_APPLICATION_CREDENTIALS="$GAC" npx firebase-tools deploy --only firestore:rules,firestore:indexes,hosting --project aqar-b5d76 --non-interactive
+          if ! GOOGLE_APPLICATION_CREDENTIALS="$GAC" npx firebase-tools deploy --only firestore:rules,firestore:indexes,hosting --project aqar-b5d76 --non-interactive > "$RUNNER_TEMP/firebase-deploy.log" 2>&1; then
+            echo "::error title=Firebase deploy failed::$(tail -n 25 "$RUNNER_TEMP/firebase-deploy.log" | grep -v -i "private_key\|token" | tr '\n' ' ' | cut -c1-3000)"
+            exit 1
+          fi
+          tail -n 6 "$RUNNER_TEMP/firebase-deploy.log"
           echo "::notice title=deployed::$sha to iaqar.ai"
 
       - name: Smoke iaqar.ai
@@ -131,6 +193,11 @@ jobs:
           curl -fsS https://iaqar.ai/os/app.js >/dev/null
           curl -fsS https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/health | grep -q '"backendReady":true'
 
+      - name: Pilot switch for the test — office-link routing on, real offices + QA offices authorized
+        id: access_test
+        if: env.MODE == 'deploy'
+        run: node "$TOOLS/production-pilot-access.mjs" test "$OUT_DIR"
+
       - name: Live journey on iaqar.ai (isolated QA offices, removed afterwards)
         if: env.MODE == 'deploy'
         env:
@@ -139,12 +206,53 @@ jobs:
           PREVIEW_WORKER_URL: https://iaqar-macrodroid-intake.iaqar-ai.workers.dev
         run: |
           npx playwright install --with-deps chromium >/dev/null
+          # The QA journey (tooling) from the release commit, run inside the deployed tree for its modules.
+          cp "$TOOLS/live-preview.e2e.mjs" scripts/qa/office-os/live-preview.e2e.mjs
           node scripts/qa/office-os/live-preview.e2e.mjs
 
-      - name: Roll back on failure (Hosting version, rules, Worker)
-        if: failure() && env.MODE == 'deploy' && steps.deploy.outcome != 'skipped'
+      - name: Pilot switch final — office-link routing on, the real offices authorized (QA removed)
+        if: env.MODE == 'deploy'
+        run: node "$TOOLS/production-pilot-access.mjs" final "$OUT_DIR"
+
+      - name: Channels 1/2 — production Worker secrets (only those provided) + settings
+        id: channels_worker
+        if: env.MODE == 'channels-connect'
+        working-directory: worker
         run: |
-          node scripts/production-pilot-rollback.mjs restore "$OUT_DIR" || echo "::error title=rollback::Hosting/rules restore failed — restore from the Firebase console using $OUT_DIR/rollback-point.json"
+          set -euo pipefail
+          put() { printf '%s' "$2" | npx wrangler secret put "$1" --name iaqar-macrodroid-intake >/dev/null && echo "secret $1 set (value not printed)"; } # // pragma: allowlist secret
+          if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+            TOKEN="$(printf '%s' "$TELEGRAM_BOT_TOKEN" | tr -d '[:space:]')"
+            USERNAME="$(curl -fsS "https://api.telegram.org/bot$TOKEN/getMe" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).result.username))')"
+            WHSECRET="${TELEGRAM_WEBHOOK_SECRET:-$(node -e 'console.log(require("crypto").createHmac("sha256",process.argv[1]).update("iaqar-production-telegram-webhook-v1").digest("hex"))' "$TOKEN")}"
+            echo "::add-mask::$WHSECRET"
+            echo "TELEGRAM_WEBHOOK_SECRET=$WHSECRET" >> "$GITHUB_ENV"
+            put TELEGRAM_BOT_TOKEN "$TOKEN"
+            put TELEGRAM_WEBHOOK_SECRET "$WHSECRET"
+            put TELEGRAM_BOT_USERNAME "$USERNAME"
+          fi
+          [ -z "${GEMINI_API_KEY:-}" ] || put GEMINI_API_KEY "$GEMINI_API_KEY"
+          [ -z "${META_APP_SECRET:-}" ] || put META_APP_SECRET "$(printf '%s' "$META_APP_SECRET" | tr -d '[:space:]')"
+          [ -z "${META_WEBHOOK_VERIFY_TOKEN:-}" ] || put META_WEBHOOK_VERIFY_TOKEN "$(printf '%s' "$META_WEBHOOK_VERIFY_TOKEN" | tr -d '\r\n')"
+          npx wrangler deploy $PRODUCTION_VARS > "$RUNNER_TEMP/worker-deploy.log" 2>&1 || { echo "::error title=Worker deploy failed::$(tail -n 20 "$RUNNER_TEMP/worker-deploy.log" | grep -vi token | tr '\n' ' ' | cut -c1-2000)"; exit 1; }
+          echo "::notice title=production Worker::settings applied (Meta app, coexistence, Telegram sending, AI model)"
+
+      - name: Channels 2/2 — connect the central bot and the WhatsApp webhook to production
+        if: env.MODE == 'channels-connect'
+        run: |
+          sleep 15
+          node "$TOOLS/production-pilot-connect.mjs"
+          curl -fsS "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/meta/status" | head -c 400; echo
+
+      - name: Roll back on failure (Hosting version, rules, Worker)
+        if: failure() && ((env.MODE == 'deploy' && steps.deploy.outcome != 'skipped') || (env.MODE == 'channels-connect' && steps.channels_worker.outcome == 'failure'))
+        run: |
+          if [ "${{ steps.deploy_firebase.outcome }}" != "skipped" ]; then
+            node "$TOOLS/production-pilot-rollback.mjs" restore "$OUT_DIR" > "$RUNNER_TEMP/rollback.log" 2>&1 && cat "$RUNNER_TEMP/rollback.log" || { echo "::error title=rollback Hosting/rules failed::$(tail -n 3 "$RUNNER_TEMP/rollback.log" | tr '\n' ' ')"; }
+          else
+            echo "Hosting and rules were not touched — nothing to restore there."
+          fi
+          if [ "${{ steps.access_test.outcome }}" != "skipped" ]; then node "$TOOLS/production-pilot-access.mjs" restore "$OUT_DIR" || echo "::error title=rollback::pilot switch restore failed — see pilot-access-before.json"; fi
           if [ -n "${WORKER_PREVIOUS:-}" ]; then (cd worker && yes | npx wrangler rollback "$WORKER_PREVIOUS" --message "pilot rollback") || echo "::error title=rollback::Worker rollback failed — use Cloudflare dashboard, version $WORKER_PREVIOUS"; fi
           echo "::error title=pilot rolled back::the previous production version is back"
 
@@ -154,7 +262,11 @@ jobs:
         with:
           name: production-pilot-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/production-pilot/*.json
+            ${{ runner.temp }}/production-pilot/rollback-point.json
+            ${{ runner.temp }}/production-pilot/backup-manifest.json
+            ${{ runner.temp }}/production-pilot/compat-report.json
+            ${{ runner.temp }}/production-pilot/version.json
+            ${{ runner.temp }}/production-pilot/live-report.json
             ${{ runner.temp }}/production-pilot/*.png
             ${{ runner.temp }}/production-pilot/*.rules
           if-no-files-found: warn
