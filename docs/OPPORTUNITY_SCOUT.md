@@ -127,6 +127,7 @@ a digest is filtered as usual. What was read is shown back, with what the ad did
 | Door | Switch | Cost when on |
 |---|---|---|
 | Web search | `SCOUT_SEARCH_KEY` (+ `SCOUT_SEARCH_PROVIDER=tavily\|brave`) | per request to the provider; capped at 40 requests per office per day (`SCOUT_SEARCH_DAILY_PER_OFFICE`); paced per mode (general 1/day, deep 3 every 2 h, urgent 2/hour) |
+| Serper (Google results through serper.dev) — **locked** | all three on Staging only: `SCOUT_SERPER=enabled`, `SCOUT_SEARCH_PROVIDER=serper`, secret `SERPER_API_KEY`. None is set in the repository and no deploy script puts the key on a Worker | free-credit pilot limits built in: 1 request per round, 5 per office per day, 10 per day for the platform, 100 in total; repeats are answered from the day's cache |
 | X | `SCOUT_X_BEARER` | about $0.005 per post read, ≤ 10 posts per query, capped at 10 queries per office per day |
 | «ابحث في الويب الآن» (Google Search through Gemini) | `SCOUT_LIVE_SEARCH=enabled` | a paid Google Search request per press; shown to the broker as it came and **never stored or scored** (Google's terms forbid collecting grounded results) |
 
