@@ -147,12 +147,7 @@
     "redirects": [
       {
         "source": "/s/:slug/:version",
-        "destination": "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/s/:slug/:version",
-        "type": 302
-      },
-      {
-        "source": "/m/:slug",
-        "destination": "https://iaqar-macrodroid-intake.iaqar-ai.workers.dev/m/:slug",
+        "destination": "/m/:slug",
         "type": 302
       }
     ]
