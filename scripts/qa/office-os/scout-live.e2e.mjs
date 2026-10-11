@@ -167,7 +167,8 @@ try {
     const linked = all.some((f) => f.phone === "0559000111" && f.bestRecordId === offer.body.recordId) && all.some((f) => f.phone === "0559000222" && f.bestRecordId === request.body.recordId && Number(f.sourceCount) === 2);
     return linked ? all : null;
   }, 12 * 60_000, 10_000);
-  const beatAfter = (await queue()).health;
+  // The finds are written during the round; the scheduler's own line is written when the round ends, a moment later.
+  const beatAfter = (await until(async () => { const health = (await queue()).health; return health.lastWorkAt && health.lastWorkAt !== beatBefore.lastWorkAt ? health : null; }, 90_000, 3000)) || (await queue()).health;
   check("live: the general search ran in the background from the Worker's cron, with nobody on the site", Boolean(found) && beatAfter.lastWorkAt && beatAfter.lastWorkAt !== beatBefore.lastWorkAt, `lastWorkAt ${beatBefore.lastWorkAt || "—"} → ${beatAfter.lastWorkAt || "—"}`);
   const all = found || (await finds());
   const buyer = all.find((f) => f.phone === "0559000111");
@@ -325,7 +326,7 @@ try {
   if (process.env.GITHUB_ACTIONS) {
     const esc = (t) => String(t).replace(/%/g, "%25").replace(/\r/g, "").replace(/\n/g, "%0A");
     for (const c of failed.slice(0, 9)) console.log(`::error title=scout live check failed::${esc(`${c.name} — ${c.detail}`)}`);
-    console.log(`::notice title=scout live results::${esc([`passed ${checks.length - failed.length}/${checks.length}`, ...checks.map((c) => `${c.ok ? "PASS" : "FAIL"} ${c.name}${c.detail ? ` (${c.detail})` : ""}`)].join("\n")).slice(0, 7000)}`);
+    console.log(`::notice title=scout live results::${esc([`passed ${checks.length - failed.length}/${checks.length}`, ...checks.map((c) => `${c.ok ? "PASS" : "FAIL"} ${c.name}${c.detail ? ` (${c.detail.slice(0, c.ok ? 90 : 280)})` : ""}`)].join("\n")).slice(0, 12000)}`);
   }
   process.exitCode = failed.length ? 1 : 0;
 }
