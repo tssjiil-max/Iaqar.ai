@@ -1,5 +1,7 @@
 {
   "mode": "preflight",
   "confirm": "",
-  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>."
+  "note": "Edit only this file on release/production-pilot to start a run. deploy needs confirm = DEPLOY-<short sha of the parent commit>.",
+  "requestedAt": "2026-10-11T21:05+03:00",
+  "approved": "read-only preflight for 240b799: find out why the production bucket refused the pre-deploy snapshot (deploys nothing)"
 }
