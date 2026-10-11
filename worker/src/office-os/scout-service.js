@@ -34,6 +34,7 @@ import { canActOn } from "./permissions.js";
 import { fillListingGaps, smartFillAiStatus } from "./smart-fill-service.js";
 import { entityFromIndex, evaluateFind, findExisting, inInventory, indexEntry, repeatCount } from "./scout-evaluate.js";
 import { SOURCE_STATE, nextBackoff, sourceLabel, sourceQuality, sourcesForOffice, sourcesReport, usableSources } from "./scout-sources.js";
+import { scoutChatsView } from "./scout-telegram.js";
 import { liveSearchAvailable, liveWebSearch, readLinkedPage } from "./scout-web.js";
 import {
   SCOUT_LIMITS, dequeueTask, enqueueTask, findPath, isRunning, loadSchedule, loadSettings, loadState, mutateSchedule, mutateState, officeEntry, recordDigest,
@@ -188,6 +189,8 @@ export async function syncOfficeInventory(ctx, officeId, { settings, now = ctx.n
   for (const id of expired) await ctx.store.remove(findPath(officeId, id)).catch(() => {});
   const oldFeed = await ctx.store.queryAfter(["offices", officeId], "scoutFeed", { field: "createdAt", before: new Date(now.getTime() - SCOUT_LIMITS.opportunityTtlDays * DAY), limit: 20 }).catch(() => []);
   for (const doc of oldFeed) await ctx.store.remove(["offices", officeId, "scoutFeed", doc.id]).catch(() => {});
+  const oldPosts = await ctx.store.queryAfter(["offices", officeId], "scoutPosts", { field: "createdAt", before: new Date(now.getTime() - SCOUT_LIMITS.opportunityTtlDays * DAY), limit: 40 }).catch(() => []);
+  for (const doc of oldPosts) await ctx.store.remove(["offices", officeId, "scoutPosts", doc.id]).catch(() => {});
   return { digest, queue, created, openRecords: open.length, expired: expired.length };
 }
 
@@ -729,7 +732,7 @@ export async function scoutOverview(ctx, { officeId, actor }) {
     ok: true, available: true, isManager: actor.isManager === true, settings, counters: scoutCounters({ board, tasks, now }), away: awaySummary(board),
     board: board.slice(0, 40), excluded, buckets: { ...bucketCounts(board), [BUCKET.EXCLUDED]: excluded.length },
     tasks: tasks.slice(0, 60), sources: sourcesForOffice(ctx, office, settings), sourceStatus,
-    liveSearch: liveSearchAvailable(ctx.env),
+    liveSearch: liveSearchAvailable(ctx.env), telegram: actor.isManager === true ? await scoutChatsView(ctx, officeId) : null,
     health: { failing, lastRoundAt: state.health?.lastCycleAt || "", lastSuccessAt: state.health?.lastOkAt || "" },
     limits: { feedChars: SCOUT_LIMITS.feedChars }, officeCity: text(office.city, 60)
   };

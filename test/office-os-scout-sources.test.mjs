@@ -242,6 +242,80 @@ test("X: recent posts through X's own API — the post's text is the ad, its lin
   delete h.env.SCOUT_X_BEARER;
 });
 
+// ------------------------------------------------------------------ Telegram groups and channels
+
+const TG_SECRET = "tg-secret-for-tests";
+let updateId = 9000;
+async function telegram(update) {
+  const response = await h.worker.fetch(new Request("https://worker.test/telegram/webhook", { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": TG_SECRET }, body: JSON.stringify({ update_id: ++updateId, ...update }) }), h.env, { waitUntil() {} });
+  return { status: response.status, body: await response.json() };
+}
+const GROUP = { id: -1001234567890, type: "supergroup", title: "عقارات المدينة" };
+const inGroup = (text, chat = GROUP, id = updateId + 1) => ({ message: { message_id: id, date: Math.floor(Date.now() / 1000), chat, from: { id: 777, first_name: "عضو" }, text } });
+const posts = (office = OFFICE_A) => h.store.list(`offices/${office}/scoutPosts`);
+
+test("Telegram groups: the manager links a group with a one-time code; only ads are kept; each office keeps its own copy; unlinking stops it", async () => {
+  Object.assign(h.env, { TELEGRAM_BOT_TOKEN: "123456:TEST-TOKEN-never-in-a-response", TELEGRAM_WEBHOOK_SECRET: TG_SECRET, TELEGRAM_BOT_USERNAME: "iaqar_test_bot" });
+  assert.equal((await call("/os/scout/telegram/link", {}, BROKER_A2)).status, 403, "linking is the manager's");
+  const link = await ok("/os/scout/telegram/link");
+  assert.equal(link.state, "PENDING");
+  assert.match(link.groupLink, /^https:\/\/t\.me\/iaqar_test_bot\?startgroup=[A-Za-z0-9_-]{43}$/);
+  assert.match(link.command, /^\/start [A-Za-z0-9_-]{43}$/);
+  // Sent in a private chat it links nothing — and it is never taken for an office-intake link.
+  const privately = await telegram({ message: { message_id: 1, date: 1, chat: { id: 555, type: "private" }, from: { id: 555 }, text: link.command } });
+  assert.deepEqual([privately.body.linked, privately.body.kind, privately.body.reason], [false, "scout_chat", "group_required"]);
+  assert.equal(h.store.get("telegramChats/555"), null);
+  // Before the link, the group's messages are nobody's.
+  assert.equal((await telegram(inGroup("للبيع أرض في حي الحمراء مساحة 500 متر السعر مليون و200 الف 0559016000"))).body.reason, "chat_not_linked");
+  const linked = await telegram(inGroup(`/start@iaqar_test_bot ${link.command.slice(7)}`));
+  assert.deepEqual([linked.body.linked, linked.body.kind], [true, "scout_chat"]);
+  assert.equal((await telegram(inGroup(link.command))).body.linked, false, "the code works once");
+  const overview = await ok("/os/scout/overview");
+  assert.deepEqual(overview.telegram.chats.map((c) => [c.chatId, c.title, c.type]), [["-1001234567890", "عقارات المدينة", "supergroup"]]);
+  assert.ok(overview.sources.some((s) => s.id === "telegram_groups"));
+
+  const inboxBefore = h.store.list(`offices/${OFFICE_A}/inbox`).length;
+  const chatter = await telegram(inGroup("السلام عليكم، أحد يعرف مقاول ترميم ممتاز؟"));
+  assert.equal(chatter.body.reason, "not_an_ad");
+  const ad = await telegram(inGroup("للبيع أرض سكنية في حي الحمراء مساحة 640 متر السعر مليون و420 الف للتواصل 0559016666", GROUP, 4321));
+  assert.deepEqual([ad.status, ad.body.scout, ad.body.kept], [200, true, 1]);
+  assert.equal(posts().length, 1, "chatter was not stored");
+  assert.deepEqual([posts()[0].link, posts()[0].messageId, posts()[0].chatTitle], ["https://t.me/c/1234567890/4321", 4321, "عقارات المدينة"]);
+  assert.equal(JSON.stringify(posts()[0]).includes("عضو"), false, "the sender's name is not kept");
+  assert.equal(h.store.list(`offices/${OFFICE_A}/inbox`).length, inboxBefore, "a group's ads do not fill the office's inbox");
+  assert.equal(posts(OFFICE_B).length, 0);
+
+  await round();
+  const find = finds().find((f) => f.phone === "0559016666");
+  assert.deepEqual([find.surface, find.bestRecordId, find.url], ["SHOWN", requestId, "https://t.me/c/1234567890/4321"]);
+  assert.deepEqual((await ok("/os/scout/find", { opportunityId: find.id })).find.sources, ["قروبات وقنوات تيليجرام"]);
+
+  // A second office links the same public group: each gets its own copy, neither sees the other's.
+  await ok("/os/scout/settings", { settings: { enabled: true } }, OWNER_B, OFFICE_B);
+  const linkB = await ok("/os/scout/telegram/link", {}, OWNER_B, OFFICE_B);
+  assert.equal((await telegram(inGroup(linkB.command))).body.linked, true);
+  const both = await telegram(inGroup("مطلوب فيلا للشراء في حي العزيزية بحدود مليونين 0559017777", GROUP, 4400));
+  assert.equal(both.body.kept, 2);
+  assert.deepEqual([posts().length, posts(OFFICE_B).length], [2, 1]);
+  assert.equal((await call("/os/scout/telegram/unlink", { chatId: "-1001234567890" }, OWNER_B, OFFICE_A)).status, 403, "another office cannot unlink this office's group");
+
+  assert.equal((await call("/os/scout/telegram/unlink", { chatId: "-1001234567890" }, BROKER_A2)).status, 403);
+  assert.equal((await ok("/os/scout/telegram/unlink", { chatId: "-1001234567890" })).changed, true);
+  const after = await telegram(inGroup("للبيع شقة في حي قباء 3 غرف السعر 450 الف 0559018888", GROUP, 4500));
+  assert.equal(after.body.kept, 1, "only the office still linked receives it");
+  assert.deepEqual([posts().length, posts(OFFICE_B).length], [2, 2]);
+  assert.deepEqual((await ok("/os/scout/overview")).telegram.chats, []);
+});
+
+test("a channel is linked by posting the line in it; a public one gives a public link to each ad", async () => {
+  const link = await ok("/os/scout/telegram/link");
+  const channel = { id: -1009876543210, type: "channel", title: "عروض المدينة", username: "madinah_offers" };
+  const linked = await telegram({ channel_post: { message_id: 10, date: Math.floor(Date.now() / 1000), chat: channel, text: link.command } });
+  assert.equal(linked.body.linked, true);
+  await telegram({ channel_post: { message_id: 11, date: Math.floor(Date.now() / 1000), chat: channel, text: "للبيع دور في حي شوران مساحة 300 متر السعر 900 الف 0559019999" } });
+  assert.ok(posts().some((p) => p.link === "https://t.me/madinah_offers/11"));
+});
+
 // ------------------------------------------------------------------ live search (Google, display only)
 
 test("«ابحث في الويب الآن»: Google's answer is shown as it came, with its sources and its suggestions — and nothing of it is kept", async () => {
@@ -281,10 +355,12 @@ test("«ابحث في الويب الآن»: Google's answer is shown as it came
   // Another office cannot run it on this office's search; a round never uses this door.
   await ok("/os/scout/settings", { settings: { enabled: true } }, OWNER_B, OFFICE_B);
   assert.equal((await call("/os/scout/web/live", { taskId }, OWNER_B, OFFICE_B)).status, 404);
-  const calls = liveCalls.length;
+  // (A deep or urgent round may ask the model to fill an ad's gaps — that is the central analysis, never a web search.)
+  const searches = () => liveCalls.filter((c) => Array.isArray(c.body.tools)).length;
+  const calls = searches();
   forget(taskId);
   await round();
-  assert.equal(liveCalls.length, calls, "no background round ever asks Google");
+  assert.equal(searches(), calls, "no background round ever asks Google Search");
   // The key's plan does not include search: said plainly.
   liveStatus = 400;
   const refused = await call("/os/scout/web/live", { taskId });

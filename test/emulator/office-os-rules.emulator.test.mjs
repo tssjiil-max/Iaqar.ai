@@ -118,7 +118,8 @@ test("the office agent: settings, conversations and stats are closed to every cl
 test("«الباحث عن الفرص»: settings, searches, finds, pasted text, the state and the platform schedule are closed to every client (Worker only)", async () => {
   const paths = [
     "offices/office-a/scoutSettings/main", "offices/office-a/scoutState/main", "offices/office-a/scoutTasks/st_r_1", "offices/office-a/scoutOpportunities/so_1",
-    "offices/office-a/scoutFeed/sf_1", "offices/office-a/scoutFixtures/fx_1", "offices/office-a/scoutRuns/run_1", "_system/scoutSchedule"
+    "offices/office-a/scoutFeed/sf_1", "offices/office-a/scoutFixtures/fx_1", "offices/office-a/scoutRuns/run_1", "_system/scoutSchedule",
+    "offices/office-a/scoutPosts/sp_1", "offices/office-a/scoutChats/-1001234567890", "telegramScoutChats/-1001234567890"
   ];
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
