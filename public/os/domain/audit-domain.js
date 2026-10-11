@@ -28,7 +28,12 @@ const ACTION_TEXT = Object.freeze({
   BANK_SHARING_SCOPE_CREATED: "فعّل مشاركة مع مكتب متعاون",
   BANK_SHARING_SCOPE_REVOKED: "أوقف مشاركة مع مكتب متعاون",
   SHARED_OPPORTUNITY_WRITTEN: "شارك سجلًا مع مكتب متعاون",
-  SHARED_OPPORTUNITY_REMOVED: "أزال سجلًا من المشاركة"
+  SHARED_OPPORTUNITY_REMOVED: "أزال سجلًا من المشاركة",
+  SCOUT_ENABLED: "شغّل باحث الفرص",
+  SCOUT_DISABLED: "أوقف باحث الفرص",
+  SCOUT_SEARCH_STARTED: "بدأ بحثًا في باحث الفرص",
+  SCOUT_SEARCH_CONTROLLED: "غيّر حالة بحث في باحث الفرص",
+  SCOUT_FIND_ACTION: "اتخذ إجراءً على فرصة من باحث الفرص"
 });
 
 export const AUDIT_FILTERS = Object.freeze([

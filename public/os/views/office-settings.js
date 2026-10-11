@@ -22,6 +22,7 @@ import { OFFICE_NAME_MESSAGES, SPECIALTIES, buildOfficeProfile, checkPublicSlug 
 import { officePermanentUrl, officeShareUrl } from "../domain/share-card-domain.js";
 import { ensureShareCard } from "../core/share-card.js";
 import { workerBase } from "../core/runtime.js";
+import { loadScout } from "../core/scout.js";
 
 function pageHead(title, backTo = "settings") {
   return h("div", { class: "os-page-head" },
@@ -46,8 +47,7 @@ function row(icon, title, hint, route) {
 export function renderSettingsHub(container) {
   if (managerOnly(container, "إعدادات المكتب")) return null;
   const office = session.office || {};
-  append(container,
-    h("section", { class: "os-card os-set-list", "aria-label": "إعدادات المكتب" },
+  const list = h("section", { class: "os-card os-set-list", "aria-label": "إعدادات المكتب" },
       row("office", "بيانات المكتب", [office.officeName, office.city].filter(Boolean).join(" · ") || "الاسم والرخصة والجوال والتخصص", "profile"),
       row("link", "رابط المكتب", office.publicSlug ? `/m/${office.publicSlug}` : "الرابط القصير لعملائك ومالكي العقارات", "link"),
       row("handshake", "التعاون بين الوسطاء", "هل تستقبل طلبات تعاون من مكاتب أخرى؟", "cooperation"),
@@ -55,7 +55,13 @@ export function renderSettingsHub(container) {
       row("robot", "مدير المكتب الذكي", "تشغيله وإيقافه، تعليمات المكتب، وآخر إجراءاته", "agent"),
       row("archive", "مكتبة المكتب", "عقود الوساطة والصفقات ومستندات المكتب", "library"),
       row("bell", "الإشعارات", "أنواع الإشعارات التي يستقبلها المكتب وحسابك", "notifications"),
-      row("broker", "الوسطاء والإسناد والصلاحيات", "من يستلم ما يصل من رابط المكتب، ومن يُتمّ الصفقات", "brokers")));
+      row("broker", "الوسطاء والإسناد والصلاحيات", "من يستلم ما يصل من رابط المكتب، ومن يُتمّ الصفقات", "brokers"));
+  append(container, list);
+  // «باحث الفرص» has a settings page only where it is available (it is not, on an environment without it).
+  loadScout(session.officeId).then((overview) => {
+    if (!list.isConnected || overview.available === false || list.querySelector('[data-settings="scout"]')) return;
+    list.querySelector('[data-settings="agent"]').after(row("search", "باحث الفرص", "تشغيله وإيقافه، نطاق عمل المكتب، ومستوى الفرص المعروضة", "scout"));
+  }).catch(() => { /* the settings work without it */ });
   return null;
 }
 

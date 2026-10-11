@@ -52,6 +52,36 @@ export function createStore(deps, { projectId, accessToken }) {
       return (docs || []).map((doc) => ({ id: idOf(doc), ...firestoreFieldsToJs(doc.fields || {}) }));
     },
 
+    /** Hard delete of one document (used only for the scout's own expired working data). */
+    async remove(segments) {
+      if (typeof deps.deleteFirestoreDocument !== "function") return false;
+      return deps.deleteFirestoreDocument({ projectId, segments, accessToken });
+    },
+
+    /**
+     * Documents of ONE collection under `parent` whose timestamp `field` is after `after`, oldest first.
+     * A scoped query: it reads (and is billed for) only the documents it returns, unlike a list.
+     */
+    async queryAfter(parent, collectionId, { field, after, before = null, limit = 50 }) {
+      const base = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`;
+      const path = parent.map((segment) => encodeURIComponent(String(segment))).join("/");
+      const response = await fetch(`${base}/${path}:runQuery`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ structuredQuery: {
+          from: [{ collectionId }],
+          // `before` turns it into «older than» (used to clear out what passed its keeping time).
+          where: { fieldFilter: { field: { fieldPath: field }, op: before ? "LESS_THAN" : "GREATER_THAN", value: { timestampValue: new Date(before || after).toISOString() } } },
+          orderBy: [{ field: { fieldPath: field }, direction: "ASCENDING" }],
+          limit: Math.max(1, Math.min(200, Number(limit) || 50))
+        } })
+      });
+      if (!response.ok) throw Object.assign(new Error(`query failed (${response.status})`), { status: 502, code: "firestore_query_failed" });
+      const rows = await response.json().catch(() => []);
+      return (Array.isArray(rows) ? rows : []).map((row) => row.document).filter(Boolean)
+        .map((doc) => ({ id: idOf(doc), ...firestoreFieldsToJs(doc.fields || {}) }));
+    },
+
     /**
      * Read-modify-write with an updateTime precondition, retried on conflict so two
      * concurrent replies/actions never overwrite each other.

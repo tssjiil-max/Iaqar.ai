@@ -273,7 +273,9 @@ export const PUSH_TYPE_CATEGORIES = Object.freeze({
   opportunity_followup_reminder: "appointmentNotifications",
   viewing: "appointmentNotifications",
   operation: "systemNotifications",
-  system: "systemNotifications"
+  system: "systemNotifications",
+  // «باحث الفرص»: a strong find for one of the office's offers or requests follows the office's match preference.
+  scout: "matchNotifications"
 });
 
 /** Types the broker triggered themself, which must never be silently swallowed. */

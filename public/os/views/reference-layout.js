@@ -19,6 +19,7 @@ import { supportCardView, TICKET_KIND, TICKET_KIND_LABEL, validateOfficeTicket }
 import { openSheet, runAction, toast } from "../core/ui.js";
 import { loadAgentStatus } from "../core/agent.js";
 import { LANE, agentCounts, agentStatusView } from "../domain/agent-domain.js";
+import { scoutHomeCard } from "./scout.js";
 
 export const STEPS = [["تطابق","match","مراجعة التطابقات المناسبة"],["تواصل","phone","التواصل مع المالك أو العميل"],["تفاوض","handshake","مناقشة السعر والتفاصيل"],["معاينة","calendar","تحديد موعد المعاينة"],["مستندات","note","إرسال العقود والمستندات"],["إغلاق","check-circle","إنهاء الصفقة"]];
 export function taskStep(task){return taskPathStep(task);}
@@ -238,7 +239,9 @@ export function renderOffice(container){
     h("section", { class: "os-card ref-office-section" },
       h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
       agentCard(),
-      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard))),
+      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)),
+      // «باحث الفرص»: shown only where it is available; opens its own page.
+      scoutHomeCard()),
 
     h("section", { class: "os-card ref-office-section" },
       h("button", { type: "button", class: "os-home-community", "data-community-entry": "", onClick: () => go("community") },

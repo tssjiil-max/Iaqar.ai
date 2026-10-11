@@ -80,6 +80,14 @@ async function withModel(ctx, officeId, analysis) {
   return { ...analysis, listings, engine: "rules+ai", ai: "used" };
 }
 
+/**
+ * The same gap-filling for another reader of ads inside the office («باحث الفرص»): the rules' analysis goes in, and a
+ * model — only when one is configured — fills what they left empty, every value checked against the text.
+ */
+export function fillListingGaps(ctx, officeId, analysis) {
+  return withModel(ctx, officeId, analysis).then(normalizeAnalysis);
+}
+
 async function run(ctx, officeId, text, { multi }) {
   const rules = analyzeText(text, { multi });
   if (!rules.ok) throw ctx.deps.appError(rules.error || "analysis_failed", 400, rules.message || "تعذر التحليل");
