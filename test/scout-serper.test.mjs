@@ -17,7 +17,7 @@ test('Serper is available only on Staging and clamps free-credit limits',()=>{
 });
 test('Serper caches repeats and reserves global credits before failed calls',async()=>{
  const ctx=context({SERPER_GLOBAL_DAILY_LIMIT:'1'});const original=globalThis.fetch;let count=0;
- globalThis.fetch=async()=>{count++;return new Response(JSON.stringify({organic:[{title:'عمارة للبيع في الهجرة المدينة المنورة',link:'https://example.sa/ad/1',snippet:'عمارة للبيع من المالك مساحة 600 متر بسعر 2000000 ريال'}]}));};
+ globalThis.fetch=async(_url, init)=>{if(init.redirect==='error')throw new TypeError('Invalid redirect value: Workers only support follow or manual');count++;return new Response(JSON.stringify({organic:[{title:'عمارة للبيع في الهجرة المدينة المنورة',link:'https://example.sa/ad/1',snippet:'عمارة للبيع من المالك مساحة 600 متر بسعر 2000000 ريال'}]}));};
  try {
   const first=await webSearchAdapter.fetch(ctx,{forms:[form,form],now:new Date('2026-10-11T12:00:00Z')});
   assert.equal(first.queries,1);assert.equal(count,1);assert.ok(first.items.length);

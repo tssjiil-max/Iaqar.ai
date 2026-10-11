@@ -57,7 +57,7 @@ async function readJson(response, code) {
 const WEB_DRIVERS = {
   async serper({ key, query, excluded }) {
     const body = await readJson(await fetch("https://google.serper.dev/search", {
-      method: "POST", headers: { "X-API-KEY": key, "Content-Type": "application/json" }, signal: AbortSignal.timeout(9000), redirect: "error",
+      method: "POST", headers: { "X-API-KEY": key, "Content-Type": "application/json" }, signal: AbortSignal.timeout(9000), redirect: "manual",
       body: JSON.stringify({ q: `${query} ${excluded.map(domain => `-site:${domain}`).join(" ")}`, gl: "sa", hl: "ar", num: 10 })
     }), "search");
     return (Array.isArray(body?.organic) ? body.organic : []).slice(0, 10).map(row => ({ title: row?.title, url: row?.link, snippet: row?.snippet, publishedAt: row?.date }));
