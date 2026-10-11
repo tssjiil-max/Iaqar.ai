@@ -155,7 +155,7 @@ const partnerFeed = {
       const set = (name, value) => { if (value !== "" && value !== 0 && value != null) target.searchParams.set(name, String(value)); };
       set("tx", form.tx); set("types", (form.propertyTypes || []).join(",")); set("city", form.city); set("districts", (form.districts || []).join(","));
       set("priceMin", form.priceMin); set("priceMax", form.priceMax); set("since", iso(since)); set("limit", Math.min(100, limit));
-      const response = await fetch(target.toString(), { headers: { Authorization: `Bearer ${config.key}`, Accept: "application/json" }, signal: AbortSignal.timeout(8000), redirect: "error" });
+      const response = await fetch(target.toString(), { headers: { Authorization: `Bearer ${config.key}`, Accept: "application/json" }, signal: AbortSignal.timeout(8000), redirect: "manual" });
       if (!response.ok) throw Object.assign(new Error(`feed answered ${response.status}`), { code: `feed_http_${response.status}` });
       const raw = await response.text();
       if (raw.length > 1_500_000) throw Object.assign(new Error("feed answer too large"), { code: "feed_too_large" });
