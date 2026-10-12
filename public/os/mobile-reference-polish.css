@@ -109,6 +109,17 @@
 .os-public-contact { gap: 12px; }
 .os-public-done { padding: 32px 20px; }
 .os-public-done .os-task-icon { width: 72px; height: 72px; }
+.os-public-receipt { min-height: 100dvh; padding-top: 32px; }
+.os-public-receipt .os-public-done {
+  margin-top: clamp(24px, 8vh, 72px);
+  padding: 32px 20px;
+  gap: 16px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.os-public-receipt .os-public-done .os-task-icon { width: 96px; height: 96px; }
+.os-public-receipt .os-public-done .os-task-icon svg { width: 48px; height: 48px; }
 
 @media (max-width: 374px) {
   .os-app[data-view] { padding-inline: 12px; }

@@ -66,13 +66,15 @@ function officeHeader(office) {
 function successView(root, office, kind) {
   clear(root);
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب.`);
-  append(root, h("main", { class: "os-app os-public-page", style: { maxWidth: "560px" } },
-    officeHeader(office),
+  append(root, h("main", { class: "os-app os-public-page os-public-receipt", style: { maxWidth: "560px" } },
+    h("p", { class: "os-public-office-name", text: office.officeName || "المكتب العقاري" }),
     h("div", { class: "os-card os-public-done", style: { textAlign: "center" } },
       h("div", { class: "os-task-icon", style: { margin: "0 auto 8px", background: "var(--ok-tint)", color: "var(--ok)" } }, ic("check-circle")),
       h("h2", { class: "os-h2", style: { justifyContent: "center" }, text: "تم استلام بياناتك" }),
       h("p", { class: "os-sub", text: `شكرًا لك. سيتواصل معك ${office.brokerName || "الوسيط"} عند وجود خيار مناسب.` }),
-      wa ? h("a", { class: "os-btn whatsapp", href: wa, target: "_blank", rel: "noopener", style: { marginTop: "10px" } }, ic("whatsapp"), "تواصل مع المكتب") : null)));
+      wa ? h("a", { class: "os-btn whatsapp block", href: wa, target: "_blank", rel: "noopener", style: { marginTop: "10px" } }, ic("whatsapp"), "تواصل مع المكتب") : null,
+      h("button", { type: "button", class: "os-btn secondary block", onClick: () => renderPublicOffice(root, publicOfficeTarget()) }, "العودة لصفحة المكتب"))));
+  window.scrollTo({ top: 0 });
 }
 
 async function analyzePublic(office, text) {
