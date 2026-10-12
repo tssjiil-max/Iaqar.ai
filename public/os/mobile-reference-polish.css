@@ -1,0 +1,120 @@
+/* Approved mobile reference: presentation only. Remove this link to roll back.
+   Keep the existing Naskh face, icons, navigation, data and office services. */
+:root {
+  --bg: #F3F8F9;
+  --bg-top: #E8F3F5;
+  --surface-2: #F5FAFB;
+  --frame: #D4E5E9;
+  --frame-soft: #E4EFF1;
+  --shadow: 0 4px 18px rgb(8 47 58 / 5%);
+  --shadow-strong: 0 10px 28px rgb(8 47 58 / 10%);
+  --radius: 20px;
+  --radius-sm: 14px;
+}
+
+.os-app { direction: rtl; }
+.os-app[data-view="office"], .os-app[data-view="tasks"],
+.os-app[data-view="repo"], .os-app[data-view="task"] {
+  background: transparent;
+  padding-inline: 16px;
+}
+.os-card, .ref-office-profile, .ref-record-card, .ref-task-card {
+  background: var(--surface);
+  border: 1px solid var(--frame-soft);
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+}
+.ref-shell-header { margin-block: 4px 20px; gap: 12px; }
+.ref-shell-title h1 { line-height: var(--lh-title); }
+.ref-shell-header .ref-bell, .ref-shell-header .ref-menu {
+  width: 44px; min-width: 44px; height: 44px; min-height: 44px;
+  border-radius: 14px;
+}
+.ref-office-profile { padding: 16px; gap: 16px; margin-bottom: 16px; }
+.ref-office-profile-row { min-height: 44px; }
+.ref-office-row-icon { background: transparent; border: 0; }
+.ref-bottom {
+  direction: rtl;
+  width: 100%; max-width: 520px;
+  border-radius: 22px 22px 0 0;
+  border: 1px solid var(--frame-soft);
+  box-shadow: 0 -4px 20px rgb(8 47 58 / 5%);
+  padding-inline: 12px;
+}
+.ref-bottom button { min-height: 52px; gap: 4px; }
+.ref-bottom button[aria-current="page"] { background: transparent; }
+.ref-bottom button[aria-current="page"]::before { display: none; }
+.ref-bottom button[aria-current="page"] svg { stroke-width: 2.4; }
+.ref-record-card { padding: 14px; margin-bottom: 12px; }
+.ref-record-open { gap: 12px; }
+.ref-record-copy { min-width: 0; }
+.ref-record-copy h3 { overflow-wrap: anywhere; line-height: var(--lh-title); }
+.ref-record-open .ref-photo { border-radius: 14px; }
+.ref-task-card { margin-bottom: 12px; padding: 12px; }
+.ref-task-actions .os-icon-btn {
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px;
+  border-radius: 14px; padding: 10px;
+}
+.ref-task-actions .os-btn { min-height: 44px; }
+.os-input, .os-select, .os-textarea {
+  background: #FFF;
+  border-color: var(--frame);
+  border-radius: 14px;
+  text-align: start;
+}
+.os-btn { border-radius: 14px; }
+.os-seg { padding: 4px; background: var(--brand-tint); border-radius: 14px; }
+.os-seg button { min-height: 44px; border-radius: 11px; }
+.os-menu button, .os-menu a { min-height: 48px; }
+.os-app :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--brand-soft);
+  outline-offset: 3px;
+}
+
+/* Public office and the two existing intake paths. */
+.os-public-page { padding-block: 20px 28px; }
+.os-public-page .os-public-hero {
+  padding: 24px 16px 20px;
+  border: 1px solid var(--frame-soft);
+  border-radius: 26px;
+  background: linear-gradient(180deg, #E1EFF2, #FFF 74%);
+  box-shadow: var(--shadow);
+}
+.os-public-page .os-public-logo {
+  width: 88px; height: 88px; border-radius: 50%;
+  border: 4px solid #FFF;
+  box-shadow: 0 4px 16px rgb(8 47 58 / 7%);
+}
+.os-public-page .os-public-rule { margin-block: 10px 14px; }
+.os-public-page .os-license { flex-wrap: wrap; row-gap: 10px; }
+.os-public-page .os-paths { gap: 14px; margin-bottom: 16px; }
+.os-public-page .os-path-card {
+  min-height: 96px; border-radius: 20px;
+  border-color: var(--frame-soft); box-shadow: var(--shadow);
+  gap: 12px;
+}
+.os-public-page .os-path-card[data-path="owner"] {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+.os-public-page .os-path-card[data-path="owner"] :is(b, small, .ic, .os-path-go) { color: #FFF; }
+.os-public-page .os-path-card[data-path="owner"] .ic { background: rgb(255 255 255 / 12%); }
+.os-public-page .os-path-card .ic svg { width: 32px; height: 32px; }
+.os-public-page .os-path-go {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--brand-tint);
+}
+.os-public-page .os-path-card[data-path="owner"] .os-path-go { background: rgb(255 255 255 / 12%); }
+.os-public-contact { gap: 12px; }
+.os-public-done { padding: 32px 20px; }
+.os-public-done .os-task-icon { width: 72px; height: 72px; }
+
+@media (max-width: 374px) {
+  .os-app[data-view] { padding-inline: 12px; }
+  .ref-office-profile { padding: 12px; gap: 10px; }
+  .ref-task-card { grid-template-columns: 48px minmax(0, 1fr); }
+  .ref-task-card .ref-photo { width: 48px; height: 56px; }
+  .ref-task-actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
+  .ref-record-open { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; }
+  .ref-record-open .ref-photo { width: 64px; height: 80px; }
+}
