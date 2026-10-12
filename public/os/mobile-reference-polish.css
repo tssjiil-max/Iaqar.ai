@@ -98,6 +98,7 @@
   border-color: var(--brand-primary);
 }
 .os-public-page .os-path-card[data-path="owner"] :is(b, small, .ic, .os-path-go) { color: #FFF; }
+.os-public-page .os-path-card[data-path="owner"] .os-ico { color: #FFF; }
 .os-public-page .os-path-card[data-path="owner"] .ic { background: rgb(255 255 255 / 12%); }
 .os-public-page .os-path-card .ic svg { width: 32px; height: 32px; }
 .os-public-page .os-path-go {

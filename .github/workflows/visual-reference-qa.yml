@@ -1,0 +1,36 @@
+name: Mobile reference visual QA
+on:
+  push:
+    branches: [codex/visual-verification-20261013]
+permissions:
+  contents: read
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm ci --prefix worker
+      - run: npx playwright install --with-deps chromium
+      - name: Capture baseline
+        run: |
+          git worktree add /tmp/iaqar-before a57cc5d2c5bfeed41f06e50aac89c782502769c4
+          ln -s "$GITHUB_WORKSPACE/node_modules" /tmp/iaqar-before/node_modules
+          ln -s "$GITHUB_WORKSPACE/worker/node_modules" /tmp/iaqar-before/worker/node_modules
+          cd /tmp/iaqar-before
+          WIDTHS=320,390,430,1024 SCREENS=public-office,public-form,public-request-form,office,tasks,repository,menu-sheet OUT_DIR="$GITHUB_WORKSPACE/qa/reference-before" node scripts/qa/office-os/mobile-widths.e2e.mjs
+      - name: Verify current mobile layouts
+        if: always()
+        run: WIDTHS=320,390,430,1024 SCREENS=public-office,public-form,public-request-form,public-success,office,tasks,repository,menu-sheet OUT_DIR=qa/reference-after node scripts/qa/office-os/mobile-widths.e2e.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reference-browser-evidence
+          path: qa/reference-*
+          retention-days: 7

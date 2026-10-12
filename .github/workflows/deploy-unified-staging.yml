@@ -69,6 +69,20 @@ jobs:
           export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
           npm run deploy:staging:safe
 
+      - name: Capture published Staging public interfaces
+        run: |
+          npx playwright install --with-deps chromium
+          node scripts/qa/office-os/staging-public-visual.mjs
+
+      - name: Upload published Staging browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-public-visual
+          path: qa/staging-public-visual
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Kapso WhatsApp Sandbox — test office + endpoint refuses unsigned requests
         env:
           KAPSO_SEND_TEST: ${{ inputs.kapso_send_test && '1' || '' }}
