@@ -37,6 +37,18 @@ await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), 
 const SMART_OFFER = "للبيع فيلا في حي النرجس بالرياض مساحة ٤٥٠ م٢، ٥ غرف، واجهة شمالية، السعر 2.3 مليون";
 const SMART_REQUEST = "مطلوب عمارة في شوران أو الهجرة أو الرانوناء، الميزانية مليونين، شراء، مستعجل.";
 const SCREENS = [
+  { name: "public-success", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => {
+    await p.locator('[data-path="owner"]').click();
+    await p.locator('[data-fill-mode="manual"]').click();
+    await p.getByRole("button", { name: "بيع", exact: true }).click();
+    await p.locator('input[name="propertyType"]').fill("شقة");
+    await p.locator('input[name="district"]').fill("الملقا");
+    await p.locator('input[name="price"]').fill("1250000");
+    await p.locator('input[name="contactName"]').fill("اختبار الواجهة");
+    await p.locator('input[name="contactPhone"]').fill("0557654321");
+    await p.getByRole("button", { name: "إرسال", exact: true }).click();
+    await p.getByText("تم استلام بياناتك", { exact: true }).waitFor();
+  } },
   { name: "public-office", url: "/o/sultan", wait: "text=لدي عقار", auth: false },
   { name: "public-form", url: "/o/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.getByRole("button", { name: /لدي عقار/ }).click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
   // The two public forms in every state a visitor meets: «تعبئة ذكية» empty and analysed, «تعبئة يدوية», the

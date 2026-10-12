@@ -27,7 +27,7 @@ jobs:
           WIDTHS=320,390,430,1024 SCREENS=public-office,public-form,public-request-form,office,tasks,repository,menu-sheet OUT_DIR="$GITHUB_WORKSPACE/qa/reference-before" node scripts/qa/office-os/mobile-widths.e2e.mjs
       - name: Verify current mobile layouts
         if: always()
-        run: WIDTHS=320,390,430,1024 SCREENS=public-office,public-form,public-request-form,office,tasks,repository,menu-sheet OUT_DIR=qa/reference-after node scripts/qa/office-os/mobile-widths.e2e.mjs
+        run: WIDTHS=320,390,430,1024 SCREENS=public-office,public-form,public-request-form,public-success,office,tasks,repository,menu-sheet OUT_DIR=qa/reference-after node scripts/qa/office-os/mobile-widths.e2e.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
