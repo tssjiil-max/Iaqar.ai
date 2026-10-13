@@ -91,6 +91,9 @@ META_APP_ID = ""
 META_CONFIG_ID = ""
 FCM_WEB_PUSH_VAPID_KEY = "BD17gmynZ5N6PTXMSKPDx-h36-K_PrqqGMGHd8Hg-G0XjIBrDLRai_htH21Csc-oKJbdur1NDbareOf2I0fy5cU"
 GEMINI_MODEL = "gemini-3.1-flash-lite"
+# The pre-merge preview of «الباحث عن الفرص» and «الاستقبال التلقائي» (routes only — this Worker has no cron).
+OPPORTUNITY_SCOUT = "enabled"
+SCOUT_INGEST = "enabled"
 
 [env.preview.ai]
 binding = "AI"

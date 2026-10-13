@@ -60,6 +60,16 @@ jobs:
           if [ -f "$RUNNER_TEMP/office-os-live/live-report.json" ]; then
             node -e 'const r=require(process.argv[1]);const ok=r.checks.filter(c=>c.ok).length;console.log(`- Live checks: ${ok}/${r.checks.length}`);for(const c of r.checks.filter(c=>!c.ok))console.log(`  - FAIL: ${c.name} — ${c.detail}`);console.log(`- FCM: ${JSON.stringify(r.fcm)}`);console.log(`- Gemini: ${JSON.stringify(r.gemini)}`)' "$RUNNER_TEMP/office-os-live/live-report.json" >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: «الاستقبال التلقائي» live proof on the preview (isolated QA offices)
+        if: ${{ !cancelled() }}
+        run: OUT_DIR="$RUNNER_TEMP/scout-ingest-live" node scripts/qa/office-os/scout-ingest-live.e2e.mjs
+      - name: Upload «الاستقبال التلقائي» evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scout-ingest-live-${{ github.run_id }}
+          path: ${{ runner.temp }}/scout-ingest-live
+          retention-days: 14
       - name: Upload live screenshots
         if: always()
         uses: actions/upload-artifact@v4

@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { canonicalAdUrl, prepareItem } from "../worker/src/office-os/scout-ingest.js";
-import { batchIdFor, chunkBatches, parseInboxPaste } from "../public/os/domain/scout-ingest-domain.js";
+import { PAIR_STORE_KEY, batchIdFor, chunkBatches, clearPairing, newRunCode, parseAutoFragment, parseInboxPaste, readPairing, shortcutPrompt, writePairing } from "../public/os/domain/scout-ingest-domain.js";
 import { cleanPlans, parseScoutCommand, planMentioned, plansFrom, profileSummary, validateCustomSearch } from "../public/os/domain/scout-domain.js";
 import { fitFor } from "../worker/src/office-os/scout-evaluate.js";
 
@@ -114,12 +114,45 @@ test("the inbox page reads a batch, a list or plain paragraphs, and splits long 
   assert.equal(new Set(chunks.map((c) => c.batchId)).size, 3);
 });
 
+test("automatic sending: the page reads «#c=…&ingest=…» (the batch may hold «&»), pairing lives in this browser only", () => {
+  const batch = { batchId: "claude-1", items: [{ url: "https://listings.example.sa/ad/1", text: "شقة للإيجار & مفروشة في العزيزية 30 الف" }] };
+  const encoded = parseAutoFragment(`#c=abcd23efgh&ingest=${encodeURIComponent(JSON.stringify(batch))}`);
+  assert.deepEqual(encoded, { auto: true, code: "abcd23efgh", raw: JSON.stringify(batch) });
+  const typed = parseAutoFragment(`#c=abcd23efgh&ingest=${JSON.stringify(batch)}`);
+  assert.equal(parseInboxPaste(typed.raw).items[0].text.includes("&"), true, "an unencoded batch typed by the assistant still reads");
+  assert.equal(parseAutoFragment("#k=whatever").auto, false);
+  assert.match(newRunCode(), /^[a-z0-9]{10}$/);
+  const mem = new Map();
+  const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  assert.equal(readPairing(storage), null);
+  const token = `iqk.${OFFICE_A}.abcdef123456.${"x".repeat(43)}`;
+  writePairing(storage, { token, code: "abcd23efgh", officeId: OFFICE_A, keyId: "abcdef123456" });
+  assert.equal(readPairing(storage).code, "abcd23efgh");
+  mem.set(PAIR_STORE_KEY, JSON.stringify({ token: "not-a-key", code: "abcd23efgh" }));
+  assert.equal(readPairing(storage), null, "a malformed pairing is ignored");
+  clearPairing(storage);
+  assert.equal(mem.has(PAIR_STORE_KEY), false);
+  assert.equal(readPairing({ getItem() { throw new Error("blocked"); } }), null, "blocked storage is not a crash");
+});
+
+test("the shortcut text carries the office's criteria (type, sale/rent, city, districts, plans), the run code and the refused sites — never a key", () => {
+  const text = shortcutPrompt({ inboxUrl: "https://app.example/scout-inbox.html", code: "abcd23efgh", settings: { city: "المدينة المنورة", propertyTypes: ["شقة", "عمارة"], purposes: ["rent"], districts: ["العزيزية"], plans: ["الحمراء هـ4"] } });
+  for (const part of ["شقة أو عمارة", "للإيجار", "المدينة المنورة", "العزيزية", "الحمراء هـ4", "حراج", "https://app.example/scout-inbox.html#c=abcd23efgh&ingest=<JSON>"]) assert.ok(text.includes(part), part);
+  assert.equal(/iqk\./.test(text), false);
+});
+
 // ------------------------------------------------------------------ through the Worker
 
 let token = "";
 let keyId = "";
 
 test("the door is closed unless the Worker opens it (SCOUT_INGEST) — Production does not set it", async () => {
+  const toml = (await import("node:fs")).readFileSync(path.join(ROOT, "worker/wrangler.toml"), "utf8");
+  const [production, rest] = toml.split("[env.staging]");
+  assert.equal(/SCOUT_INGEST/.test(production), false, "not on the production Worker");
+  assert.match(rest.split("[env.preview]")[0], /^SCOUT_INGEST = "enabled"$/m, "on the Staging Worker");
+  assert.match(rest.split("[env.preview]")[1], /^SCOUT_INGEST = "enabled"$/m, "on the isolated preview Worker");
+  assert.equal(/SCOUT_INGEST_LICENSED_HOSTS/.test(toml), false, "no listing platform is licensed by configuration");
   const listing = await ok("/os/scout/ingest/keys");
   assert.equal(listing.available, false);
   const refused = await ingest("iqk.x.y.z", { batchId: "abcdef", items: [TEN[0]] });
@@ -158,6 +191,8 @@ test("with the office's scout off nothing is stored", async () => {
 
 let firstReport = null;
 test("ten results arrive with one request: saved, understood, matched, shown with their links — no CSV", async () => {
+  // The office's own open request: a client wants an apartment for rent in العزيزية up to 35,000.
+  const request = await ok("/os/records/save", { requestKey: "ingest-req-1", record: { kind: "REQUEST", purpose: "LEASE_REQUEST", propertyType: "شقة", city: "المدينة المنورة", district: "العزيزية", price: "35,000", contactName: "عميل الاختبار", contactPhone: "0557300001" } });
   await ok("/os/scout/settings", { settings: { enabled: true } });
   const batch = { batchId: "claude-madinah-2026-10-13", agent: "claude-in-chrome", search: { tx: "rent", propertyTypes: ["شقة", "عمارة"], city: "المدينة المنورة", districts: ["العزيزية"], plans: ["الحمراء هـ4"] },
     items: [...TEN, { url: "https://haraj.com.sa/11223344", text: "شقة للإيجار في العزيزية 3 غرف 30 الف سنوي 0551000099" }, { url: "http://bad.example.sa/x", text: "شقة للإيجار في العزيزية 3 غرف 30 الف سنوي" }] };
@@ -182,6 +217,11 @@ test("ten results arrive with one request: saved, understood, matched, shown wit
   assert.ok(found.length >= 10, `finds: ${found.length}`);
   const overview = await ok("/os/scout/overview");
   assert.ok(overview.board.length >= 1);
+  // Matching: the rented apartment in العزيزية is judged against the office's request by the same engine and linked to it.
+  const flat = found.find((f) => String(f.url || "").includes("/ad/1001"));
+  assert.ok(flat, "the apartment ad is a find");
+  assert.equal(flat.bestRecordId, request.recordId, `linked to the office's request (${flat.bestRecordId})`);
+  assert.ok(Number(flat.score) > 0, `scored (${flat.score})`);
   const opp = found.find((f) => String(f.url || "").includes("/ad/1002"));
   assert.ok(opp, "the building ad is a find");
   const detail = await ok("/os/scout/find", { opportunityId: opp.id });

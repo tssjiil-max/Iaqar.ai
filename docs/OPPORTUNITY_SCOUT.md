@@ -141,9 +141,15 @@ Authorization: Bearer iqk.<officeId>.<keyId>.<secret>
 → { received, saved, updated, duplicates, rejected: [{ index, reason, message }], strong, kept, cards, replay, note }
 ```
 
-- **Without an HTTP client** (Claude in Chrome): `/scout-inbox.html` on the same app — paste the key (or open it with
-  `#k=<key>`, the fragment never reaches a server) and the results (the batch JSON, a JSON list, or plain paragraphs),
-  press «إرسال». Long lists are split into batches of 20, each with a stable id.
+- **Claude in Chrome, automatically.** Claude in Chrome is documented to open pages, read, click, type and run saved
+  shortcuts on a schedule (while Chrome is open); it is not documented to send HTTP requests itself. So the automatic
+  path only opens a page: the manager presses «ربط هذا المتصفح بـ Claude» once (the key is written to that browser's
+  storage — never shown, never in a conversation) and saves the shortcut text it gets (criteria from the scout
+  settings: types, sale/rent, city, districts, plans; the refused sites; the result shape; a run code). At the end of
+  each run Claude opens `/scout-inbox.html#c=<run code>&ingest=<batch JSON>`; the page checks the run code against the
+  pairing, sends the batch by itself, clears the address, and writes the Worker's answer in `[data-inbox-result]`
+  for Claude to read back. A page opened by another site (wrong run code) or in an unpaired browser sends nothing.
+  Manual paste stays only as a fallback. Live proof: `scripts/qa/office-os/scout-ingest-live.e2e.mjs` (preview workflow).
 - **Where it lands:** one `scoutFeed` document per ad (`channel: AGENT`, `reviewStatus: PENDING_REVIEW`, the link as its
   identity after removing tracking parameters) → the same `broker_feed` source → the same understanding, merging,
   matching and levels. An outside find «قيد المراجعة» — never an office record, never «مفوّض بالتسويق»; the body cannot
