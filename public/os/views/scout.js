@@ -13,8 +13,10 @@ import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../core/ui.js";
 import {
-  actOnScoutFind, controlScoutSearch, createScoutSearch, feedScout, importScoutLink, linkScoutTelegramChat, liveWebSearch, loadScout, unlinkScoutTelegramChat, parseScoutText, saveScoutSettings, scoutFind, scoutForRecord, scoutSearchDetail
+  actOnScoutFind, controlScoutSearch, createScoutIngestKey, createScoutSearch, feedScout, importScoutLink, linkScoutTelegramChat, liveWebSearch, loadScout, revokeScoutIngestKey, unlinkScoutTelegramChat, parseScoutText, saveScoutSettings, scoutFind, scoutForRecord, scoutIngestKeys, scoutSearchDetail
 } from "../core/scout.js";
+import { workerBase } from "../core/runtime.js";
+import { clearPairing, newRunCode, readPairing, shortcutPrompt, writePairing } from "../domain/scout-ingest-domain.js";
 import { buildWhatsAppUrl, formatDateTime, relativeAgo } from "../domain/format-domain.js";
 import { PROPERTY_TYPES, RECORD_KIND, kindOf } from "../domain/records-domain.js";
 import {
@@ -260,6 +262,7 @@ export function renderScoutNew(container) {
   const type = h("select", { class: "os-input", name: "propertyType" }, h("option", { value: "", text: "أي نوع" }), PROPERTY_TYPES.map((t) => h("option", { value: t, text: t })));
   const city = h("input", { class: "os-input", name: "city", value: session.office?.city || "", autocomplete: "off" });
   const districts = h("input", { class: "os-input", name: "districts", placeholder: "مثال: شوران، الهجرة", autocomplete: "off" });
+  const plans = h("input", { class: "os-input", name: "plans", placeholder: "مثال: الحمراء هـ4، العوينة", autocomplete: "off" });
   const priceMin = h("input", { class: "os-input", name: "priceMin", inputmode: "numeric", dir: "ltr", placeholder: "من" });
   const priceMax = h("input", { class: "os-input", name: "priceMax", inputmode: "numeric", dir: "ltr", placeholder: "إلى" });
   const areaMin = h("input", { class: "os-input", name: "areaMin", inputmode: "numeric", dir: "ltr", placeholder: "من" });
@@ -279,7 +282,7 @@ export function renderScoutNew(container) {
     const d = answer.draft;
     nlText = d.nlText || "";
     mode.set(d.mode); seek.value = d.seek; if (d.tx) tx.set(d.tx);
-    type.value = d.propertyTypes?.[0] || ""; city.value = d.city || city.value; districts.value = (d.districts || []).join("، ");
+    type.value = d.propertyTypes?.[0] || ""; city.value = d.city || city.value; districts.value = (d.districts || []).join("، "); plans.value = (d.plans || []).join("، ");
     priceMin.value = d.priceMin || ""; priceMax.value = d.priceMax || ""; areaMin.value = d.areaMin || ""; areaMax.value = d.areaMax || "";
     fresh.value = d.freshnessDays ? String(d.freshnessDays) : ""; owner.checked = d.preferDirectOwner === true;
     const missing = (answer.missing || []).map((key) => ({ tx: "بيع أم إيجار", propertyTypes: "نوع العقار أو الحي", city: "المدينة" })[key] || key);
@@ -292,7 +295,7 @@ export function renderScoutNew(container) {
     error.hidden = true;
     runAction(start, async () => {
       const result = await createScoutSearch(OFFICE(), {
-        mode: mode.value(), seek: seek.value, tx: tx.value(), propertyTypes: type.value ? [type.value] : [], city: city.value, districts: districts.value,
+        mode: mode.value(), seek: seek.value, tx: tx.value(), propertyTypes: type.value ? [type.value] : [], city: city.value, districts: districts.value, plans: plans.value,
         priceMin: priceMin.value, priceMax: priceMax.value, areaMin: areaMin.value, areaMax: areaMax.value, freshnessDays: fresh.value,
         preferDirectOwner: owner.checked, allowCityWide: cityWide.checked, nlText
       }, requestKey);
@@ -310,6 +313,7 @@ export function renderScoutNew(container) {
       h("div", { class: "os-field" }, h("span", { text: "العملية" }), tx),
       field("نوع العقار", type),
       h("div", { class: "os-row2" }, field("المدينة", city), field("الأحياء", districts, { hint: "حي واحد أو عدة أحياء، بينها فاصلة" })),
+      field("المخطط", plans, { optional: true, hint: "اسم المخطط كما يُكتب في الإعلانات — تظهر فقط الإعلانات التي تذكره" }),
       h("div", { class: "os-field" }, h("span", { text: "السعر" }), h("div", { class: "os-row2" }, priceMin, priceMax)),
       h("details", { class: "os-scout-more" }, h("summary", { text: "خيارات إضافية" }),
         h("div", { class: "os-form" },
@@ -503,6 +507,91 @@ function liveSearchSheet(taskId) {
   }).catch((error) => { clear(body); append(body, h("div", { class: "os-alert warn", "data-live-error": "", text: error?.message || "تعذر البحث في الويب الآن." })); });
 }
 
+// ------------------------------------------------------------------ «الاستقبال التلقائي من Claude» (inside the scout settings)
+
+/**
+ * The manager creates a key for an assistant (Claude): it sends what it found straight to the scout — no CSV, no
+ * pasting. The key is shown once; it can be revoked at any time. Hidden where the door is not open on this environment.
+ */
+function ingestCard(settings = {}) {
+  const box = h("section", { class: "os-card", "data-scout-ingest": "", hidden: true });
+  const storage = (() => { try { return window.localStorage; } catch (_) { return null; } })();
+  const inbox = `${location.origin}/scout-inbox.html`;
+  const promptSheet = (pairing) => {
+    const text = shortcutPrompt({ inboxUrl: inbox, code: pairing.code, settings });
+    const area = h("textarea", { class: "os-textarea", readonly: true, rows: "9", dir: "rtl", "data-scout-shortcut": "", text });
+    const copy = h("button", { type: "button", class: "os-btn primary block", "data-scout-shortcut-copy": "" }, ic("check"), "نسخ نص الاختصار");
+    copy.addEventListener("click", () => runAction(copy, async () => { await navigator.clipboard.writeText(text); }, { success: "نُسخ نص الاختصار" }));
+    openSheet("اختصار Claude في Chrome", h("div", { class: "os-form" },
+      h("div", { class: "os-alert ok", text: "رُبط هذا المتصفح بالمكتب. المفتاح محفوظ في هذا المتصفح فقط ولا يظهر لأحد." }),
+      h("ol", { class: "os-sub" },
+        h("li", { text: "انسخ النص أدناه." }),
+        h("li", { text: "في Claude in Chrome (على هذا المتصفح نفسه): احفظه كاختصار، ثم جدوله يوميًا من أيقونة الساعة." }),
+        h("li", { text: "بعد كل بحث يفتح Claude صفحة الاستقبال بنفسه، فتصل النتائج هنا للمراجعة — بلا لصق ولا CSV." })),
+      area, copy,
+      h("p", { class: "os-sub", text: "يعمل الجدول اليومي ما دام Chrome مفتوحًا. مواقع تمنع شروطها جمع إعلاناتها آليًا (عقار، حراج، بيوت، وصلت) تُرفض." })), { onClose: reload });
+  };
+  const draw = (answer) => {
+    clear(box);
+    if (!answer?.available) { box.hidden = true; return; }
+    box.hidden = false;
+    const pairing = readPairing(storage);
+    const pairedHere = Boolean(pairing && pairing.officeId === OFFICE() && answer.keys.some((k) => k.keyId === pairing.keyId && !k.revoked));
+    // The normal path: this browser is paired (the key is written to this browser only — never displayed).
+    const pair = h("button", { type: "button", class: "os-btn primary block", "data-scout-ingest-pair": "" }, ic("link"), pairedHere ? "عرض نص الاختصار" : "ربط هذا المتصفح بـ Claude (إرسال تلقائي)");
+    pair.addEventListener("click", () => runAction(pair, async () => {
+      if (pairedHere) { promptSheet(pairing); return; }
+      const made = await createScoutIngestKey(OFFICE(), "Claude in Chrome — هذا المتصفح");
+      const random = () => { const b = new Uint32Array(1); crypto.getRandomValues(b); return b[0] / 4294967296; };
+      const next = { token: made.token, code: newRunCode(random), officeId: OFFICE(), keyId: made.key.keyId, pairedAt: new Date().toISOString() };
+      if (!writePairing(storage, next)) throw new Error("تعذر الحفظ في هذا المتصفح (نافذة خاصة؟) — استخدم نافذة عادية");
+      promptSheet(next);
+    }));
+    const unpair = pairedHere ? h("button", { type: "button", class: "os-btn soft block", "data-scout-ingest-unpair": "" }, ic("x"), "فك ربط هذا المتصفح") : null;
+    unpair?.addEventListener("click", async () => {
+      if (!(await confirmDialog({ title: "فك ربط هذا المتصفح؟", text: "يُلغى مفتاحه ويتوقف الإرسال التلقائي منه فورًا. ما وصل سابقًا يبقى.", confirmLabel: "فك الربط", danger: true }))) return;
+      await runAction(unpair, async () => { await revokeScoutIngestKey(OFFICE(), pairing.keyId); clearPairing(storage); }, { success: "فُك الربط" });
+      reload();
+    });
+    // For another tool that sends HTTP itself (the key is shown once).
+    const create = h("button", { type: "button", class: "os-btn secondary block", "data-scout-ingest-create": "" }, ic("plus"), "مفتاح API لأداة أخرى");
+    create.addEventListener("click", () => runAction(create, async () => {
+      const made = await createScoutIngestKey(OFFICE(), "API");
+      const endpoint = `${workerBase()}/os/scout/ingest`;
+      const token = h("input", { class: "os-input", readonly: true, dir: "ltr", "data-scout-ingest-token": "", value: made.token });
+      openSheet("مفتاح API", h("div", { class: "os-form" },
+        h("div", { class: "os-alert warn", text: "يظهر المفتاح هذه المرة فقط. احفظه في أسرار الأداة — لا تضعه في رسالة أو محادثة." }),
+        token,
+        h("p", { class: "os-sub", dir: "ltr", text: `POST ${endpoint}  ·  Authorization: Bearer <key>` }),
+        h("p", { class: "os-sub", text: "النتائج تُحفظ كفرص خارجية قيد المراجعة، ولا تصبح عرضًا أو طلبًا إلا باعتمادك." })), { onClose: reload });
+    }));
+    const row = (key) => {
+      const revoke = h("button", { type: "button", class: "os-btn soft", "data-scout-ingest-revoke": key.keyId }, ic("x"), "إلغاء");
+      revoke.addEventListener("click", async () => {
+        if (!(await confirmDialog({ title: "إلغاء هذا المفتاح؟", text: "يتوقف الاستقبال به فورًا. ما وصل سابقًا يبقى.", confirmLabel: "إلغاء المفتاح", danger: true }))) return;
+        await runAction(revoke, () => revokeScoutIngestKey(OFFICE(), key.keyId), { success: "أُلغي المفتاح" });
+        if (pairing?.keyId === key.keyId) clearPairing(storage);
+        reload();
+      });
+      const used = key.lastUsedAt ? ` · آخر استخدام ${new Date(key.lastUsedAt).toLocaleString("ar-SA")} · ${key.uses} دفعة` : " · لم يُستخدم بعد";
+      const here = pairing?.keyId === key.keyId ? " · هذا المتصفح" : "";
+      return h("div", { class: "os-pref-row", "data-scout-ingest-key": key.keyId }, h("span", { dir: "auto", text: `${key.label} ${key.hint}${here}${key.revoked ? " · ملغى" : used}` }), key.revoked ? null : revoke);
+    };
+    const active = answer.keys.filter((k) => !k.revoked);
+    const room = active.length < answer.limits.keysPerOffice;
+    append(box,
+      h("h2", { class: "os-h2", text: "الاستقبال التلقائي من Claude" }),
+      h("p", { class: "os-sub", text: "بدل تنزيل ملف CSV ورفعه: يبحث Claude في Chrome حسب نطاق عمل المكتب أعلاه (النوع، البيع أو الإيجار، المدينة، الأحياء، المخططات)، ثم يرسل نتائجه بنفسه إلى الباحث عن الفرص. تصلك هنا للمراجعة مع روابط مصادرها، ويُمنع التكرار." }),
+      h("p", { class: "os-sub", "data-scout-ingest-state": pairedHere ? "paired" : "not-paired", text: pairedHere ? "هذا المتصفح مربوط — الإرسال التلقائي يعمل منه." : "هذا المتصفح غير مربوط بعد." }),
+      answer.keys.length ? h("div", { class: "os-pref-list" }, answer.keys.slice(0, 8).map(row)) : null,
+      pairedHere || room ? pair : null, unpair,
+      room ? create : h("p", { class: "os-sub", text: `الحد ${answer.limits.keysPerOffice} مفاتيح فعّالة.` }));
+  };
+  const reload = () => scoutIngestKeys(OFFICE()).then(draw).catch(() => { box.hidden = true; });
+  reload();
+  return box;
+}
+
 // ------------------------------------------------------------------ #/settings/scout
 
 export function renderScoutSettings(container) {
@@ -520,6 +609,7 @@ export function renderScoutSettings(container) {
     const general = h("input", { type: "checkbox", "data-scout-general": "" }); general.checked = s.generalEnabled;
     const city = h("input", { class: "os-input", name: "city", value: s.city || "" });
     const districts = h("input", { class: "os-input", name: "districts", value: (s.districts || []).join("، "), placeholder: "مثال: شوران، العزيزية" });
+    const plans = h("input", { class: "os-input", name: "plans", value: (s.plans || []).join("، "), placeholder: "مثال: الحمراء هـ4، العوينة" });
     const chosen = new Set(s.propertyTypes || []);
     const types = h("div", { class: "os-chips", "data-scout-types": "" }, PROPERTY_TYPES.map((type) => {
       const chip = h("button", { type: "button", class: "os-chip", "aria-pressed": String(chosen.has(type)), text: type });
@@ -565,7 +655,7 @@ export function renderScoutSettings(container) {
     const save = h("button", { type: "button", class: "os-btn primary block", "data-scout-save": "" }, ic("check"), "حفظ الإعدادات");
     save.addEventListener("click", () => runAction(save, async () => {
       await saveScoutSettings(OFFICE(), {
-        generalEnabled: general.checked, city: city.value, districts: districts.value, propertyTypes: [...chosen], purposes: [sale.checked ? "sale" : "", rent.checked ? "rent" : ""].filter(Boolean),
+        generalEnabled: general.checked, city: city.value, districts: districts.value, plans: plans.value, propertyTypes: [...chosen], purposes: [sale.checked ? "sale" : "", rent.checked ? "rent" : ""].filter(Boolean),
         priceMin: priceMin.value, priceMax: priceMax.value, areaMin: areaMin.value, areaMax: areaMax.value, kinds: kindBoxes.filter((k) => k.box.checked).map((k) => k.id),
         cadenceMinutes: Number(cadence.value), notify: alerts.checked, alertLevel: alertLevel.value(),
         preferDirectOwner: owner.checked, notifyPush: push.checked, minQuality: quality.value(), sources: Object.fromEntries(sourceBoxes.map((x) => [x.id, x.box.checked]))
@@ -585,6 +675,7 @@ export function renderScoutSettings(container) {
         h("h2", { class: "os-h2", text: "نطاق عمل المكتب" }),
         h("p", { class: "os-sub", text: "تُضبط مرة واحدة، ويعمل بها الباحث تلقائيًا." }),
         h("div", { class: "os-row2" }, field("المدينة", city), field("الأحياء المهمة", districts, { optional: true })),
+        field("المخططات المهمة", plans, { optional: true, hint: "عند كتابة مخطط تظهر فقط الإعلانات التي تذكره" }),
         h("div", { class: "os-field" }, h("span", {}, "أنواع العقارات", h("small", { text: " (بدون اختيار = كل الأنواع)" })), types),
         h("div", { class: "os-pref-list" },
           h("label", { class: "os-pref-row" }, h("span", { text: "بيع" }), sale),
@@ -610,6 +701,7 @@ export function renderScoutSettings(container) {
         h("p", { class: "os-sub", text: "أضف بوت المنصة إلى قروب عقاري أو قناة أنت فيها، فيقرأ الباحث إعلاناتها تلقائيًا بدل اللصق اليدوي. يحتاج موافقة مشرف القروب." }),
         telegram.chats.length ? h("div", { class: "os-pref-list" }, telegram.chats.map(chatRow)) : null,
         telegram.chats.length < telegram.limit ? addChat : h("p", { class: "os-sub", text: `الحد ${telegram.limit} قروبات أو قنوات.` })) : null,
+      ingestCard(s),
       save);
   };
   const reload = () => loadScout(OFFICE(), { fresh: true }).then(draw).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل إعدادات الباحث عن الفرص." })); });

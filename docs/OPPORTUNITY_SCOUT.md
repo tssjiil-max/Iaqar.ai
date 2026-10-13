@@ -63,6 +63,8 @@ One table decides every difference — `MODE_CONFIG` in `scout-domain.js`. Nothi
 | `offices/{o}/scoutState/main` | one frugal document: short index for merging, the board, seen-hashes, daily usage, source health |
 | `offices/{o}/scoutFeed/{id}` | text the broker pasted for the scout |
 | `offices/{o}/scoutRuns/{id}` | one line per round: counts only (no phone, no ad text) |
+| `offices/{o}/scoutIngestKeys/{id}` | an assistant's key for «الاستقبال التلقائي»: hash only, label, last use, revoked |
+| `offices/{o}/scoutIngestBatches/{id}` | one line per received batch: counts and its report (for safe retries) |
 | `offices/{o}/scoutFixtures/{id}` | QA test source (Staging + test-fixture offices only) |
 | `_system/scoutSchedule` | the platform schedule: per office, task id → next time, priority, counters. Ids and numbers only |
 
@@ -121,6 +123,52 @@ The path that always works, whatever the sites allow:
 
 One ad is kept on the broker's page whatever its level (it is his own choice) under «جديدة» until it is matched;
 a digest is filtered as usual. What was read is shown back, with what the ad did not say — nothing is guessed.
+
+### By an authorised assistant («الاستقبال التلقائي» — Claude, no CSV)
+
+Replaces «download a CSV → upload it → paste it». The office manager creates a key in «إعدادات الباحث عن الفرص →
+الاستقبال التلقائي من Claude» (shown once, stored as a SHA-256 hash, up to 5 active, revocable at once). The assistant
+then sends what it found:
+
+```
+POST <worker>/os/scout/ingest
+Authorization: Bearer iqk.<officeId>.<keyId>.<secret>
+{ "batchId": "claude-madinah-2026-10-13",            // required: a retry with the same id answers the first report
+  "agent": "claude-in-chrome",
+  "search": { "tx": "rent", "propertyTypes": ["شقة","عمارة"], "city": "المدينة المنورة", "districts": ["العزيزية"], "plans": ["الحمراء هـ4"] },
+  "items": [ { "url": "https://…", "title": "…", "text": "…", "kind": "OFFER|REQUEST", "tx": "sale|rent", "propertyType": "شقة",
+               "city": "…", "district": "…", "plan": "…", "price": 0, "area": 0, "rooms": 0, "publishedAt": "…", "adId": "…" } ] }
+→ { received, saved, updated, duplicates, rejected: [{ index, reason, message }], strong, kept, cards, replay, note }
+```
+
+- **Claude in Chrome, automatically.** Claude in Chrome is documented to open pages, read, click, type and run saved
+  shortcuts on a schedule (while Chrome is open); it is not documented to send HTTP requests itself. So the automatic
+  path only opens a page: the manager presses «ربط هذا المتصفح بـ Claude» once (the key is written to that browser's
+  storage — never shown, never in a conversation) and saves the shortcut text it gets (criteria from the scout
+  settings: types, sale/rent, city, districts, plans; the refused sites; the result shape; a run code). At the end of
+  each run Claude opens `/scout-inbox.html#c=<run code>&ingest=<batch JSON>`; the page checks the run code against the
+  pairing, sends the batch by itself, clears the address, and writes the Worker's answer in `[data-inbox-result]`
+  for Claude to read back. A page opened by another site (wrong run code) or in an unpaired browser sends nothing.
+  Manual paste stays only as a fallback. Live proof: `scripts/qa/office-os/scout-ingest-live.e2e.mjs` (preview workflow).
+- **Where it lands:** one `scoutFeed` document per ad (`channel: AGENT`, `reviewStatus: PENDING_REVIEW`, the link as its
+  identity after removing tracking parameters) → the same `broker_feed` source → the same understanding, merging,
+  matching and levels. An outside find «قيد المراجعة» — never an office record, never «مفوّض بالتسويق»; the body cannot
+  set an office, a status, a licence or an approval.
+- **Duplicates:** the same `batchId` → its first report (`replay: true`). The same ad in another batch → `duplicates`;
+  a changed price → `updated` (the same find records the change).
+- **Sources:** an ad whose link is on عقار، حراج، بيوت or وصلت is refused (`source_restricted`) — their terms forbid
+  collecting their listings — unless the platform has a data agreement with that site (`SCOUT_INGEST_LICENSED_HOSTS`).
+- **Switches:** `SCOUT_INGEST = "enabled"` (Staging only; removing it closes the door for every office) + the office's
+  scout switch + an active key. Limits: 20 ads per batch, 120 KB per request, 60 batches per hour per key.
+- **Data:** `offices/{o}/scoutIngestKeys/{keyId}` (hash, label, last use, revoked), `offices/{o}/scoutIngestBatches/{id}`
+  (counts and the report, no phone). Both closed to every client by the rules. Code: `worker/src/office-os/scout-ingest.js`,
+  page `public/scout-inbox.html`, tests `test/office-os-scout-ingest.test.mjs`.
+
+### «المخطط» in a search
+
+A search (and the office's standing interests) may name plans (`plans`, e.g. «الحمراء هـ4»). The word «مخطط» is dropped,
+up to 4 per search, «مخطط X» is read from a sentence, and when plans are named only ads whose own words name one of them
+fit the search (`planMentioned` in `scout-domain.js`, applied in `fitFor`).
 
 ### Paid doors (all off by default — no cost without approval)
 

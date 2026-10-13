@@ -24,7 +24,8 @@ import { previewVisitor } from "./visitor-service.js";
 import { analyzeOfficeText, analyzePublicText } from "./smart-fill-service.js";
 import { applyAvailabilityAnswer, reactivateRecord, setRecordValidity, sweepValidityNow } from "./validity-service.js";
 import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, startBrokerLink, startPartyLink, unlinkBroker, linkBrokerWithTelegramLogin } from "./bot-service.js";
-import { actOnFind, controlSearch, createSearch, feedScout, findDetail, importScoutLink, liveSearchForTask, parseSearchText, recordSearch, saveScoutSettings, scoutOverview, scoutRecordChanged, searchDetail } from "./scout-service.js";
+import { actOnFind, controlSearch, createSearch, feedScout, findDetail, importScoutLink, liveSearchForTask, parseSearchText, recordSearch, runOfficeCycle, saveScoutSettings, scoutOverview, scoutRecordChanged, searchDetail } from "./scout-service.js";
+import { createIngestKey, ingestScoutBatch, listIngestKeys, revokeIngestKey } from "./scout-ingest.js";
 import { startScoutChatLink, unlinkScoutChat } from "./scout-telegram.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
@@ -127,10 +128,16 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/scout/web/live": (ctx, b, actor) => liveSearchForTask(ctx, { actor, officeId: ctx.officeId, taskId: text(b.taskId) }),
   "/os/scout/telegram/link": (ctx, b, actor) => startScoutChatLink(ctx, { actor, officeId: ctx.officeId }),
   "/os/scout/telegram/unlink": (ctx, b, actor) => unlinkScoutChat(ctx, { actor, officeId: ctx.officeId, chatId: text(b.chatId) }),
+  // «الاستقبال التلقائي»: keys an assistant (Claude) uses to send its results straight to the scout — the manager's.
+  "/os/scout/ingest/keys": (ctx, b, actor) => listIngestKeys(ctx, { officeId: ctx.officeId, actor }),
+  "/os/scout/ingest/key/create": (ctx, b, actor) => createIngestKey(ctx, { officeId: ctx.officeId, actor, label: typeof b.label === "string" ? b.label : "" }),
+  "/os/scout/ingest/key/revoke": (ctx, b, actor) => revokeIngestKey(ctx, { officeId: ctx.officeId, actor, keyId: text(b.keyId) }),
   "/os/scout/feed": (ctx, b, actor) => feedScout(ctx, { actor, officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", channel: text(b.channel).toUpperCase() }),
   "/os/support/status": (ctx) => supportStatus(ctx),
   "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } })
 });
+
+const INGEST_PATH = "/os/scout/ingest";
 
 function text(value) {
   return String(value ?? "").trim().slice(0, 200);
@@ -169,7 +176,9 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
   if (request.method !== "POST") {
     return deps.jsonResponse({ ok: false, error: "method_not_allowed", requestId }, 405);
   }
-  const body = await request.json().catch(() => ({}));
+  const raw = await request.text().catch(() => "");
+  let body = {};
+  try { const parsed = JSON.parse(raw || "{}"); body = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}; } catch (_) { body = {}; }
   const meta = { ip: String(request.headers.get("CF-Connecting-IP") || "unknown").slice(0, 80) };
   const makeCtx = async (officeId) => {
     deps.assertFirebaseSecrets(env);
@@ -197,6 +206,12 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
       headers.set("cache-control", "private, max-age=300");
       headers.set("x-content-type-options", "nosniff");
       return new Response(picture.body, { status: 200, headers });
+    }
+    // An assistant's results, by the office's own revocable key (no user session; the office comes from the key).
+    if (url.pathname === INGEST_PATH) {
+      const ctx = await makeCtx("");
+      const result = await ingestScoutBatch(ctx, { authorization: request.headers.get("authorization") || "", body, rawLength: raw.length, runCycle: runOfficeCycle });
+      return deps.jsonResponse({ ...result, requestId }, 200);
     }
     const publicHandler = PUBLIC_ROUTES[url.pathname];
     if (publicHandler) {

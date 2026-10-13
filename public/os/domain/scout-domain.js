@@ -253,6 +253,8 @@ export function normalizeScoutSettings(raw = {}, office = {}) {
     alertLevel: raw.alertLevel === BAND.STRONG ? BAND.STRONG : BAND.VERY_STRONG,
     city: cleanText(raw.city, 60) || base.city,
     districts: list(raw.districts, 12),
+    // «المخطط»: plan names the office watches (e.g. «الحمراء هـ4»), matched in the ad's own words.
+    plans: cleanPlans(raw.plans, 8),
     propertyTypes: list(raw.propertyTypes, 11, 40).filter((t) => PROPERTY_TYPES.includes(t)),
     purposes: purposes.length ? purposes : base.purposes,
     preferDirectOwner: raw.preferDirectOwner === true,
@@ -281,6 +283,42 @@ export function propertyTypeFrom(text) {
 const RELATED_TYPES = Object.freeze({ "فيلا": ["دوبلكس", "دور"], "دوبلكس": ["فيلا"], "شقة": ["دور"], "دور": ["شقة", "دوبلكس"], "محل تجاري": ["مكتب"], "مكتب": ["محل تجاري"] });
 export const relatedTypes = (type) => RELATED_TYPES[type] || [];
 
+/** Plan names («مخطط الحمراء هـ4» → «الحمراء هـ4»): the word «مخطط» is dropped, at most `max`, no duplicates. */
+export function cleanPlans(value, max = 4) {
+  const items = Array.isArray(value) ? value : String(value ?? "").split(/[،,\n]+/);
+  const out = [];
+  for (const item of items) {
+    const name = cleanText(String(item ?? "").replace(/^\s*مخطط\s*/, ""), 60);
+    if (name.length >= 2 && !out.some((p) => normText(p) === normText(name))) out.push(name);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/** Does the ad's text name one of the plans? No plan asked → yes; plans asked and the ad names none of them → no. */
+export function planMentioned(plans = [], adText = "") {
+  if (!plans.length) return true;
+  const t = ` ${normText(adText)} `;
+  return plans.some((p) => t.includes(normText(p)));
+}
+
+/** «مخطط X» in a sentence or an ad («مخطط الحمراء هـ4»، «في مخطط العوينة»): up to three words, stopping at a joining word. */
+const PLAN_STOP = new Set(["في", "او", "أو", "و", "بحد", "بسعر", "السعر", "سعر", "ميزانيه", "ميزانية", "الميزانية", "مساحه", "مساحة", "المساحة", "حي", "للبيع", "للايجار", "للإيجار", "بالمدينة", "بمدينة", "مدينة", "المدينة", "شارع", "على", "قريب", "مع", "من", "كل", "عدد", "رقم", "قطعة", "قطعه", "واجهة", "واجهه", "دور", "الدور", "مساحتها"]);
+export function plansFrom(raw = "") {
+  const found = [];
+  const words = String(raw || "").replace(/[،,.()\-—:]+/g, " ").split(/\s+/).filter(Boolean);
+  for (let i = 0; i < words.length && found.length < 4; i += 1) {
+    if (words[i] !== "مخطط" && words[i] !== "بمخطط") continue;
+    const name = [];
+    for (let j = i + 1; j < words.length && name.length < 3; j += 1) {
+      if (PLAN_STOP.has(words[j]) || /^(ال)?(مدينه|مدينة)$/.test(words[j])) break;
+      name.push(words[j]);
+    }
+    if (name.length) found.push(name.join(" "));
+  }
+  return cleanPlans(found, 4);
+}
+
 function cleanProfile(input = {}) {
   const price = (v) => { const n = toNumber(v); return n > 0 && n <= 10_000_000_000 ? Math.round(n) : 0; };
   let priceMin = price(input.priceMin);
@@ -293,6 +331,7 @@ function cleanProfile(input = {}) {
     propertyTypes: list(input.propertyTypes ?? input.propertyType, 4, 40).filter((t) => PROPERTY_TYPES.includes(t)),
     city: cleanText(input.city, 60),
     districts: list(input.districts ?? input.district, 6),
+    plans: cleanPlans(input.plans ?? input.plan, 4),
     priceMin, priceMax,
     areaMin: area(input.areaMin), areaMax: area(input.areaMax),
     rooms: Math.max(0, Math.min(50, Math.round(toNumber(input.rooms)) || 0)),
@@ -309,7 +348,7 @@ export function validateCustomSearch(input = {}, { defaultCity = "" } = {}) {
   const seek = SEEK[String(input.seek || "").toUpperCase()] || SEEK.OFFER;
   const profile = cleanProfile({ ...input, city: input.city || defaultCity });
   if (!profile.tx && seek !== SEEK.ANY) errors.tx = "اختر بيع أو إيجار";
-  if (!profile.propertyTypes.length && !profile.districts.length) errors.propertyTypes = "اختر نوع العقار أو اكتب الحي";
+  if (!profile.propertyTypes.length && !profile.districts.length && !profile.plans.length) errors.propertyTypes = "اختر نوع العقار أو اكتب الحي أو المخطط";
   if (!profile.city) errors.city = "اكتب المدينة";
   if (seek === SEEK.OWNER) profile.preferDirectOwner = true;
   return { ok: !Object.keys(errors).length, errors, value: { mode: modeOf(input.mode), seek, profile, nlText: cleanText(input.nlText, 600) } };
@@ -345,7 +384,7 @@ export function profileFromRecord(record = {}) {
 /** The office's standing interests (settings) → the discovery search that runs with no record behind it. */
 export function discoveryProfile(settings = {}) {
   return cleanProfile({
-    tx: settings.purposes?.length === 1 ? settings.purposes[0] : "", propertyTypes: settings.propertyTypes, city: settings.city, districts: settings.districts, preferDirectOwner: settings.preferDirectOwner,
+    tx: settings.purposes?.length === 1 ? settings.purposes[0] : "", propertyTypes: settings.propertyTypes, city: settings.city, districts: settings.districts, plans: settings.plans, preferDirectOwner: settings.preferDirectOwner,
     priceMin: settings.priceMin, priceMax: settings.priceMax, areaMin: settings.areaMin, areaMax: settings.areaMax, kinds: settings.kinds
   });
 }
@@ -355,7 +394,8 @@ const TYPE_PLURAL_LABEL = { "أرض": "أراضٍ", "عمارة": "عمائر", 
 
 export function profileSummary(profile = {}, seek = SEEK.OFFER) {
   const types = (profile.propertyTypes || []).map((t) => TYPE_PLURAL_LABEL[t] || t).join(" أو ") || "عقارات";
-  const where = (profile.districts || []).length ? `في ${profile.districts.join(" أو ")}` : profile.city ? `في ${profile.city}` : "";
+  const plans = (profile.plans || []).length ? `مخطط ${profile.plans.join(" أو ")}` : "";
+  const where = [(profile.districts || []).length ? `في ${profile.districts.join(" أو ")}` : profile.city ? `في ${profile.city}` : "", plans].filter(Boolean).join(" ");
   const price = profile.priceMax ? `حتى ${formatNumber(profile.priceMax)}` : profile.priceMin ? `من ${formatNumber(profile.priceMin)}` : "";
   const tx = TX_WORD[profile.tx] || "";
   if (seek === SEEK.REQUEST) return [`طلبات ${profile.tx === "rent" ? "استئجار" : "شراء"} ${types}`, where, price].filter(Boolean).join(" ");
@@ -414,7 +454,7 @@ export function parseScoutCommand(raw = "") {
   if (!propertyType && !districts.length) missing.push("propertyTypes");
   if (!tx && seek !== SEEK.ANY) missing.push("tx");
   return {
-    ok: understood, mode, seek, tx, propertyTypes: propertyType ? [propertyType] : [], city: facts.city || "", districts: districts.slice(0, 6),
+    ok: understood || plansFrom(original).length > 0, mode, seek, tx, propertyTypes: propertyType ? [propertyType] : [], city: facts.city || "", districts: districts.slice(0, 6), plans: plansFrom(original),
     priceMin, priceMax, areaMin: facts.area ? Math.round(facts.area * 0.75) : 0, areaMax: facts.area ? Math.round(facts.area * 1.25) : 0,
     preferDirectOwner: preferDirectOwner || seek === SEEK.OWNER, freshnessDays, missing, nlText: original.trim()
   };

@@ -151,6 +151,7 @@ try {
   await visitor.fill('input[name="price"]', "1250000");
   await visitor.fill('input[name="contactName"]', "مالك اختباري");
   await visitor.fill('input[name="contactPhone"]', "0599911111");
+  await visitor.locator("[data-consent-processing]").check();
   await visitor.getByRole("button", { name: "إرسال" }).click();
   await visitor.getByText("تم استلام بياناتك").waitFor();
   await shot(visitor, "02-public-submitted");

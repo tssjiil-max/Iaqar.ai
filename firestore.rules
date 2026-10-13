@@ -47,7 +47,9 @@ service cloud.firestore {
         // مدير المكتب الذكي — للـ Worker فقط.
         'agentSettings', 'agentChats', 'agentStats', 'agentPreview',
         // باحث الفرص — للـ Worker فقط (المتصفح يقرأ ويغيّر عبر مسارات /os/scout بعد التحقق من العضوية).
-        'scoutSettings', 'scoutState', 'scoutTasks', 'scoutOpportunities', 'scoutFeed', 'scoutFixtures', 'scoutRuns', 'scoutPosts', 'scoutChats'
+        'scoutSettings', 'scoutState', 'scoutTasks', 'scoutOpportunities', 'scoutFeed', 'scoutFixtures', 'scoutRuns', 'scoutPosts', 'scoutChats',
+        // الاستقبال التلقائي لنتائج المساعد (Claude): المفاتيح (مخزّنة كبصمة فقط) والدفعات — للـ Worker فقط.
+        'scoutIngestKeys', 'scoutIngestBatches'
       ];
     }
     function validOfficeProfile() {
@@ -127,6 +129,13 @@ service cloud.firestore {
               && request.resource.data.imageCount == 0))
           && request.resource.data.hasVideo is bool
           && request.resource.data.source in ['office_public_link','platform_public']
+          // «رابط أو نص الإعلان» والصفة والموافقات (اختيارية للتوافق مع النسخ السابقة، وتُتحقق صيغتها إن وُجدت).
+          && (!("sourceUrl" in request.resource.data) || (request.resource.data.sourceUrl is string && request.resource.data.sourceUrl.size() <= 480
+            && (request.resource.data.sourceUrl == '' || request.resource.data.sourceUrl.matches('https://[^ ]+'))))
+          && (!("submitterCapacity" in request.resource.data) || request.resource.data.submitterCapacity in ['OWNER', 'AUTHORIZED_AGENT', 'LICENSED_BROKER', 'AD_RELAY', 'BUYER', 'TENANT'])
+          && (!("consentProcessing" in request.resource.data) || request.resource.data.consentProcessing == true)
+          && (!("consentWhatsapp" in request.resource.data) || request.resource.data.consentWhatsapp is bool)
+          && (!("consentAt" in request.resource.data) || request.resource.data.consentAt == request.time)
           && request.resource.data.status == 'new';
         // القراءة للأعضاء — التحديث/الحذف عبر Worker فقط (منع تزوير processed).
         allow read: if isOfficeMember(officeId);

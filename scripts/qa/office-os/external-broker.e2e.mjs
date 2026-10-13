@@ -13,7 +13,7 @@ try {
   await page.getByRole('button',{name:kind==='owner'?'لدي عقار':'أبحث عن عقار',exact:false}).click();
   await page.locator('[data-fill-mode="manual"]').click();
   assert.equal(await page.locator('input[name="contactPhone"]').count(),1);
-  await page.locator('[name="submitterRole"]').selectOption('EXTERNAL_BROKER');
+  await page.locator('[name="submitterCapacity"]').selectOption('LICENSED_BROKER');
   await page.locator('[name="externalBrokerOffice"]').fill('مكتب تعاون مستقل');
   await page.locator('[name="externalBrokerLicense"]').fill('1200012345');
   await page.locator('[name="representationClaim"]').selectOption(claim);
@@ -21,6 +21,7 @@ try {
   for(const [name,value] of Object.entries({propertyType:'شقة',city:'الرياض',district:'الملقا',price:'1200000',contactName:'وسيط متعاون خارجي',contactPhone:`055998880${idx}`})) await page.locator(`[name="${name}"]`).fill(value);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   if(idx===1) await page.screenshot({path:out+'/external-broker-mobile.png',fullPage:true});
+  await page.locator('[data-consent-processing]').check();
   await page.getByRole('button',{name:'إرسال',exact:true}).click();
   await page.getByRole('heading',{name:'تم استلام بياناتك'}).waitFor();
   const saved=h.store.list(`offices/${OFFICE_A}/opportunities`).find(r=>r.contactPhone?.endsWith(`998880${idx}`));

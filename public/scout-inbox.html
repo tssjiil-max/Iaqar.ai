@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#03677A">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>استقبال نتائج الباحث</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="preload" href="/fonts/noto-naskh-arabic/noto-naskh-arabic-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/os/os.css">
+  <style>
+    .inbox-page { max-width: 640px; margin: 0 auto; padding: 16px; }
+    .inbox-page textarea { min-height: 220px; font-family: inherit; }
+    .inbox-report li { margin: 2px 0; }
+    .inbox-report .bad { color: var(--bad, #b42318); }
+  </style>
+</head>
+<body>
+  <main class="os-app inbox-page" data-scout-inbox>
+    <div class="os-card os-form">
+      <h1 class="os-h2">استقبال نتائج الباحث عن الفرص</h1>
+      <p class="os-sub">يفتح Claude في المتصفح هذه الصفحة تلقائيًا بعد انتهاء بحثه، فتُرسَل النتائج إلى «الباحث عن الفرص» بمفتاح المكتب المربوط بهذا المتصفح، دون لصق أو ضغط أو ملف CSV. تُحفظ كفرص خارجية قيد المراجعة، ويُمنع التكرار.</p>
+      <p class="os-sub" id="inbox-paired" data-inbox-paired></p>
+      <div class="os-alert" id="inbox-status" role="status" hidden data-inbox-status></div>
+      <div id="inbox-report" class="inbox-report" data-inbox-report></div>
+      <section aria-label="نتيجة الاستقبال">
+        <h2 class="os-h2" style="font-size:1rem">نتيجة الاستقبال</h2>
+        <pre id="inbox-result" dir="ltr" hidden data-inbox-result style="white-space:pre-wrap;font-size:.8rem"></pre>
+      </section>
+    </div>
+    <details class="os-card os-form" id="inbox-manual" data-inbox-manual>
+      <summary>إرسال يدوي (احتياطي فقط)</summary>
+      <label class="os-field">
+        <span>مفتاح الاستقبال</span>
+        <input class="os-input" id="inbox-token" name="token" dir="ltr" autocomplete="off" spellcheck="false" placeholder="اتركه فارغًا إذا كان هذا المتصفح مربوطًا" data-inbox-token>
+      </label>
+      <label class="os-field">
+        <span>النتائج</span>
+        <textarea class="os-textarea" id="inbox-paste" name="paste" spellcheck="false" data-inbox-paste placeholder='JSON: {"items":[{"url":"https://…","title":"…","text":"…","tx":"rent","propertyType":"شقة","city":"المدينة المنورة","district":"…","plan":"…","price":0,"area":0}]}  — أو نص: إعلان في كل فقرة، بينها سطر فارغ'></textarea>
+        <small class="os-field-hint">حتى 20 إعلانًا في الدفعة (الأطول يُقسّم تلقائيًا). مواقع تمنع شروطها جمع إعلاناتها آليًا (عقار، حراج، بيوت، وصلت) تُرفض إلا باتفاقية بيانات مع المنصة.</small>
+      </label>
+      <button type="button" class="os-btn secondary block" id="inbox-send" data-inbox-send>إرسال</button>
+    </details>
+  </main>
+  <script src="/js/runtime-config.js"></script>
+  <script type="module" src="/js/scout-inbox.js"></script>
+</body>
+</html>

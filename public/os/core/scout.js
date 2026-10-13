@@ -36,3 +36,7 @@ export const liveWebSearch = (officeId, taskId) => api("/os/scout/web/live", { o
 /** «قروبات وقنوات تيليجرام»: a one-time link to add the platform's bot to a group, and unlinking one. */
 export const linkScoutTelegramChat = (officeId) => api("/os/scout/telegram/link", { officeId });
 export const unlinkScoutTelegramChat = (officeId, chatId) => changed(api("/os/scout/telegram/unlink", { officeId, chatId }));
+/** «الاستقبال التلقائي من Claude»: the office's keys (manager only). The token is returned once, at creation. */
+export const scoutIngestKeys = (officeId) => api("/os/scout/ingest/keys", { officeId });
+export const createScoutIngestKey = (officeId, label = "Claude") => api("/os/scout/ingest/key/create", { officeId, label });
+export const revokeScoutIngestKey = (officeId, keyId) => api("/os/scout/ingest/key/revoke", { officeId, keyId });

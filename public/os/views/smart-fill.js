@@ -84,17 +84,17 @@ export function reviewCard(listing, { roleLabel = "", cityFromOffice = false } =
  * The switch + the smart box. `formBox` is the existing form (hidden in smart mode until an analysis fills it).
  * `analyze(text)` → normalized analysis; `onListing(listing)` puts it in the form and returns review options.
  */
-export function fillModes({ formBox, analyze, onListing, initialText = "", start = FILL_MODE.SMART, several = "", intro = "" }) {
+export function fillModes({ formBox, analyze, onListing, initialText = "", start = FILL_MODE.SMART, several = "", intro = "", label = "الصق إعلانك أو اكتب التفاصيل", placeholder = SMART_EXAMPLE }) {
   let mode = start;
   let analyzed = false;
   const tabs = h("div", { class: "os-seg os-fill-modes", role: "tablist", "aria-label": "طريقة التعبئة" });
-  const textarea = h("textarea", { class: "os-textarea os-smart-text", name: "smartText", maxlength: String(SMART_FILL_LIMITS.maxChars), rows: "5", placeholder: SMART_EXAMPLE, "aria-label": "الصق إعلانك أو اكتب التفاصيل", text: initialText });
+  const textarea = h("textarea", { class: "os-textarea os-smart-text", name: "smartText", maxlength: String(SMART_FILL_LIMITS.maxChars), rows: "5", placeholder, "aria-label": label, "data-smart-input": "", text: initialText });
   const analyzeBtn = h("button", { type: "button", class: "os-btn primary block", "data-smart-analyze": "" }, ic("sparkles"), "تحليل وترتيب البيانات");
   const result = h("div", { "data-smart-result": "" });
   const alert = h("div", { class: "os-alert", role: "alert", hidden: true });
   const smartBox = h("div", { class: "os-smart-box", "data-smart-box": "" },
     intro ? h("div", { class: "os-alert warn", "data-kind-notice": "", text: intro }) : "",
-    h("label", { class: "os-field" }, h("span", { text: "الصق إعلانك أو اكتب التفاصيل" }), textarea),
+    h("label", { class: "os-field" }, h("span", { text: label }), textarea),
     analyzeBtn, alert);
   const setMode = (next) => {
     mode = next;
@@ -120,6 +120,12 @@ export function fillModes({ formBox, analyze, onListing, initialText = "", start
     if (!analysis?.ok) {
       // The text stays as written; the manual form is one press away.
       showAlert(`${failure || "تعذر التحليل الآن"} — نصك محفوظ كما هو.`, { manual: true });
+      return;
+    }
+    // A link whose site does not allow reading it: the ad's text goes in the same box, next to the link.
+    if (analysis.needsText) {
+      showAlert(analysis.message || "انسخ نص الإعلان والصقه في الخانة نفسها مع الرابط.", { manual: true, tone: "warn" });
+      textarea.focus();
       return;
     }
     if (analysis.notRealEstate || !analysis.listings.length) {
