@@ -139,7 +139,17 @@ function layoutIssues() {
   const W = document.documentElement.clientWidth;
   const issues = [];
   const overflow = document.scrollingElement.scrollWidth - W;
-  if (overflow > 1) issues.push(`horizontal-scroll ${overflow}px`);
+  if (overflow > 1) {
+    // Name the element that sticks out the most, so the failure says where to look.
+    let worst = null;
+    for (const el of document.querySelectorAll("body *")) {
+      const r = el.getBoundingClientRect();
+      const out = Math.max(r.right - W, -r.left);
+      if (r.width > 0 && out > 1 && (!worst || out > worst.out)) worst = { out: Math.round(out), el };
+    }
+    const where = worst ? ` ← ${worst.el.tagName.toLowerCase()}${worst.el.className && typeof worst.el.className === "string" ? `.${worst.el.className.trim().split(/\s+/).join(".")}` : ""} (${worst.out}px)` : "";
+    issues.push(`horizontal-scroll ${overflow}px${where}`);
+  }
   const overlay = document.querySelector(".os-overlay");
   const scope = overlay || document;
   const label = (el) => (el.getAttribute("aria-label") || el.textContent || el.name || el.tagName).trim().replace(/\s+/g, " ").slice(0, 40);
