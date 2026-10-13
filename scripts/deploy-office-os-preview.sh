@@ -23,7 +23,9 @@ cleanup() {
   rm -f public/version.json
 }
 trap cleanup EXIT
-die() { echo "ERROR: $1" >&2; exit 1; }
+# Failures are also written as workflow annotations (readable without the raw log); never a secret value.
+trap 'echo "::error title=preview deploy failed::line ${LINENO}: ${BASH_COMMAND%%<*}"' ERR
+die() { echo "ERROR: $1" >&2; echo "::error title=preview deploy::$1"; exit 1; }
 
 [[ "${IAQAR_DEPLOY_TARGET:-}" == "preview" ]] || die "IAQAR_DEPLOY_TARGET must be 'preview'"
 [[ -n "${CLOUDFLARE_API_TOKEN:-}" && -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || die "Cloudflare credentials missing"
@@ -81,7 +83,7 @@ if (b.deploymentEnvironment !== "staging") bad.push("deploymentEnvironment");
 if (b.projectId && b.projectId !== "iaqar-ai-staging") bad.push("projectId");
 if (b.backendReady !== true) bad.push("backendReady");
 if (b.outboundMessaging === true) bad.push("outboundMessaging");
-if (bad.length) { console.error("preview health failed:", bad.join(",")); process.exit(1); }
+if (bad.length) { console.error("preview health failed:", bad.join(",")); console.log(`::error title=preview health::${bad.join(",")} ${JSON.stringify({ env: b.deploymentEnvironment, projectId: b.projectId, backendReady: b.backendReady, missing: b.missingSecrets || b.missing || undefined }).slice(0, 400)}`); process.exit(1); }
 console.log("preview Worker healthy on iaqar-ai-staging");'
 
 HTML="$(curl -fsS --max-time 20 "${PREVIEW_URL}/")"
