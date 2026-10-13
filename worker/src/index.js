@@ -2247,6 +2247,10 @@ async function handlePublicIntakeMatching(request, env, requestId) {
   });
   for (const [key, value] of Object.entries(cooperation.value)) commonFields[key] = firestoreString(value);
   if (isExternalBroker(intake)) commonFields.matchingReadiness = firestoreString("NEEDS_COMPLETION");
+  // «رابط أو نص الإعلان»، صفة مقدم المشاركة والموافقات — كما اختارها الزائر، دون توثيق. الرابط مصدر للإعلان، لا إثبات ملكية.
+  const intakeProvenance = publicIntakeProvenance(intake);
+  for (const [key, value] of Object.entries(intakeProvenance.fields)) commonFields[key] = value;
+  if (intakeProvenance.holdMatching) commonFields.matchingReadiness = firestoreString("NEEDS_COMPLETION");
 
   await setFirestoreDocument({ projectId, segments: ["offices", officeId, targetCollection, recordId], accessToken, fields: {
     ...commonFields,
@@ -2291,7 +2295,7 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     advertiserPhoneNormalized: firestoreOptionalString(parsed.phone),
     contactPhone: firestoreOptionalString(parsed.phone),
     contactName: firestoreOptionalString(parsed.senderName),
-    matchingReadiness: firestoreString(isExternalBroker(intake) ? "NEEDS_COMPLETION" : readiness.matchingReadiness),
+    matchingReadiness: firestoreString(isExternalBroker(intake) || intakeProvenance.holdMatching ? "NEEDS_COMPLETION" : readiness.matchingReadiness),
     matchingReadinessMissingJson: firestoreString(JSON.stringify(readiness.matchingReadinessMissing || [])),
     opportunityKind: firestoreString(opportunityKind),
     originSourceType: firestoreString(origin.type),
@@ -2391,6 +2395,28 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     livingTaskId: routerResult?.livingTaskId || livingTaskIdForOpportunity(opportunityId),
     requestId
   }, 201);
+}
+
+/**
+ * What the public form says about where the ad came from and who sent it. A relayed ad (the sender is neither the
+ * owner nor his agent) waits for the broker before it enters active matching; nothing here is treated as verified.
+ */
+function publicIntakeProvenance(intake = {}) {
+  const url = /^https:\/\/[^\s]{4,476}$/.test(String(intake.sourceUrl || "")) ? String(intake.sourceUrl) : "";
+  const capacity = ["OWNER", "AUTHORIZED_AGENT", "LICENSED_BROKER", "AD_RELAY", "BUYER", "TENANT"].includes(intake.submitterCapacity) ? intake.submitterCapacity : "";
+  const fields = {};
+  if (url) {
+    fields.sourceUrl = firestoreString(url);
+    try { fields.sourceHost = firestoreString(new URL(url).hostname.replace(/^www\./, "").slice(0, 80)); } catch (_) { /* kept without a host */ }
+    fields.sourceUrlVerified = firestoreBoolean(false);
+  }
+  if (capacity) fields.submitterCapacity = firestoreString(capacity);
+  if (typeof intake.consentProcessing === "boolean") fields.consentProcessing = firestoreBoolean(intake.consentProcessing);
+  if (typeof intake.consentWhatsapp === "boolean") fields.consentWhatsapp = firestoreBoolean(intake.consentWhatsapp);
+  const consentAt = intake.consentAt ? new Date(intake.consentAt) : null;
+  if (consentAt && Number.isFinite(consentAt.getTime())) fields.consentAt = firestoreTimestamp(consentAt);
+  if (typeof intake.consentWhatsapp === "boolean") fields.consentSource = firestoreString("office_public_link");
+  return { fields, holdMatching: capacity === "AD_RELAY" };
 }
 
 async function resolveDefaultBrokerId({ projectId, officeId, accessToken }) {

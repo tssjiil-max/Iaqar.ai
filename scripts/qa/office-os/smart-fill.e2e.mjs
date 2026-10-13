@@ -65,6 +65,7 @@ try {
   await page.locator('[name="contactName"]').fill("مالك تجريبي");
   await page.locator('[name="contactPhone"]').fill("0559000101");
   await noOverflow(page, "public offer");
+  await page.locator("[data-consent-processing]").check();
   await page.getByRole("button", { name: "إرسال", exact: true }).click();
   await page.getByRole("heading", { name: "تم استلام بياناتك" }).waitFor();
   const intake = h.store.list(`offices/${OFFICE_A}/publicIntake`).find((d) => d.phone === "0559000101");

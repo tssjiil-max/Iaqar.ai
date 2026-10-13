@@ -46,6 +46,7 @@ const SCREENS = [
     await p.locator('input[name="price"]').fill("1250000");
     await p.locator('input[name="contactName"]').fill("اختبار الواجهة");
     await p.locator('input[name="contactPhone"]').fill("0557654321");
+    await p.locator("[data-consent-processing]").check();
     await p.getByRole("button", { name: "إرسال", exact: true }).click();
     await p.getByText("تم استلام بياناتك", { exact: true }).waitFor();
   } },
@@ -57,7 +58,7 @@ const SCREENS = [
   { name: "public-form-smart-review", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').fill(SMART_OFFER); await p.locator("[data-smart-analyze]").click(); await p.locator("[data-smart-review]").waitFor(); } },
   { name: "public-request-form", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
   { name: "public-request-smart-review", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('[name="smartText"]').fill(SMART_REQUEST); await p.locator("[data-smart-analyze]").click(); await p.locator("[data-smart-review]").waitFor(); } },
-  { name: "public-form-coop-broker", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('[data-testid="submitter-role"]').selectOption("EXTERNAL_BROKER"); await p.locator('input[name="externalBrokerLicense"]').waitFor(); } },
+  { name: "public-form-coop-broker", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('[data-testid="submitter-capacity"]').selectOption("LICENSED_BROKER"); await p.locator('input[name="externalBrokerLicense"]').waitFor(); } },
   { name: "public-form-errors", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.locator(".os-field.invalid").first().waitFor(); } },
   { name: "login", url: "/", wait: 'input[name="phone"]', auth: false },
   { name: "register", url: "/#/register", wait: "[data-broker-form]", auth: false },
@@ -130,7 +131,7 @@ const SCREENS = [
     await p.getByRole("button", { name: "استئجار", exact: true }).click();
     await p.locator('[name="propertyType"]').fill("استراحة"); await p.locator('[name="district"]').fill("حي اختبار العرض"); await p.locator('[name="price"]').fill("45000");
     await p.locator('[name="contactName"]').fill("زائر اختباري"); await p.locator('[name="contactPhone"]').fill(`05599${String(p.viewportSize().width).padStart(5, "0")}`);
-    await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.getByRole("heading", { name: "تم استلام بياناتك" }).waitFor();
+    await p.locator("[data-consent-processing]").check(); await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.getByRole("heading", { name: "تم استلام بياناتك" }).waitFor();
   } }
 ];
 

@@ -10,7 +10,7 @@
 import { MATCH_THRESHOLD, opportunityToMatchInput, scoreMatch } from "../matching-engine.js";
 import {
   ADVERTISER, BAND, MODE_CONFIG, RING, SCOUT_MODE, SEEK, TASK_ORIGIN, allowedRing, bandRank, classifyAdvertiser, districtRing, modeOf,
-  normDistrict, normPhone, normText, profileFromRecord, qualityScore, relatedTypes, sameEntity, scoutScore, tokenSet, freshness
+  normDistrict, normPhone, normText, planMentioned, profileFromRecord, qualityScore, relatedTypes, sameEntity, scoutScore, tokenSet, freshness
 } from "../../../public/os/domain/scout-domain.js";
 
 /** What a neighbouring district gets back of the engine's «other district» penalty (same 30 · neighbouring 12 · other −12). */
@@ -39,6 +39,8 @@ export function fitFor({ profile = {}, seek = SEEK.OFFER, exactPrice = 0, entity
   }
   if (profile.tx && entity.tx && profile.tx !== entity.tx) return null;
   if (profile.city && entity.city && normText(profile.city) !== normText(entity.city)) return null;
+  // «المخطط»: when the search names plans, an ad that names a different plan — or none — is not for it.
+  if ((profile.plans || []).length && !planMentioned(profile.plans, `${entity.title || ""} ${entity.text || ""}`)) return null;
   const types = profile.propertyTypes || [];
   const exactType = !types.length || !entity.propertyType || types.includes(entity.propertyType);
   if (!exactType && !(config.relatedTypes && types.flatMap(relatedTypes).includes(entity.propertyType))) return null;

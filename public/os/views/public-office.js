@@ -63,7 +63,7 @@ function officeHeader(office) {
     office.licenseNumber ? h("span", { class: "os-public-license", "data-office-license": "" }, ic("license"), ` رخصة فال ${office.licenseNumber}`) : null);
 }
 
-function successView(root, office, kind) {
+function successView(root, office, kind, { matches = 0 } = {}) {
   clear(root);
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب.`);
   append(root, h("main", { class: "os-app os-public-page os-public-receipt", style: { maxWidth: "560px" } },
@@ -72,6 +72,8 @@ function successView(root, office, kind) {
       h("div", { class: "os-task-icon", style: { margin: "0 auto 8px", background: "var(--ok-tint)", color: "var(--ok)" } }, ic("check-circle")),
       h("h2", { class: "os-h2", style: { justifyContent: "center" }, text: "تم استلام بياناتك" }),
       h("p", { class: "os-sub", text: `شكرًا لك. سيتواصل معك ${office.brokerName || "الوسيط"} عند وجود خيار مناسب.` }),
+      // How many options fit at first look (at most three) — the other side's details stay with the office.
+      matches > 0 ? h("p", { class: "os-alert ok", "data-public-matches": String(matches), text: `وجدنا ${matches === 1 ? "خيارًا واحدًا مناسبًا" : matches === 2 ? "خيارين مناسبين" : "ثلاثة خيارات مناسبة"} مبدئيًا. يراجعها ${office.brokerName || "الوسيط"} ويتواصل معك بالتفاصيل وموعد المعاينة.` }) : null,
       wa ? h("a", { class: "os-btn whatsapp block", href: wa, target: "_blank", rel: "noopener", style: { marginTop: "10px" } }, ic("whatsapp"), "تواصل مع المكتب") : null,
       h("button", { type: "button", class: "os-btn secondary block", onClick: () => renderPublicOffice(root, publicOfficeTarget()) }, "العودة لصفحة المكتب"))));
   window.scrollTo({ top: 0 });
@@ -84,8 +86,27 @@ async function analyzePublic(office, text) {
   } catch (_) { throw new Error("تعذر الاتصال بالخادم"); }
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body.ok === false) throw new Error(body.message || "تعذر التحليل الآن");
-  return normalizeAnalysis(body);
+  // A link the site does not let us read: the visitor pastes the ad's text in the same box (nothing is guessed).
+  if (body.needsText) return { ok: true, needsText: true, message: String(body.message || ""), sourceUrl: String(body.sourceUrl || ""), listings: [] };
+  const sourceUrl = /^https:\/\//.test(String(body.sourceUrl || "")) ? String(body.sourceUrl).slice(0, 480) : "";
+  return { ...normalizeAnalysis(body), sourceUrl };
 }
+
+/** «صفة مقدم المشاركة»: what the person says he is — kept as he chose it, never verified by this form. */
+const CAPACITY = Object.freeze({
+  owner: [
+    { value: "OWNER", role: "OWNER", text: "مالك العقار" },
+    { value: "AUTHORIZED_AGENT", role: "OWNER", text: "وكيل مفوض عن المالك" },
+    { value: "LICENSED_BROKER", role: EXTERNAL_BROKER, text: "وسيط عقاري مرخص (متعاون)" },
+    { value: "AD_RELAY", role: "OWNER", text: "ناقل إعلان (لست المالك ولا وكيله)" }
+  ],
+  client: [
+    { value: "BUYER", role: "CLIENT", text: "مشترٍ يبحث عن عقار" },
+    { value: "TENANT", role: "CLIENT", text: "مستأجر يبحث عن عقار" },
+    { value: "LICENSED_BROKER", role: EXTERNAL_BROKER, text: "وسيط عقاري مرخص (متعاون)" },
+    { value: "AD_RELAY", role: "CLIENT", text: "ناقل طلب (لست صاحب الطلب)" }
+  ]
+});
 
 function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
   const recordKind = kind === "owner" ? RECORD_KIND.OFFER : RECORD_KIND.REQUEST;
@@ -97,9 +118,10 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
     for (const p of PURPOSES[recordKind]) purposeSeg.append(h("button", { type: "button", "aria-pressed": String(purpose === p.id), onClick: () => { purpose = p.id; hidden.value = p.id; drawPurpose(); } }, p.label));
   };
   drawPurpose();
-  const role = h("select", { class: "os-input", name: "submitterRole", "data-testid": "submitter-role" },
-    h("option", { value: kind === "owner" ? "OWNER" : "CLIENT", text: kind === "owner" ? "مالك العقار" : "عميل يبحث عن عقار" }),
-    h("option", { value: EXTERNAL_BROKER, text: "وسيط عقاري متعاون" }));
+  const capacity = h("select", { class: "os-input", name: "submitterCapacity", "data-testid": "submitter-capacity" }, CAPACITY[kind].map((o) => h("option", { value: o.value, text: o.text })));
+  // The stored role stays one of the three the rules and the Worker know; the capacity says exactly what the person chose.
+  const role = h("input", { type: "hidden", name: "submitterRole", "data-testid": "submitter-role", value: CAPACITY[kind][0].role });
+  capacity.addEventListener("change", () => { role.value = CAPACITY[kind].find((o) => o.value === capacity.value)?.role || CAPACITY[kind][0].role; role.dispatchEvent(new Event("change")); });
   const brokerFields = h("div", { class: "os-form", hidden: true, "data-external-broker-fields": "" },
     field("المكتب العقاري الذي تتبعه", h("input", { class: "os-input", name: "externalBrokerOffice", maxlength: "100" }), { optional: true }),
     field("رقم رخصة فال", h("input", { class: "os-input", name: "externalBrokerLicense", inputmode: "numeric", maxlength: "40" }), { hint: "عند انطباق متطلبات الترخيص. البيانات تخضع للمراجعة." }),
@@ -119,8 +141,17 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
   const picker = kind === "owner" ? imagePicker({ max: 5, hint: "حتى 5 صور للعقار. تُصغَّر تلقائيًا قبل الإرسال." }) : null;
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("send"), "إرسال");
   const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
+  const waiting = h("div", { class: "os-alert info", role: "status", hidden: true, "data-public-waiting": "", text: "جارٍ البحث عن العقارات أو الطلبات المناسبة لك، يرجى الانتظار قليلًا" });
+  // Consent: processing is required to send; WhatsApp notices are a separate, optional choice.
+  const consent = h("input", { type: "checkbox", name: "consentProcessing", "data-consent-processing": "" });
+  const consentWa = h("input", { type: "checkbox", name: "consentWhatsapp", "data-consent-whatsapp": "" });
+  const consentBox = h("div", { class: "os-pref-list", "data-public-consent": "" },
+    h("label", { class: "os-pref-row" }, h("span", { text: `أوافق على أن يعالج ${office.officeName || "المكتب"} بياناتي لغرض هذا ${kind === "owner" ? "العرض" : "الطلب"} فقط` }), consent),
+    h("label", { class: "os-pref-row" }, h("span", { text: "أوافق على استلام إشعارات الخيارات المناسبة عبر واتساب (اختياري)" }), consentWa),
+    h("span", { class: "os-error", role: "alert", "data-error-for": "consentProcessing" }));
+  let sourceUrl = "";
   const fields = h("div", { class: "os-form" },
-      field("صفة مقدم المشاركة", role), brokerFields,
+      field("صفة مقدم المشاركة", h("div", {}, capacity, role), { hint: "اختيار الصفة لا يوثقها، ورابط الإعلان لا يثبت ملكية العقار." }), brokerFields,
       h("div", { class: "os-field" }, h("span", { text: kind === "owner" ? "ماذا تريد لعقارك؟" : "ماذا تبحث عنه؟" }), purposeSeg, hidden, h("span", { class: "os-error", role: "alert" })),
       field("نوع العقار", h("div", {}, h("input", { class: "os-input", name: "propertyType", list: "pub-types", autocomplete: "off", placeholder: "شقة، فيلا، أرض…" }), h("datalist", { id: "pub-types" }, PROPERTY_TYPES.map((t) => h("option", { value: t }))))),
       h("div", { class: "os-row2" },
@@ -136,7 +167,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       validityField({}, { isNew: true }),
       field("الاسم الكامل", h("input", { class: "os-input", name: "contactName", autocomplete: "name", placeholder: "الاسم الأول واسم العائلة" })),
       field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" })),
-      status, submit,
+      consentBox, status, waiting, submit,
       h("p", { class: "os-sub os-public-privacy", text: "لا تحتاج إنشاء حساب. تصل بياناتك إلى هذا المكتب فقط، وتراجعها قبل الإرسال." }));
   let smartUsed = false;
   // «تعبئة ذكية | تعبئة يدوية» above the same form (smart by default; switching keeps everything).
@@ -144,9 +175,11 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
     formBox: fields,
     initialText: carry?.text || "",
     intro: carry?.notice || "",
+    label: "رابط أو نص الإعلان",
+    placeholder: "الصق رابط الإعلان أو انسخ نص الإعلان هنا، وسنرتب البيانات تلقائيًا",
     analyze: (text) => analyzePublic(office, text),
     several: "النص فيه أكثر من إعلان — رتبنا الأول. أرسل كل عرض أو طلب على حدة.",
-    onListing: (listing) => {
+    onListing: (listing, analysis = {}) => {
       const wanted = listing.kind === "OFFER" ? "owner" : listing.kind === "REQUEST" ? "client" : "";
       if (wanted && wanted !== kind && switchKind) {
         // The text is a request on «لدي عقار» (or the reverse): open the right path with the same text.
@@ -154,8 +187,12 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
         return { abort: true };
       }
       smartUsed = true;
+      sourceUrl = analysis.sourceUrl || "";
       applyListing(fields, listing, { officeCity: office.city || "" });
-      return { roleLabel: role.options[role.selectedIndex]?.text || "", cityFromOffice: !listing.city && Boolean(office.city) };
+      return {
+        roleLabel: capacity.options[capacity.selectedIndex]?.text || "", cityFromOffice: !listing.city && Boolean(office.city),
+        notice: sourceUrl ? "حُفظ رابط الإعلان مصدرًا له. الرابط لا يثبت ملكية العقار — اختر صفتك بدقة وراجع البيانات قبل الإرسال." : ""
+      };
     }
   });
   const form = h("form", { class: "os-card", novalidate: true }, fill.el, fields);
@@ -169,17 +206,22 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
     const districts = splitDistrictInput(value("district"));
     const input = { kind: recordKind, purpose, propertyType: value("propertyType"), city: value("city"), district: districts.district, price: value("price"), priceStatus: value("priceStatus"), area: value("area"), rooms: value("rooms"), contactName: value("contactName"), contactPhone: value("contactPhone"), notes: notesWithDistricts(value("notes"), districts.others) };
     const check = validateRecordInput(input, { requireName: true });
+    if (!consent.checked) check.errors.consentProcessing = "الموافقة على معالجة البيانات مطلوبة للإرسال";
     const claim = externalBrokerClaim({ kind, submitterRole: role.value, externalBrokerOffice: value("externalBrokerOffice"), externalBrokerLicense: value("externalBrokerLicense"), representationClaim: value("representationClaim"), representationReference: value("representationReference") });
     Object.assign(check.errors, claim.errors);
     if (role.value === EXTERNAL_BROKER && kind === "client" && ((purpose === "PURCHASE" && value("representationClaim") !== "BUYER") || (purpose === "LEASE_REQUEST" && value("representationClaim") !== "TENANT"))) check.errors.representationClaim = "اختر صفة تمثيل تتوافق مع غرض الطلب";
     const name = cleanText(input.contactName, 80);
     if (!/\S+\s+\S+/.test(name)) check.errors.contactName = "اكتب الاسم الأول واسم العائلة";
     if (Object.keys(check.errors).length) {
-      for (const [key, message] of Object.entries(check.errors)) setFieldError(form, key === "kind" ? "purpose" : key, message);
+      for (const [key, message] of Object.entries(check.errors)) {
+        if (key === "consentProcessing") { const slot = form.querySelector('[data-error-for="consentProcessing"]'); if (slot) slot.textContent = message; consentBox.classList.add("invalid"); continue; }
+        setFieldError(form, key === "kind" ? "purpose" : key, message);
+      }
       form.querySelector(".os-field.invalid")?.scrollIntoView({ block: "center", behavior: "smooth" });
       return;
     }
     const v = check.value;
+    let matchCount = 0;
     const ok = await runAction(submit, async () => {
       const ref = submissionRef ||= db().collection("offices").doc(office.id).collection("publicIntake").doc();
       // Photos first (to this intake's folder); the intake then lists exactly what was stored.
@@ -209,6 +251,11 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
         hasVideo: false,
         source: "office_public_link",
         fillMethod: smartUsed ? "SMART_FILL" : "MANUAL",
+        submitterCapacity: capacity.value,
+        sourceUrl: smartUsed ? sourceUrl : "",
+        consentProcessing: true,
+        consentWhatsapp: consentWa.checked,
+        consentAt: window.firebase.firestore.FieldValue.serverTimestamp(),
         status: "new",
         // «مدة العرض أو الطلب» (optional for older clients of this page): the server applies it to the record.
         validityDuration: value("validityDuration") || "",
@@ -219,13 +266,20 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       intakeStored = true;
       }
       // Processing is retry-safe server side (already-processed intakes return duplicate).
+      waiting.hidden = false;
+      const controller = typeof AbortController === "function" ? new AbortController() : null;
+      // Never an endless wait: after 20 s the visitor is told it was received; the server finishes on its own.
+      const timer = setTimeout(() => controller?.abort(), 20_000);
       const response = await fetch(`${workerBase()}/pipeline/public-intake`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ officeId: office.id, intakeId: ref.id })
-      }).catch(() => null);
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ officeId: office.id, intakeId: ref.id }), signal: controller?.signal
+      }).catch(() => null).finally(() => clearTimeout(timer));
+      waiting.hidden = true;
       if (response && !response.ok && response.status === 429) throw new Error("تم استلام بياناتك، وسنعالجها بعد قليل.");
+      const answer = response && response.ok ? await response.json().catch(() => ({})) : {};
+      matchCount = Math.max(0, Math.min(3, Number(answer.matches || 0)));
       return true;
-    }, { onError: (error) => { status.textContent = error.message; status.hidden = false; } });
-    if (ok) successView(root, office, kind);
+    }, { onError: (error) => { waiting.hidden = true; status.textContent = error.message; status.hidden = false; } });
+    if (ok) successView(root, office, kind, { matches: matchCount });
   });
   return form;
 }

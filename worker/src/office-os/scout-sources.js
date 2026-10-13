@@ -72,6 +72,18 @@ const officeInbox = {
   }
 };
 
+/** Structured fields stored with a fed ad (a JSON string, or an object) — only the known keys, only plain values. */
+function parseStructured(value) {
+  let raw = value;
+  if (typeof raw === "string") { try { raw = JSON.parse(raw); } catch (_) { return undefined; } }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out = {};
+  for (const key of ["kind", "tx", "propertyType", "city", "district", "price", "area", "rooms"]) {
+    if (typeof raw[key] === "string" || typeof raw[key] === "number") out[key] = raw[key];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 const linkHost = (url) => { try { return new URL(url).hostname.toLowerCase().replace(/^www\./, "").replace(/[^a-z0-9.-]/g, "").slice(0, 60); } catch (_) { return ""; } };
 
 const brokerFeed = {
@@ -85,7 +97,10 @@ const brokerFeed = {
     const docs = await ctx.store.queryAfter(["offices", officeId], "scoutFeed", { field: "createdAt", after: since, limit: Math.min(20, limit) });
     const items = [];
     for (const doc of docs) {
-      const found = itemsFromText({ sourceId: "broker_feed", docId: doc.id, body: String(doc.text || ""), at: iso(doc.createdAt) });
+      // An ad an authorised assistant sent (scout-ingest.js) is one ad by definition, with the fields it gave.
+      const found = doc.single === true
+        ? [{ sourceId: "broker_feed", externalId: `${doc.id}#0`, text: String(doc.text || "").slice(0, 2000), title: text(doc.title, 160), at: iso(doc.createdAt), publishedAt: iso(doc.publishedAt), structured: parseStructured(doc.structured) }]
+        : itemsFromText({ sourceId: "broker_feed", docId: doc.id, body: String(doc.text || ""), at: iso(doc.createdAt) });
       // One ad the broker brought himself: kept for him whatever its level. With a link, the link is the ad's identity
       // (the same address entered again is the same ad — an update, never a second find).
       if (found.length === 1 && doc.pinned === true) {

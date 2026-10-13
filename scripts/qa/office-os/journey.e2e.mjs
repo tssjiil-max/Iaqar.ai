@@ -66,6 +66,7 @@ try {
   await visitor.fill('input[name="contactName"]', "عبدالله السبيعي");
   await visitor.fill('input[name="contactPhone"]', "0557654321");
   await shot(visitor, "02-public-offer-form");
+  await visitor.locator("[data-consent-processing]").check();
   await visitor.getByRole("button", { name: "إرسال" }).click();
   await visitor.getByText("تم استلام بياناتك").waitFor();
   await shot(visitor, "03-public-submitted");

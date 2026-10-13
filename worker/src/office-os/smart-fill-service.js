@@ -12,6 +12,8 @@ import { CITIES } from "../../../public/os/domain/visitor-domain.js";
 import { PROPERTY_TYPES } from "../../../public/os/domain/records-domain.js";
 import { SMART_FILL_LIMITS, analyzeText, normalizeAnalysis, toLatinDigits } from "../../../public/os/domain/smart-fill-domain.js";
 import { consumePublicRateLimit, publicRateLimitKey } from "../public-rate-limit.js";
+import { readLinkedPage } from "./scout-web.js";
+import { canonicalAdUrl } from "./scout-ingest.js";
 
 const PUBLIC_LIMIT = Object.freeze({ limit: 12, windowMs: 60_000 });
 const OFFICE_LIMIT = Object.freeze({ limit: 40, windowMs: 60_000 });
@@ -95,15 +97,50 @@ async function run(ctx, officeId, text, { multi }) {
   return { ...result, aiStatus: smartFillAiStatus(ctx.env) };
 }
 
+const LINK_RE = /https:\/\/[^\s<>"']+/i;
+const ANY_LINK_RE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/i;
+/** What to tell the visitor when the link alone cannot be read — the ad's text goes in the SAME box, next to the link. */
+const PUBLIC_LINK_REASON = Object.freeze({
+  restricted: "هذا الموقع لا يسمح بقراءة إعلاناته آليًا. انسخ نص الإعلان والصقه في الخانة نفسها مع الرابط، وسنرتب البيانات.",
+  robots: "هذا الموقع يمنع القراءة الآلية لهذه الصفحة. انسخ نص الإعلان والصقه في الخانة نفسها مع الرابط.",
+  unreadable: "لم نجد في الصفحة وصفًا كافيًا للإعلان. انسخ نص الإعلان والصقه في الخانة نفسها مع الرابط.",
+  failed: "تعذر فتح الرابط الآن. انسخ نص الإعلان والصقه في الخانة نفسها مع الرابط.",
+  invalid: "الرابط غير صالح — يبدأ بـ https://. يمكنك لصق نص الإعلان بدلًا منه."
+});
+
+/**
+ * «رابط أو نص الإعلان»: one box. A link with the ad's text → the text is analysed and the link kept as its source.
+ * A link alone → its page is read only where the site allows it (robots.txt, not a listing platform whose terms forbid it,
+ * a public https address); otherwise the visitor is asked for the ad's text in the same box. The link never proves ownership.
+ */
+export function splitLinkAndText(raw = "") {
+  const input = typeof raw === "string" ? raw : "";
+  const found = input.match(LINK_RE)?.[0]?.replace(/[.,،)]+$/, "") || "";
+  const loose = found ? "" : input.match(ANY_LINK_RE)?.[0] || "";
+  const rest = input.replace(found || loose || "\u0000", " ").replace(/[ \t]+/g, " ").trim();
+  return { link: found ? canonicalAdUrl(found) : "", invalidLink: Boolean(loose) || Boolean(found && !canonicalAdUrl(found)), rest };
+}
+
 /** Public office page: the office is the one behind the link (its public page must exist). */
 export async function analyzePublicText(ctx, { officeId, text, ip = "" }) {
   const id = String(officeId || "").trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
   limited(ctx, "smart-fill-public", ip, id, PUBLIC_LIMIT);
-  const body = cleanInput(ctx, text);
   if (!id || id === "platform") throw ctx.deps.appError("office_required", 400, "تعذر تحديد المكتب");
+  const { link, invalidLink, rest } = splitLinkAndText(text);
   const office = await ctx.store.get(["publicOffices", id]).catch(() => null);
   if (!office) throw ctx.deps.appError("office_not_found", 404, "رابط المكتب غير متاح");
-  return run(ctx, id, body, { multi: false });
+  if (!link && invalidLink && rest.length < SMART_FILL_LIMITS.minChars * 3) return { ok: true, needsText: true, reason: "invalid", message: PUBLIC_LINK_REASON.invalid, listings: [] };
+  let body = rest;
+  let readFrom = link ? "text" : "";
+  if (link && rest.replace(/\s+/g, "").length < 20) {
+    limited(ctx, "smart-fill-public-link", ip, id, { limit: 6, windowMs: 60_000 });
+    const page = await readLinkedPage(ctx.env, link);
+    if (!page.ok) return { ok: true, needsText: true, reason: page.reason, message: PUBLIC_LINK_REASON[page.reason] || PUBLIC_LINK_REASON.failed, sourceUrl: link, listings: [] };
+    body = page.text;
+    readFrom = "page";
+  }
+  const analysis = await run(ctx, id, cleanInput(ctx, body), { multi: false });
+  return link ? { ...analysis, sourceUrl: link, readFrom } : analysis;
 }
 
 /** Office app («إضافة سريعة» and «إضافة عرض/طلب»): several ads in one paste are split into cards. */
