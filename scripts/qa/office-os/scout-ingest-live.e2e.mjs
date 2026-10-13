@@ -151,6 +151,7 @@ try {
   await page.locator("[data-scout-ingest-pair]").click();
   const shortcut = await page.locator("[data-scout-shortcut]").inputValue();
   await page.screenshot({ path: path.join(OUT, "ingest-01-pair-shortcut.png"), fullPage: true });
+  await page.getByRole("button", { name: "إغلاق" }).last().click();
   const code = (shortcut.match(/#c=([a-z0-9]{8,16})&ingest=/) || [])[1] || "";
   check("pairing shows the shortcut text with a run code and the office's criteria", Boolean(code) && /شقة أو عمارة/.test(shortcut) && /المدينة المنورة/.test(shortcut) && /العزيزية/.test(shortcut) && /حراج/.test(shortcut));
   check("the key is never shown on the screen or in the shortcut", !/iqk\./.test(shortcut) && !(await page.content()).includes("iqk."));
@@ -214,11 +215,12 @@ try {
 
   // 8 unpair: the key is revoked at once
   await page.goto(`${APP}/#/settings/scout`);
-  page.once("dialog", (d) => d.accept());
+  await page.reload();
+  const state = await page.locator("[data-scout-ingest-state]").getAttribute("data-scout-ingest-state");
+  check("the settings card knows this browser is paired", state === "paired", state);
   await page.locator("[data-scout-ingest-unpair]").click();
-  const confirm = page.getByRole("button", { name: "فك الربط" });
-  if (await confirm.count()) await confirm.last().click();
-  await page.waitForTimeout(2500);
+  await page.locator('[role="alertdialog"]').getByRole("button", { name: "فك الربط", exact: true }).click();
+  await page.locator('[data-scout-ingest-state="not-paired"]').waitFor();
   const after = await fetch(`${WORKER}/os/scout/ingest`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${pairing.token}` }, body: JSON.stringify(batch(`after-${RUN}`, items.slice(0, 1))) });
   check("after «فك الربط» the key stops at once (401)", after.status === 401, String(after.status));
   // The scout is switched off for the QA office so the shared Staging scheduler leaves it alone.
