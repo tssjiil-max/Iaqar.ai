@@ -16,6 +16,7 @@ import * as admin from "firebase-admin";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
+import { annotateFailure } from "./qa/annotate-failure.mjs";
 import {
   QA_OFFICE_ID as SHARED_QA_OFFICE_ID,
   assertStagingServiceAccount,
@@ -511,6 +512,7 @@ async function main() {
 }
 
 main().catch((err) => {
+  annotateFailure("bank operational action failed", err);
   console.error(err);
   process.exit(1);
 });

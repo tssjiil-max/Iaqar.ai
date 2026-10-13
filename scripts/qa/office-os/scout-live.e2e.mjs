@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
 import { parseFirebaseServiceAccountJson } from "../../staging-credentials.mjs";
+import { annotateFailure, visibleState } from "../annotate-failure.mjs";
 import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
@@ -304,7 +305,9 @@ try {
   const schedule = await db.collection("_system").doc("scoutSchedule").get();
   check("live: the platform schedule holds ids, times and counters only", !/05\d{8}|شوران|الحمراء|مليون/.test(schedule.data()?.entriesJson || ""));
 } catch (error) {
+  const seen = await visibleState(browser);
   check("scout live run completed", false, String(error?.stack || error).split("\n").slice(0, 2).join(" | "));
+  annotateFailure("scout live failed", error, seen);
 } finally {
   await browser.close().catch(() => {});
   // The scout is switched off for the QA offices at the end, so nothing keeps running for them on Staging.

@@ -7,6 +7,7 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { chromium } from "playwright";
 import { parseFirebaseServiceAccountJson } from "./staging-credentials.mjs";
+import { annotateFailure } from "./qa/annotate-failure.mjs";
 import {
   QA_OFFICE_ID,
   STAGING_PROJECT_ID,
@@ -520,6 +521,7 @@ async function main() {
 }
 
 main().catch((error) => {
+  annotateFailure("live negotiation session failed", error, `step: ${String(error?.step || "")}`);
   writeFileSync(path.join(OUT, "live-negotiation-session-failure.json"), JSON.stringify({
     generatedAt: new Date().toISOString(),
     runId: RUN_ID,
