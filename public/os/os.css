@@ -553,6 +553,9 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 .os-session-composer .os-textarea { min-height: 46px; height: 46px; resize: none; transition: height .15s; }
 .os-session-composer .os-textarea:focus { height: 88px; }
 @media (max-width: 360px) { .os-session-composer .os-seg button { font-size: var(--fs-meta); padding: 0 2px; } }
+/* The broker's composer lives inside the office layout, whose side padding is not always --gutter: it stays within
+   the page instead of bleeding past it (it pushed 320–360 px screens into a horizontal scroll). */
+.os-session-composer { margin-inline: 0; }
 .os-session-typed .os-field { min-width: 0; }
 .os-session-typed .os-input { min-width: 0; width: 100%; }
 .os-session-typed.is-date { grid-template-columns: 1fr; }
