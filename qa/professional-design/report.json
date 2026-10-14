@@ -1,0 +1,511 @@
+{
+  "base": "883a5ce",
+  "fixture": "Local app and Worker with isolated in-memory records; no live writes",
+  "checks": [
+    {
+      "variant": "before",
+      "name": "office",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "before",
+      "name": "records",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "before",
+      "name": "tasks",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "before",
+      "name": "matching",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "before",
+      "name": "scout",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "before",
+      "name": "settings",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "before",
+      "name": "marketing",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "before",
+      "name": "office",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "before",
+      "name": "records",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "before",
+      "name": "tasks",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "before",
+      "name": "matching",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "before",
+      "name": "scout",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "before",
+      "name": "settings",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "before",
+      "name": "marketing",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "before",
+      "name": "office",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "records",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "tasks",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "matching",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 760
+    },
+    {
+      "variant": "before",
+      "name": "scout",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "settings",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 760
+    },
+    {
+      "variant": "before",
+      "name": "marketing",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "office",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "records",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "tasks",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "matching",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 760
+    },
+    {
+      "variant": "before",
+      "name": "scout",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "before",
+      "name": "settings",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 760
+    },
+    {
+      "variant": "before",
+      "name": "marketing",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "after",
+      "name": "office",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "after",
+      "name": "records",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "after",
+      "name": "tasks",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "after",
+      "name": "matching",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "after",
+      "name": "scout",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "after",
+      "name": "settings",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "after",
+      "name": "marketing",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 320
+    },
+    {
+      "variant": "after",
+      "name": "office",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "after",
+      "name": "records",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "after",
+      "name": "tasks",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "after",
+      "name": "matching",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "after",
+      "name": "scout",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "after",
+      "name": "settings",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "after",
+      "name": "marketing",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 390
+    },
+    {
+      "variant": "after",
+      "name": "office",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "after",
+      "name": "records",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "after",
+      "name": "tasks",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "after",
+      "name": "matching",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 760
+    },
+    {
+      "variant": "after",
+      "name": "scout",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "after",
+      "name": "settings",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 760
+    },
+    {
+      "variant": "after",
+      "name": "marketing",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 520
+    },
+    {
+      "variant": "after",
+      "name": "office",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 1040
+    },
+    {
+      "variant": "after",
+      "name": "records",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 1040
+    },
+    {
+      "variant": "after",
+      "name": "tasks",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 1040
+    },
+    {
+      "variant": "after",
+      "name": "matching",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 760
+    },
+    {
+      "variant": "after",
+      "name": "scout",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 1040
+    },
+    {
+      "variant": "after",
+      "name": "settings",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 760
+    },
+    {
+      "variant": "after",
+      "name": "marketing",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "appWidth": 1040
+    },
+    {
+      "name": "record-open, request-filter, reduced-motion",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "recordColours": [
+    {
+      "kind": "OFFER",
+      "surface": "rgb(234, 245, 247)",
+      "label": "عرض"
+    },
+    {
+      "kind": "REQUEST",
+      "surface": "rgb(242, 245, 250)",
+      "label": "طلب"
+    },
+    {
+      "kind": "OFFER",
+      "surface": "rgb(234, 245, 247)",
+      "label": "عرض"
+    },
+    {
+      "kind": "REQUEST",
+      "surface": "rgb(242, 245, 250)",
+      "label": "طلب"
+    },
+    {
+      "kind": "OFFER",
+      "surface": "rgb(234, 245, 247)",
+      "label": "عرض"
+    },
+    {
+      "kind": "REQUEST",
+      "surface": "rgb(242, 245, 250)",
+      "label": "طلب"
+    },
+    {
+      "kind": "OFFER",
+      "surface": "rgb(234, 245, 247)",
+      "label": "عرض"
+    },
+    {
+      "kind": "REQUEST",
+      "surface": "rgb(242, 245, 250)",
+      "label": "طلب"
+    },
+    {
+      "kind": "OFFER",
+      "surface": "rgb(234, 245, 247)",
+      "label": "عرض"
+    },
+    {
+      "kind": "REQUEST",
+      "surface": "rgb(242, 245, 250)",
+      "label": "طلب"
+    }
+  ]
+}

@@ -138,7 +138,7 @@
   --ia-frame: #B4D3DA;
   --ia-frame-quiet: #CADFE4;
   --ia-offer-surface: #EAF5F7;
-  --ia-request-surface: #FFFFFF;
+  --ia-request-surface: #F2F5FA;
   --ia-focus: #03677A;
 }
 .os-app :is(.os-card, .ref-office-profile, .ref-record-card, .ref-task-card, .ref-office-tool, .ref-office-extra) {
@@ -178,4 +178,86 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .os-app :is(.os-chip, .os-seg button) { transition: none; }
+}
+
+/* Shared presentation for every Office OS route, including scout, tools and settings. */
+.os-app[data-view] { background: transparent; }
+.os-app :is(.os-card, .ref-office-profile, .ref-task-card, .ref-office-tool, .ref-office-extra) {
+  border-radius: var(--radius);
+}
+.os-app :is(.os-btn, .os-icon-btn, .os-chip, .os-seg button) {
+  transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.os-app :is(.os-btn, .os-chip, .os-seg button, .ref-filters > summary) { min-height: 44px; }
+.os-app :is(.os-input, .os-select, .os-textarea):focus-visible {
+  border-color: var(--brand-primary);
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+.os-app .os-seg { direction: rtl; flex-wrap: wrap; }
+.os-app .os-seg button[aria-pressed="true"] {
+  border-color: var(--brand-primary);
+  box-shadow: 0 2px 8px rgb(3 103 122 / 14%);
+}
+.ref-bottom button[aria-current="page"] { background: var(--brand-tint); }
+.ref-bottom button[aria-current="page"]::before { display: block; width: 32px; }
+.os-app .os-empty { border: 1px dashed var(--ia-frame); border-radius: var(--radius); background: var(--surface-2); }
+.os-app .os-note { border: 1px solid var(--ia-frame-quiet); }
+
+/* Kind is on the card itself; text labels remain visible, so colour is never the only cue. */
+.os-app .ref-record-card[data-record-kind="OFFER"] {
+  background: var(--ia-offer-surface);
+  border-color: #8DBEC8;
+  border-inline-start: 4px solid var(--brand-primary);
+}
+.os-app .ref-record-card[data-record-kind="REQUEST"] {
+  background: var(--ia-request-surface);
+  border-color: #BCCBD6;
+  border-inline-start: 4px solid var(--brand-dark);
+}
+.ref-record-card .ref-record-open { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; }
+.ref-record-card .ref-record-open .ref-photo { width: 64px; height: 76px; background: rgb(255 255 255 / 80%); }
+.ref-record-card .ref-record-copy :is(h3, p, b) { overflow-wrap: anywhere; }
+.ref-record-card .ref-record-copy b { color: var(--brand-primary); font-size: var(--fs-lg); line-height: var(--lh-title); }
+.ref-record-card[data-record-kind="REQUEST"] .ref-record-copy b { color: var(--brand-dark); }
+.ref-record-card [data-kind-label] { min-width: 44px; text-align: center; }
+.ref-record-card [data-kind-label="OFFER"] { color: #FFF; background: var(--brand-primary); }
+.ref-record-card [data-kind-label="REQUEST"] { color: #FFF; background: var(--brand-dark); box-shadow: none; }
+.ref-record-card .ref-record-meta { flex-wrap: wrap; justify-content: flex-start; gap: 8px 16px; padding-block-start: 10px; margin-block-start: 10px; border-block-start: 1px solid rgb(8 47 58 / 12%); }
+.ref-record-card .ref-record-meta span:first-child { margin-inline-end: auto; }
+.ref-record-card:focus-within { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .os-app :is(.ref-office-tool, .ref-office-extra, .ref-record-card, .ref-task-card):hover {
+    border-color: var(--brand-primary);
+    box-shadow: var(--shadow-strong);
+  }
+}
+@media (max-width: 374px) {
+  .ref-record-card .ref-record-open { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 8px; }
+  .ref-record-card .ref-record-open .ref-photo { width: 48px; height: 60px; }
+  .ref-record-card .ref-record-copy b { font-size: var(--fs-body); }
+}
+/* Desktop expands existing lists; DOM order and all route/action handlers are preserved. */
+@media (min-width: 1024px) {
+  .os-app[data-view="office"], .os-app[data-view="tasks"], .os-app[data-view="repo"], .os-app[data-view="tool"] {
+    max-width: 1040px;
+    padding-inline: 32px;
+  }
+  .ref-bottom { max-width: 640px; border-radius: 22px; bottom: 12px; }
+  .os-app[data-view="repo"] .os-record-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .os-app[data-view="repo"] .ref-record-card { margin-block: 0; }
+  .os-app .ref-office-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .os-app .ref-office-extras { gap: 16px; }
+  .os-app .ref-office-tool { min-height: 124px; }
+  .ref-task-card { grid-template-columns: 64px minmax(0, 1fr) 160px; gap: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .os-app :is(.os-btn, .os-icon-btn, .os-chip, .os-seg button) { transition: none; }
+  .os-app .os-skeleton, .os-app .os-btn[aria-busy="true"]::after { animation: none; }
 }
