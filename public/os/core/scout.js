@@ -39,4 +39,5 @@ export const unlinkScoutTelegramChat = (officeId, chatId) => changed(api("/os/sc
 /** «الاستقبال التلقائي من Claude»: the office's keys (manager only). The token is returned once, at creation. */
 export const scoutIngestKeys = (officeId) => api("/os/scout/ingest/keys", { officeId });
 export const createScoutIngestKey = (officeId, label = "Claude") => api("/os/scout/ingest/key/create", { officeId, label });
+export const createMcpKey = (officeId) => api("/os/mcp/key/create", { officeId, label: "ChatGPT" });
 export const revokeScoutIngestKey = (officeId, keyId) => api("/os/scout/ingest/key/revoke", { officeId, keyId });

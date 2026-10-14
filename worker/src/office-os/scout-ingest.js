@@ -131,7 +131,7 @@ export async function listIngestKeys(ctx, { officeId, actor }) {
   if (!ingestAvailable(ctx.env)) return { ok: true, available: false, keys: [] };
   if (!actor?.isManager) throw ctx.deps.appError("forbidden", 403, "مفاتيح الاستقبال لمدير المكتب فقط");
   const rows = await ctx.store.list(["offices", officeId, "scoutIngestKeys"], 50);
-  return { ok: true, available: true, keys: rows.map(keyView).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))), endpoint: "/os/scout/ingest", limits: INGEST_LIMITS };
+  return { ok: true, available: true, keys: rows.map(keyView).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))), endpoint: "/os/scout/ingest", limits: INGEST_LIMITS, mcp: String(ctx.env?.MCP_SERVER || "").toLowerCase() === "enabled" };
 }
 
 /** A new key: shown once, kept as a hash only. */
