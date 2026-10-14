@@ -1,3 +1,4 @@
+import { OUTLINE_ICONS } from "./outline-icons.js";
 /**
  * Icon set — 24px outline icons in one consistent style (rounded 2px strokes),
  * matched to the reference screens. Filled variants where the reference fills.
@@ -125,7 +126,7 @@ export function propertyTypeIcon(type) {
 export const BRAND_ICONS = new Set(["whatsapp", "telegram"]);
 
 export function iconMarkup(name) {
-  return P[name] || P.info;
+  return OUTLINE_ICONS[name] || P[name] || OUTLINE_ICONS.info;
 }
 
 export function icon(name, { filled, label = "" } = {}) {

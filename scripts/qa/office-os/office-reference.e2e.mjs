@@ -28,8 +28,7 @@ for(const route of await page.locator('[data-reference-tool]').evaluateAll(ns=>n
 }
 await page.goto(harness.origin+'/#/office');
 await page.reload();await page.locator('.ref-office-profile').waitFor();
-await page.getByRole('button',{name:'تغيير الصورة',exact:true}).click();
-assert.equal(await page.evaluate(()=>location.hash),'#/settings/profile');
+assert.equal(await page.getByRole('button',{name:'تغيير الصورة',exact:true}).count(),0);
 await page.goto(harness.origin+'/#/office');
 await page.getByRole('button',{name:'القائمة والإعدادات',exact:true}).click();
 assert.ok(await page.getByText('تسجيل الخروج',{exact:true}).isVisible());

@@ -21,10 +21,13 @@ jobs:
       - run: npm test && npm run check
       - run: npx playwright install --with-deps chromium
       - run: node scripts/qa/office-os/office-reference.e2e.mjs
+      - run: node scripts/qa/office-os/site-theme.e2e.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: office-reference-browser-evidence
-          path: qa/office-reference
+          path: |
+            qa/office-reference
+            qa/site-theme
       - name: Deploy hosting preview to staging project only
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}

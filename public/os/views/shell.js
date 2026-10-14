@@ -111,45 +111,22 @@ function openMenu() {
 }
 
 export function renderShellHeader({ active = "office" } = {}) {
-  if (active === "office") {
-    const bell = h("button",{type:"button",class:"ref-bell","aria-label":"التنبيهات",onClick:openNotifications},ic("bell"),h("i",{class:"ref-bell-dot"}));
+  const localTitle = active === "tasks" ? "المهام اليومية" : active === "repo" ? "العروض والطلبات" : "";
+
+    const bell = h("button",{type:"button",class:"ref-bell","data-header-bell":"","aria-label":"التنبيهات",onClick:openNotifications},ic("bell"),h("i",{class:"ref-bell-dot"}));
     refreshBellDot(bell);
-    return h("header",{class:"ref-shell-header ref-reference-header"},
+    return h("header",{class:"ref-shell-header ref-reference-header","aria-label":localTitle || "مكاتب عقارية ذكية"},
       h("button",{type:"button",class:"os-icon-btn","aria-label":"القائمة والإعدادات",onClick:openMenu},ic("reference-menu")),
       h("span",{class:"ref-logo","aria-label":"iAqar.ai"}),
       h("h1",{text:"مكاتب عقارية ذكية"}),
-      h("button",{type:"button",class:"os-icon-btn","aria-label":"البحث الشامل",onClick:()=>go("search")},ic("search")),bell,
+      h("button",{type:"button",class:"os-icon-btn","data-header-search":"","aria-label":"البحث الشامل",onClick:()=>go("search")},ic("search")),bell,
       h("button",{type:"button",class:"os-icon-btn","aria-label":"حسابي",onClick:()=>go("settings")},ic("user")));
-  }
-  const office = session.office || {};
-  let logo = h("span", { class: "ref-logo" });
-  if (/^https:\/\//.test(String(office.logoUrl || ""))) {
-    // An office logo whose file no longer exists falls back to the platform mark (never a broken image).
-    const img = h("img", { src: office.logoUrl, alt: "" });
-    img.addEventListener("error", () => img.replaceWith(h("span", { class: "ref-logo" })), { once: true });
-    logo = img;
-  }
-  const localTitle = active === "tasks" ? "المهام اليومية" : active === "repo" ? "العروض والطلبات" : "";
-
-  const bell = h("button", { type: "button", class: "ref-bell", "aria-label": "التنبيهات", "data-header-bell": "", onClick: openNotifications }, ic("bell"), h("i", { class: "ref-bell-dot", "aria-hidden": "true" }));
-  refreshBellDot(bell);
-  return h("header", { class: "ref-shell-header ref-shell-platform" },
-    h("div", { class: "ref-brand" }, logo),
-    h("div", { class: "ref-shell-title" },
-      h("h1", { text: "مكاتب عقارية ذكية" }),
-      localTitle ? h("p", { class: "ref-platform-context", text: localTitle }) : null),
-    // The same actions, in the same place and shape, on المكتب / المهام اليومية / العروض والطلبات:
-    // search, the notifications list, and the menu.
-    h("button", { type: "button", class: "ref-search", "aria-label": "البحث الشامل", "data-header-search": "", onClick: () => go("search") }, ic("search")),
-    bell,
-    h("button", { type: "button", class: "os-icon-btn ref-menu", "aria-label": "القائمة والإعدادات", onClick: openMenu }, ic("gear")));
 }
 
 // One order on every page (RTL, right to left): المكتب — المهام اليومية — العروض والطلبات.
-export const BOTTOM_NAV = Object.freeze([["office", "المكتب", "dashboard"], ["tasks", "المهام اليومية", "tasks-check"], ["repo", "العروض والطلبات", "offers"]]);
+export const BOTTOM_NAV = Object.freeze([["public","الرئيسية","home"],["search","البحث","search"],["office","المكتب","dashboard"],["tools/market","المؤشرات","chart-up"],["settings","حسابي","user"]]);
 export function renderBottomNav(active = "office") {
-  if (active === "office") return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"},
-    [["public","الرئيسية","home"],["search","البحث","search"],["office","المكتب","dashboard"],["tools/market","المؤشرات","chart-up"],["settings","حسابي","user"]].map(([route,label,icon])=>h("button",{type:"button","aria-current":route==="office"?"page":null,onClick:()=>route==="public"?location.assign(officePublicLink()):go(route)},ic(icon),h("span",{text:label}))));
-  return h("nav", { class: "ref-bottom", "aria-label": "أقسام المكتب" }, BOTTOM_NAV.map(([route, label, icon]) => h("button", { type: "button", "aria-current": active === route ? "page" : null, onClick: () => go(route) }, ic(icon), h("span", { text: label }))));
+  const selected = active === "search" ? "search" : location.hash.startsWith("#/tools/market") ? "tools/market" : location.hash.startsWith("#/settings") ? "settings" : "office";
+  return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"}, BOTTOM_NAV.map(([route,label,icon])=>h("button",{type:"button","aria-current":route===selected?"page":null,onClick:()=>route==="public"?location.assign(officePublicLink()):go(route)},ic(icon),h("span",{text:label}))));
 }
 export { btn };

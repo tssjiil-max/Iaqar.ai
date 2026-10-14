@@ -255,10 +255,9 @@ export function renderOffice(container){
     h("div",{class:"ref-office-profile-main"},
       h("div",{class:"ref-office-profile-head"},h("h2",{class:nameSize,text:officeName})),
       profileRow("user", "الوسيط", broker),details),
-    h("div",{class:"ref-office-profile-logo"},h("div",{class:"ref-office-logo-box"},brokerAvatar(office)||officeLogo(office)),
-      session.isManager ? h("button",{type:"button",class:"ref-change-photo",onClick:()=>go("settings/profile")},ic("edit"),"تغيير الصورة") : null),toggle);
+    h("div",{class:"ref-office-profile-logo"},h("div",{class:"ref-office-logo-box"},brokerAvatar(office)||officeLogo(office))),toggle);
   const services = SPECIALTIES.filter(item=>Array.isArray(office.specialties)&&office.specialties.includes(item.value));
-  if(services.length) profile.append(h("div",{class:"ref-office-services"},h("b",{text:"الخدمات العقارية"}),...services.map((item,index)=>h("span",{class:`tone-${["green","blue","purple","gold"][index%4]}`},ic(item.value==="property_management"?"building":"home"),item.label))));
+  if(services.length) profile.append(h("div",{class:"ref-office-services"},h("b",{text:"الخدمات العقارية"}),...services.map((item,index)=>h("span",{class:`tone-${["green","blue","purple","gold"][index%4]}`},ic(({sale:"home",purchase:"cart",rent:"key",property_management:"building"})[item.value] || "home"),item.label))));
   toggle.addEventListener("click",()=>{
     const expanded=toggle.getAttribute("aria-expanded")!=="true";
     toggle.setAttribute("aria-expanded",String(expanded));

@@ -1,10 +1,10 @@
 /* Reference: 864 × 1536. All visual overrides are confined to the office route. */
 .os-app[data-view="office"]{--navy:#101733;--muted:#6c788b;max-width:864px;background:linear-gradient(130deg,#f3fbff,#eaf5fa);padding:9px 7px calc(86px + env(safe-area-inset-bottom));color:var(--navy);direction:rtl}
-.os-app[data-view="office"] .ref-reference-header{display:flex;gap:5px;align-items:center;margin:0 -5px 8px;padding:5px 8px;min-height:48px;background:#ffffffea;border-radius:14px}
-.os-app[data-view="office"] .ref-reference-header h1{flex:1;min-width:0;font-size:clamp(14px,3.7vw,28px);line-height:1.3;margin:0;font-weight:700;white-space:nowrap}
-.os-app[data-view="office"] .ref-reference-header button{background:transparent;min-width:36px;width:36px;height:40px;padding:5px;border:0;border-radius:10px;color:#536777;display:grid;place-items:center}
-.os-app[data-view="office"] .ref-reference-header svg{width:24px;height:24px}
-.os-app[data-view="office"] .ref-reference-header .ref-logo{width:33px;height:38px;flex:none;background-image:url('/icons/iaqar-logo.png')}
+.os-app .ref-reference-header{display:flex;gap:5px;align-items:center;margin:0 -5px 8px;padding:5px 8px;min-height:48px;background:#ffffffea;border-radius:14px}
+.os-app .ref-reference-header h1{flex:1;min-width:0;font-size:clamp(14px,3.7vw,28px);line-height:1.3;margin:0;font-weight:700;white-space:nowrap}
+.os-app .ref-reference-header button{background:transparent;min-width:36px;width:36px;height:40px;padding:5px;border:0;border-radius:10px;color:#536777;display:grid;place-items:center}
+.os-app .ref-reference-header svg{width:24px;height:24px}
+.os-app .ref-reference-header .ref-logo{width:33px;height:38px;flex:none;background-image:url('/icons/iaqar-logo.png')}
 .os-app[data-view="office"] .ref-office-profile{position:relative;grid-template-columns:minmax(0,1fr) 36%;gap:8px;padding:9px;border:1px solid #258298;border-radius:13px;background:linear-gradient(110deg,#fff,#fdfefe);box-shadow:0 3px 12px #03677a18;margin:0 0 8px}
 .os-app[data-view="office"] .ref-office-profile-main{min-width:0;padding:0;padding-top:3px}
 .os-app[data-view="office"] .ref-office-profile-head{padding-inline-end:18px;margin-bottom:2px}
@@ -47,20 +47,20 @@
 .os-app[data-view="office"] .ref-reference-copy{display:block;min-width:0;flex:1}
 .os-app[data-view="office"] .ref-reference-copy strong{display:block;font-size:clamp(13px,3.45vw,25px);line-height:1.4;font-weight:700}
 .os-app[data-view="office"] .ref-reference-copy small{display:block;font-size:clamp(10px,2.6vw,18px);line-height:1.45;color:#6c788b;margin-top:2px}
-.os-app[data-view="office"] .ref-reference-bottom{grid-template-columns:repeat(5,minmax(0,1fr));width:100%;max-width:864px;border:0;background:#fff;border-radius:14px 14px 0 0;min-height:58px;padding:4px 8px max(5px,env(safe-area-inset-bottom));box-shadow:0 -3px 16px #03677a10}
-.os-app[data-view="office"] .ref-reference-bottom button{min-height:46px;font-size:12px;gap:2px;border-radius:10px;padding:4px 0;color:#607184}
-.os-app[data-view="office"] .ref-reference-bottom button svg{width:23px;height:23px}
-.os-app[data-view="office"] .ref-reference-bottom button[aria-current="page"]{color:#fff;background:#036f84}
-.os-app[data-view="office"] .ref-reference-bottom button[aria-current="page"]:before{display:none}
+.os-app .ref-reference-bottom{grid-template-columns:repeat(5,minmax(0,1fr));width:100%;max-width:864px;border:0;background:#fff;border-radius:14px 14px 0 0;min-height:58px;padding:4px 8px max(5px,env(safe-area-inset-bottom));box-shadow:0 -3px 16px #03677a10}
+.os-app .ref-reference-bottom button{min-height:46px;font-size:12px;gap:2px;border-radius:10px;padding:4px 0;color:#607184}
+.os-app .ref-reference-bottom button svg{width:23px;height:23px}
+.os-app .ref-reference-bottom button[aria-current="page"]{color:#fff;background:#036f84}
+.os-app .ref-reference-bottom button[aria-current="page"]:before{display:none}
 .os-app[data-view="office"] button:focus-visible{outline:3px solid #099fb4;outline-offset:2px}
-@media(min-width:600px){.os-app[data-view="office"]{padding:16px 14px 100px}.os-app[data-view="office"] .ref-reference-grid{gap:12px}.os-app[data-view="office"] .ref-reference-tool{min-height:114px;padding:12px;gap:12px}.os-app[data-view="office"] .ref-reference-icon{width:70px;height:82px}.os-app[data-view="office"] .ref-reference-icon svg{width:48px;height:48px}.os-app[data-view="office"] .ref-reference-header{min-height:80px;gap:12px}.os-app[data-view="office"] .ref-reference-header button{width:50px;min-width:50px}.os-app[data-view="office"] .ref-reference-header .ref-logo{width:55px;height:60px}.os-app[data-view="office"] .ref-office-profile{padding:16px;gap:14px}.os-app[data-view="office"] .ref-office-logo-box{min-height:190px}.os-app[data-view="office"] .ref-office-row-text{font-size:15px}.os-app[data-view="office"] .ref-office-services{font-size:18px}.os-app[data-view="office"] .ref-office-services>span{padding:10px 16px}}
+@media(min-width:600px){.os-app[data-view="office"]{padding:16px 14px 100px}.os-app[data-view="office"] .ref-reference-grid{gap:12px}.os-app[data-view="office"] .ref-reference-tool{min-height:114px;padding:12px;gap:12px}.os-app[data-view="office"] .ref-reference-icon{width:70px;height:82px}.os-app[data-view="office"] .ref-reference-icon svg{width:48px;height:48px}.os-app .ref-reference-header{min-height:80px;gap:12px}.os-app .ref-reference-header button{width:50px;min-width:50px}.os-app .ref-reference-header .ref-logo{width:55px;height:60px}.os-app[data-view="office"] .ref-office-profile{padding:16px;gap:14px}.os-app[data-view="office"] .ref-office-logo-box{min-height:190px}.os-app[data-view="office"] .ref-office-row-text{font-size:15px}.os-app[data-view="office"] .ref-office-services{font-size:18px}.os-app[data-view="office"] .ref-office-services>span{padding:10px 16px}}
 @media(prefers-reduced-motion:reduce){.os-app[data-view="office"] *{transition:none!important;animation:none!important}}
 @font-face{font-family:"Office Tajawal";src:url('/fonts/tajawal/tajawal-400.woff2') format('woff2');font-weight:400;font-display:swap}
 @font-face{font-family:"Office Tajawal";src:url('/fonts/tajawal/tajawal-700.woff2') format('woff2');font-weight:700;font-display:swap}
 .os-app[data-view="office"],.os-app[data-view="office"] button{font-family:"Office Tajawal",sans-serif}
 .os-app[data-view="office"] .ref-reference-icon .os-ico{color:var(--tool-color)}
-.os-app[data-view="office"] .ref-reference-header .os-ico,.os-app[data-view="office"] .ref-reference-bottom .os-ico,.os-app[data-view="office"] .ref-change-photo .os-ico{color:inherit}
-.os-app[data-view="office"] .ref-reference-header .ref-bell{order:0}
+.os-app .ref-reference-header .os-ico,.os-app .ref-reference-bottom .os-ico,.os-app[data-view="office"] .ref-change-photo .os-ico{color:inherit}
+.os-app .ref-reference-header .ref-bell{order:0}
 .os-app[data-view="office"] .ref-office-profile-main>.ref-office-profile-row{background:transparent;padding:0;margin:2px 0 8px}
 .os-app[data-view="office"] .ref-office-profile-main>.ref-office-profile-row .ref-office-row-icon{display:none}
 .os-app[data-view="office"] .ref-office-profile-main>.ref-office-profile-row .ref-office-row-text{flex-direction:row;font-size:11px}
