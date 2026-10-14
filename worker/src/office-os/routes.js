@@ -130,6 +130,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/scout/telegram/unlink": (ctx, b, actor) => unlinkScoutChat(ctx, { actor, officeId: ctx.officeId, chatId: text(b.chatId) }),
   // «الاستقبال التلقائي»: keys an assistant (Claude) uses to send its results straight to the scout — the manager's.
   "/os/scout/ingest/keys": (ctx, b, actor) => listIngestKeys(ctx, { officeId: ctx.officeId, actor }),
+  "/os/mcp/key/create": (ctx, b, actor) => createIngestKey(ctx, { officeId: ctx.officeId, actor, label: typeof b.label === "string" ? b.label : "ChatGPT", scope: "mcp:read" }),
   "/os/scout/ingest/key/create": (ctx, b, actor) => createIngestKey(ctx, { officeId: ctx.officeId, actor, label: typeof b.label === "string" ? b.label : "" }),
   "/os/scout/ingest/key/revoke": (ctx, b, actor) => revokeIngestKey(ctx, { officeId: ctx.officeId, actor, keyId: text(b.keyId) }),
   "/os/scout/feed": (ctx, b, actor) => feedScout(ctx, { actor, officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", channel: text(b.channel).toUpperCase() }),

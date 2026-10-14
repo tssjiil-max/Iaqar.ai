@@ -34,7 +34,8 @@ export const AUDIT_ACTIONS = Object.freeze({
   SCOUT_FIND_ACTION: "SCOUT_FIND_ACTION",
   SCOUT_INGEST_KEY_CREATED: "SCOUT_INGEST_KEY_CREATED",
   SCOUT_INGEST_KEY_REVOKED: "SCOUT_INGEST_KEY_REVOKED",
-  SCOUT_INGEST_BATCH: "SCOUT_INGEST_BATCH"
+  SCOUT_INGEST_BATCH: "SCOUT_INGEST_BATCH",
+  MCP_TOOL_CALL: "MCP_TOOL_CALL"
 });
 
 export async function writeAudit(ctx, { officeId, action, actorUid = "", entityType = "", entityId = "", details = {}, key = "" }) {

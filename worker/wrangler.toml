@@ -56,6 +56,7 @@ OPPORTUNITY_SCOUT = "enabled"
 # «الاستقبال التلقائي» (Staging only): an assistant (Claude) sends its results to /os/scout/ingest with the office's own
 # revocable key — no CSV. Remove this line to close the door for every office at once. Not set for production.
 SCOUT_INGEST = "enabled"
+MCP_SERVER = "enabled"
 # Kapso WhatsApp Sandbox (Staging only): the ONE test office its messages go to, the sandbox number they must be
 # addressed to, and the only sender accepted (the owner's test session). Secrets: KAPSO_WEBHOOK_SECRET, KAPSO_API_KEY.
 KAPSO_OFFICE_ID = "qa-office-kapso"
@@ -94,6 +95,7 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 # The pre-merge preview of «الباحث عن الفرص» and «الاستقبال التلقائي» (routes only — this Worker has no cron).
 OPPORTUNITY_SCOUT = "enabled"
 SCOUT_INGEST = "enabled"
+MCP_SERVER = "enabled"
 
 [env.preview.ai]
 binding = "AI"
