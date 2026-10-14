@@ -1,0 +1,41 @@
+name: Office reference isolated staging preview
+on:
+  push:
+    branches: [chatgpt/office-reference-20261015]
+permissions:
+  contents: read
+concurrency:
+  group: office-reference-preview
+  cancel-in-progress: false
+jobs:
+  verify-preview:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm ci --prefix worker
+      - run: npm test && npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/qa/office-os/office-reference.e2e.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: office-reference-browser-evidence
+          path: qa/office-reference
+      - name: Deploy hosting preview to staging project only
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_STAGING_PROJECT_ID: iaqar-ai-staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          credential_file=$(mktemp /tmp/office-reference-gac.XXXXXX)
+          trap 'rm -f "$credential_file"' EXIT
+          node scripts/staging-gac.mjs "$credential_file"
+          node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1]));if(c.project_id!=="iaqar-ai-staging")process.exit(1)' "$credential_file"
+          export GOOGLE_APPLICATION_CREDENTIALS="$credential_file"
+          node scripts/patch-firebase-office-link-redirect.mjs https://iaqar-intake-staging.iaqar-ai.workers.dev
+          npx firebase-tools hosting:channel:deploy office-reference-preview --project iaqar-ai-staging --expires 14d --non-interactive

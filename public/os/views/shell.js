@@ -111,6 +111,16 @@ function openMenu() {
 }
 
 export function renderShellHeader({ active = "office" } = {}) {
+  if (active === "office") {
+    const bell = h("button",{type:"button",class:"ref-bell","aria-label":"التنبيهات",onClick:openNotifications},ic("bell"),h("i",{class:"ref-bell-dot"}));
+    refreshBellDot(bell);
+    return h("header",{class:"ref-shell-header ref-reference-header"},
+      h("button",{type:"button",class:"os-icon-btn","aria-label":"القائمة والإعدادات",onClick:openMenu},ic("reference-menu")),
+      h("span",{class:"ref-logo","aria-label":"iAqar.ai"}),
+      h("h1",{text:"مكاتب عقارية ذكية"}),
+      h("button",{type:"button",class:"os-icon-btn","aria-label":"البحث الشامل",onClick:()=>go("search")},ic("search")),bell,
+      h("button",{type:"button",class:"os-icon-btn","aria-label":"حسابي",onClick:()=>go("settings")},ic("user")));
+  }
   const office = session.office || {};
   let logo = h("span", { class: "ref-logo" });
   if (/^https:\/\//.test(String(office.logoUrl || ""))) {
@@ -138,6 +148,8 @@ export function renderShellHeader({ active = "office" } = {}) {
 // One order on every page (RTL, right to left): المكتب — المهام اليومية — العروض والطلبات.
 export const BOTTOM_NAV = Object.freeze([["office", "المكتب", "dashboard"], ["tasks", "المهام اليومية", "tasks-check"], ["repo", "العروض والطلبات", "offers"]]);
 export function renderBottomNav(active = "office") {
+  if (active === "office") return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"},
+    [["public","الرئيسية","home"],["search","البحث","search"],["office","المكتب","dashboard"],["tools/market","المؤشرات","chart-up"],["settings","حسابي","user"]].map(([route,label,icon])=>h("button",{type:"button","aria-current":route==="office"?"page":null,onClick:()=>route==="public"?location.assign(officePublicLink()):go(route)},ic(icon),h("span",{text:label}))));
   return h("nav", { class: "ref-bottom", "aria-label": "أقسام المكتب" }, BOTTOM_NAV.map(([route, label, icon]) => h("button", { type: "button", "aria-current": active === route ? "page" : null, onClick: () => go(route) }, ic(icon), h("span", { text: label }))));
 }
 export { btn };
