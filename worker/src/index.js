@@ -53,6 +53,7 @@ import {
 } from "./operations-domain.js";
 import webpush from "web-push";
 import { handleOfficeOs, isOfficeOsPath, officeOsContext } from "./office-os/routes.js";
+import { handleMcp } from "./office-os/mcp-server.js";
 import { handleKapsoWebhook } from "./office-os/kapso-service.js";
 import { runScoutTick, scoutAvailable, scoutHealthReport } from "./office-os/scout-service.js";
 import { isPublicRecordImagePath, promoteIntakeImages, servePublicRecordImage, uploadRecordImage, workerOriginOf } from "./office-os/record-media-service.js";
@@ -445,6 +446,18 @@ export default {
         const raw = await request.text();
         const result = await handleKapsoWebhook({ raw, headers: request.headers, env, makeCtx: (officeId) => officeOsContext(env, officeOsDeps(), officeId) });
         return jsonResponse({ ...result.body, requestId }, result.status);
+      }
+
+      // MCP (read-only tools for ChatGPT and other MCP clients). The office comes from the key, never from the request.
+      if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
+        if (request.method !== "POST") return jsonResponse({ ok: false, error: "method_not_allowed", requestId }, 405);
+        const raw = await request.text().catch(() => "");
+        let message = null;
+        try { message = JSON.parse(raw || "null"); } catch (_) { message = null; }
+        const pathToken = decodeURIComponent(url.pathname.slice(5) || "");
+        const authorization = request.headers.get("authorization") || (pathToken ? `Bearer ${pathToken}` : "");
+        const result = await handleMcp(await officeOsContext(env, officeOsDeps(), ""), { authorization, message, rawLength: raw.length });
+        return result.body ? jsonResponse(result.body, result.status) : new Response(null, { status: result.status, headers: corsHeaders() });
       }
 
       // Office OS (new office experience). Registered before the outbound-send guard

@@ -131,12 +131,13 @@ export async function listIngestKeys(ctx, { officeId, actor }) {
   if (!ingestAvailable(ctx.env)) return { ok: true, available: false, keys: [] };
   if (!actor?.isManager) throw ctx.deps.appError("forbidden", 403, "مفاتيح الاستقبال لمدير المكتب فقط");
   const rows = await ctx.store.list(["offices", officeId, "scoutIngestKeys"], 50);
-  return { ok: true, available: true, keys: rows.map(keyView).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))), endpoint: "/os/scout/ingest", limits: INGEST_LIMITS };
+  return { ok: true, available: true, keys: rows.map(keyView).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))), endpoint: "/os/scout/ingest", limits: INGEST_LIMITS, mcp: String(ctx.env?.MCP_SERVER || "").toLowerCase() === "enabled" };
 }
 
 /** A new key: shown once, kept as a hash only. */
-export async function createIngestKey(ctx, { officeId, actor, label = "" }) {
-  assertIngest(ctx);
+export async function createIngestKey(ctx, { officeId, actor, label = "", scope = "scout:ingest" }) {
+  if (scope === "scout:ingest") assertIngest(ctx);
+  else if (scope !== "mcp:read" || String(ctx.env?.MCP_SERVER || "").toLowerCase() !== "enabled") throw ctx.deps.appError("ingest_unavailable", 503, "غير مفعّل على هذه البيئة");
   if (!actor?.isManager) throw ctx.deps.appError("forbidden", 403, "مفاتيح الاستقبال لمدير المكتب فقط");
   const rows = await ctx.store.list(["offices", officeId, "scoutIngestKeys"], 50);
   if (rows.filter((k) => !k.revokedAt).length >= INGEST_LIMITS.keysPerOffice) throw ctx.deps.appError("key_limit", 409, `الحد ${INGEST_LIMITS.keysPerOffice} مفاتيح فعّالة — ألغِ مفتاحًا قبل إنشاء آخر`);
@@ -145,7 +146,7 @@ export async function createIngestKey(ctx, { officeId, actor, label = "" }) {
   const token = `iqk.${officeId}.${keyId}.${secret}`;
   const now = ctx.now();
   await ctx.store.set(keyPath(officeId, keyId), {
-    keyId, officeId, label: text(label, 60) || "Claude", scope: "scout:ingest", secretHash: await hash(ctx, `iqk|${secret}`, 64),
+    keyId, officeId, label: text(label, 60) || "Claude", scope, secretHash: await hash(ctx, `iqk|${secret}`, 64),
     hint: `…${secret.slice(-4)}`, createdBy: actor.uid, createdAt: now.toISOString(), lastUsedAt: "", uses: 0, revokedAt: ""
   });
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.SCOUT_INGEST_KEY_CREATED, actorUid: actor.uid, entityType: "scout", entityId: keyId, key: keyId });
@@ -165,7 +166,7 @@ export async function revokeIngestKey(ctx, { officeId, actor, keyId }) {
 }
 
 /** The bearer token → its office and key, or a refusal that says nothing about which part was wrong. */
-export async function authenticateIngest(ctx, authorization = "") {
+export async function authenticateIngest(ctx, authorization = "", scope = "scout:ingest") {
   const refused = () => ctx.deps.appError("ingest_unauthorized", 401, "مفتاح الاستقبال غير صالح أو أُلغي");
   const match = String(authorization || "").match(/^Bearer\s+(\S+)$/i);
   const parts = match ? match[1].match(TOKEN) : null;
@@ -173,7 +174,7 @@ export async function authenticateIngest(ctx, authorization = "") {
   const [, officeId, keyId, secret] = parts;
   if (officeId === "platform") throw refused();
   const key = await ctx.store.get(keyPath(officeId, keyId));
-  if (!key || key.revokedAt || key.scope !== "scout:ingest" || String(key.officeId) !== officeId) throw refused();
+  if (!key || key.revokedAt || key.scope !== scope || String(key.officeId) !== officeId) throw refused();
   const presented = await hash(ctx, `iqk|${secret}`, 64);
   let diff = presented.length ^ String(key.secretHash || "").length;
   for (let i = 0; i < presented.length; i += 1) diff |= presented.charCodeAt(i) ^ String(key.secretHash || "").charCodeAt(i);

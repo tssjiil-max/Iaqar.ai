@@ -13,7 +13,7 @@ import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../core/ui.js";
 import {
-  actOnScoutFind, controlScoutSearch, createScoutIngestKey, createScoutSearch, feedScout, importScoutLink, linkScoutTelegramChat, liveWebSearch, loadScout, revokeScoutIngestKey, unlinkScoutTelegramChat, parseScoutText, saveScoutSettings, scoutFind, scoutForRecord, scoutIngestKeys, scoutSearchDetail
+  actOnScoutFind, controlScoutSearch, createScoutIngestKey, createScoutSearch, feedScout, importScoutLink, linkScoutTelegramChat, liveWebSearch, loadScout, revokeScoutIngestKey, createMcpKey, unlinkScoutTelegramChat, parseScoutText, saveScoutSettings, scoutFind, scoutForRecord, scoutIngestKeys, scoutSearchDetail
 } from "../core/scout.js";
 import { workerBase } from "../core/runtime.js";
 import { clearPairing, newRunCode, readPairing, shortcutPrompt, writePairing } from "../domain/scout-ingest-domain.js";
@@ -565,6 +565,19 @@ function ingestCard(settings = {}) {
         h("p", { class: "os-sub", dir: "ltr", text: `POST ${endpoint}  ·  Authorization: Bearer <key>` }),
         h("p", { class: "os-sub", text: "النتائج تُحفظ كفرص خارجية قيد المراجعة، ولا تصبح عرضًا أو طلبًا إلا باعتمادك." })), { onClose: reload });
     }));
+    // ChatGPT (read-only MCP): a link that carries a key of this office, shown once. Only where the Worker has it on.
+    const chatgpt = answer.mcp ? h("button", { type: "button", class: "os-btn secondary block", "data-scout-mcp-create": "" }, ic("link"), "رابط ChatGPT (قراءة فقط)") : null;
+    chatgpt?.addEventListener("click", () => runAction(chatgpt, async () => {
+      const made = await createMcpKey(OFFICE());
+      const link = `${workerBase()}/mcp/${made.token}`;
+      openSheet("رابط ChatGPT", h("div", { class: "os-form" },
+        h("div", { class: "os-alert warn", text: "يظهر الرابط هذه المرة فقط، ويحمل مفتاحًا خاصًا بمكتبك. لا تشاركه مع أحد ولا تضعه في محادثة. تقدر تلغيه من القائمة أعلاه في أي وقت." }),
+        h("input", { class: "os-input", readonly: true, dir: "ltr", "data-scout-mcp-link": "", value: link }),
+        h("ol", { class: "os-sub" },
+          h("li", { text: "في ChatGPT: الإعدادات ← التطبيقات والموصلات ← وضع المطور." }),
+          h("li", { text: "أنشئ موصلًا والصق الرابط، واجعل المصادقة «بلا مصادقة»." }),
+          h("li", { text: "الأدوات للقراءة فقط: ملخص المكتب والفرص وسجلاتك. لا ترسل رسائل ولا تعدّل شيئًا ولا تُظهر أرقام هواتف." }))), { onClose: reload });
+    }));
     const row = (key) => {
       const revoke = h("button", { type: "button", class: "os-btn soft", "data-scout-ingest-revoke": key.keyId }, ic("x"), "إلغاء");
       revoke.addEventListener("click", async () => {
@@ -585,6 +598,7 @@ function ingestCard(settings = {}) {
       h("p", { class: "os-sub", "data-scout-ingest-state": pairedHere ? "paired" : "not-paired", text: pairedHere ? "هذا المتصفح مربوط — الإرسال التلقائي يعمل منه." : "هذا المتصفح غير مربوط بعد." }),
       answer.keys.length ? h("div", { class: "os-pref-list" }, answer.keys.slice(0, 8).map(row)) : null,
       pairedHere || room ? pair : null, unpair,
+      room ? chatgpt : null,
       room ? create : h("p", { class: "os-sub", text: `الحد ${answer.limits.keysPerOffice} مفاتيح فعّالة.` }));
   };
   const reload = () => scoutIngestKeys(OFFICE()).then(draw).catch(() => { box.hidden = true; });
