@@ -130,3 +130,52 @@
   .ref-record-open { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; }
   .ref-record-open .ref-photo { width: 64px; height: 80px; }
 }
+
+
+/* Iaqar visual cohesion pass — isolated, CSS-only staging candidate.
+   Explicit frames, consistent surfaces and distinct offer/request treatments. */
+:root {
+  --ia-frame: #B4D3DA;
+  --ia-frame-quiet: #CADFE4;
+  --ia-offer-surface: #EAF5F7;
+  --ia-request-surface: #FFFFFF;
+  --ia-focus: #03677A;
+}
+.os-app :is(.os-card, .ref-office-profile, .ref-record-card, .ref-task-card, .ref-office-tool, .ref-office-extra) {
+  border: 1px solid var(--ia-frame-quiet);
+  border-radius: 18px;
+  box-shadow: 0 4px 16px rgb(8 47 58 / 5%);
+}
+.os-app :is(.ref-record-card, .ref-task-card) + :is(.ref-record-card, .ref-task-card) {
+  margin-block-start: 12px;
+}
+.os-app .os-pair-side {
+  border: 1px solid var(--ia-frame-quiet);
+  background: var(--ia-request-surface);
+}
+.os-app .os-pair-side.offer {
+  background: var(--ia-offer-surface);
+  border-color: #8DBEC8;
+}
+.os-app :is(.os-input, .os-select, .os-textarea) {
+  border: 1px solid var(--ia-frame);
+  background: #FFFFFF;
+}
+.os-app :is(.os-chip, .os-seg button) {
+  border: 1px solid var(--ia-frame-quiet);
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+.os-app :is(.os-chip[aria-pressed="true"], .os-seg button[aria-selected="true"]) {
+  border-color: var(--ia-focus);
+}
+.os-app :is(.ref-office-tool, .ref-office-extra, .ref-record-card, .ref-task-card):focus-within {
+  border-color: var(--ia-focus);
+}
+.os-app :is(.ref-shell-header, .ref-office-tool, .ref-office-extra) svg {
+  flex-shrink: 0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+@media (prefers-reduced-motion: reduce) {
+  .os-app :is(.os-chip, .os-seg button) { transition: none; }
+}
