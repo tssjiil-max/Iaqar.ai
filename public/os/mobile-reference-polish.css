@@ -253,6 +253,12 @@
   }
   .os-app[data-view="repo"] .ref-record-card { margin-block: 0; }
   .os-app .ref-office-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  /* The real office-tools markup carries both "ref-reference-grid" and "ref-office-tools" (see
+     public/os/views/reference-layout.js). office-reference.css's own 2-column rule for
+     ".os-app[data-view=office] .ref-reference-grid" is more specific than the rule above, so it
+     silently won here and the grid stayed 2-column up to 1440px. Match that exact selector to
+     actually override it. */
+  .os-app[data-view="office"] .ref-reference-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
   .os-app .ref-office-extras { gap: 16px; }
   .os-app .ref-office-tool { min-height: 124px; }
   .ref-task-card { grid-template-columns: 64px minmax(0, 1fr) 160px; gap: 16px; }
