@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-15T09:19:05.288Z",
+  "at": "2026-10-15T09:38:31.554Z",
   "widths": [
     320,
     360,
@@ -20,6 +20,9 @@
     "public-form-coop-broker",
     "public-form-errors",
     "login",
+    "admin-shell",
+    "complete-shell",
+    "legacy-shell",
     "register",
     "register-states",
     "forgot-password",
@@ -138,6 +141,27 @@
     },
     {
       "width": 320,
+      "screen": "admin-shell",
+      "issues": [
+        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+      ]
+    },
+    {
+      "width": 320,
+      "screen": "complete-shell",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "legacy-shell",
+      "issues": [
+        "tight-line h1 1.25 \"مكاتب عقارية ذكية\"",
+        "small-text p 12px \"منصة تشغيل الوسطاء\"",
+        "tight-line h2 1.35 \"تعذر بدء المنصة\""
+      ]
+    },
+    {
+      "width": 320,
       "screen": "register",
       "issues": []
     },
@@ -508,6 +532,27 @@
     },
     {
       "width": 360,
+      "screen": "admin-shell",
+      "issues": [
+        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+      ]
+    },
+    {
+      "width": 360,
+      "screen": "complete-shell",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "legacy-shell",
+      "issues": [
+        "tight-line h1 1.25 \"مكاتب عقارية ذكية\"",
+        "small-text p 12px \"منصة تشغيل الوسطاء\"",
+        "tight-line h2 1.35 \"تعذر بدء المنصة\""
+      ]
+    },
+    {
+      "width": 360,
       "screen": "register",
       "issues": []
     },
@@ -878,6 +923,27 @@
     },
     {
       "width": 390,
+      "screen": "admin-shell",
+      "issues": [
+        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+      ]
+    },
+    {
+      "width": 390,
+      "screen": "complete-shell",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "legacy-shell",
+      "issues": [
+        "tight-line h1 1.25 \"مكاتب عقارية ذكية\"",
+        "small-text p 12px \"منصة تشغيل الوسطاء\"",
+        "tight-line h2 1.35 \"تعذر بدء المنصة\""
+      ]
+    },
+    {
+      "width": 390,
       "screen": "register",
       "issues": []
     },
@@ -1248,6 +1314,27 @@
     },
     {
       "width": 430,
+      "screen": "admin-shell",
+      "issues": [
+        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+      ]
+    },
+    {
+      "width": 430,
+      "screen": "complete-shell",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "legacy-shell",
+      "issues": [
+        "tight-line h1 1.25 \"مكاتب عقارية ذكية\"",
+        "small-text p 12px \"منصة تشغيل الوسطاء\"",
+        "tight-line h2 1.35 \"تعذر بدء المنصة\""
+      ]
+    },
+    {
+      "width": 430,
       "screen": "register",
       "issues": []
     },
@@ -1618,6 +1705,27 @@
     },
     {
       "width": 768,
+      "screen": "admin-shell",
+      "issues": [
+        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+      ]
+    },
+    {
+      "width": 768,
+      "screen": "complete-shell",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "legacy-shell",
+      "issues": [
+        "tight-line h1 1.25 \"مكاتب عقارية ذكية\"",
+        "small-text p 12px \"منصة تشغيل الوسطاء\"",
+        "tight-line h2 1.35 \"تعذر بدء المنصة\""
+      ]
+    },
+    {
+      "width": 768,
       "screen": "register",
       "issues": []
     },
@@ -1988,6 +2096,27 @@
     },
     {
       "width": 1024,
+      "screen": "admin-shell",
+      "issues": [
+        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+      ]
+    },
+    {
+      "width": 1024,
+      "screen": "complete-shell",
+      "issues": []
+    },
+    {
+      "width": 1024,
+      "screen": "legacy-shell",
+      "issues": [
+        "tight-line h1 1.25 \"مكاتب عقارية ذكية\"",
+        "small-text p 12px \"منصة تشغيل الوسطاء\"",
+        "tight-line h2 1.35 \"تعذر بدء المنصة\""
+      ]
+    },
+    {
+      "width": 1024,
       "screen": "register",
       "issues": []
     },
@@ -2355,6 +2484,27 @@
       "width": 1440,
       "screen": "login",
       "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "admin-shell",
+      "issues": [
+        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+      ]
+    },
+    {
+      "width": 1440,
+      "screen": "complete-shell",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "legacy-shell",
+      "issues": [
+        "tight-line h1 1.25 \"مكاتب عقارية ذكية\"",
+        "small-text p 12px \"منصة تشغيل الوسطاء\"",
+        "tight-line h2 1.35 \"تعذر بدء المنصة\""
+      ]
     },
     {
       "width": 1440,
@@ -2677,5 +2827,41 @@
       "issues": []
     }
   ],
-  "consoleErrors": []
+  "consoleErrors": [
+    "320/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "320/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "320/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
+    "320/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
+    "320/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "360/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "360/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "360/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
+    "360/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
+    "360/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "390/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "390/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "390/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
+    "390/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
+    "390/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "430/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "430/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "430/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
+    "430/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
+    "430/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "768/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "768/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "768/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
+    "768/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
+    "768/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "1024/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "1024/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "1024/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
+    "1024/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
+    "1024/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "1440/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "1440/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "1440/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
+    "1440/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
+    "1440/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
 }
