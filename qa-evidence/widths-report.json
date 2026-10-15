@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-15T09:38:31.554Z",
+  "at": "2026-10-15T09:50:14.902Z",
   "widths": [
     320,
     360,
@@ -143,7 +143,7 @@
       "width": 320,
       "screen": "admin-shell",
       "issues": [
-        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
       ]
     },
     {
@@ -534,7 +534,7 @@
       "width": 360,
       "screen": "admin-shell",
       "issues": [
-        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
       ]
     },
     {
@@ -925,7 +925,7 @@
       "width": 390,
       "screen": "admin-shell",
       "issues": [
-        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
       ]
     },
     {
@@ -1316,7 +1316,7 @@
       "width": 430,
       "screen": "admin-shell",
       "issues": [
-        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
       ]
     },
     {
@@ -1707,7 +1707,7 @@
       "width": 768,
       "screen": "admin-shell",
       "issues": [
-        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
       ]
     },
     {
@@ -2098,7 +2098,7 @@
       "width": 1024,
       "screen": "admin-shell",
       "issues": [
-        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
       ]
     },
     {
@@ -2489,7 +2489,7 @@
       "width": 1440,
       "screen": "admin-shell",
       "issues": [
-        "failed to render: locator.waitFor: Timeout 10000ms exceeded."
+        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
       ]
     },
     {
@@ -2829,36 +2829,43 @@
   ],
   "consoleErrors": [
     "320/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "320/admin-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "320/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "320/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
     "320/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "320/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "360/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "360/admin-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "360/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "360/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
     "360/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "360/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "390/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "390/admin-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "390/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "390/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
     "390/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "390/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "430/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "430/admin-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "430/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "430/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
     "430/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "430/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "768/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "768/admin-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "768/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "768/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
     "768/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "768/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "1024/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "1024/admin-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "1024/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "1024/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
     "1024/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "1024/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "1440/admin-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "1440/admin-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
     "1440/legacy-shell: Failed to load resource: the server responded with a status of 404 (Not Found)",
     "1440/legacy-shell: [iaqar] إعداد Firebase غير موجود. تحقق من اتصال الإنترنت أو ملف init.js.",
     "1440/legacy-shell: Firebase: No Firebase App '[DEFAULT]' has been created - call Firebase App.initializeApp() (app-compat/no-app).",
