@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-15T09:50:14.902Z",
+  "at": "2026-10-15T10:00:00.229Z",
   "widths": [
     320,
     360,
@@ -142,9 +142,7 @@
     {
       "width": 320,
       "screen": "admin-shell",
-      "issues": [
-        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
-      ]
+      "issues": []
     },
     {
       "width": 320,
@@ -533,9 +531,7 @@
     {
       "width": 360,
       "screen": "admin-shell",
-      "issues": [
-        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
-      ]
+      "issues": []
     },
     {
       "width": 360,
@@ -924,9 +920,7 @@
     {
       "width": 390,
       "screen": "admin-shell",
-      "issues": [
-        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
-      ]
+      "issues": []
     },
     {
       "width": 390,
@@ -1315,9 +1309,7 @@
     {
       "width": 430,
       "screen": "admin-shell",
-      "issues": [
-        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
-      ]
+      "issues": []
     },
     {
       "width": 430,
@@ -1706,9 +1698,7 @@
     {
       "width": 768,
       "screen": "admin-shell",
-      "issues": [
-        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
-      ]
+      "issues": []
     },
     {
       "width": 768,
@@ -2097,9 +2087,7 @@
     {
       "width": 1024,
       "screen": "admin-shell",
-      "issues": [
-        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
-      ]
+      "issues": []
     },
     {
       "width": 1024,
@@ -2488,9 +2476,7 @@
     {
       "width": 1440,
       "screen": "admin-shell",
-      "issues": [
-        "contrast button.btn 3.17 rgb(255, 255, 255)→rgb(9,159,180) \"دخول الإدارة\""
-      ]
+      "issues": []
     },
     {
       "width": 1440,
