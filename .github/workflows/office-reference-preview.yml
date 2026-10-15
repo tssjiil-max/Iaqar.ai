@@ -22,6 +22,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: node scripts/qa/office-os/office-reference.e2e.mjs
       - run: node scripts/qa/office-os/site-theme.e2e.mjs
+      - run: node scripts/qa/office-os/standalone-theme.e2e.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: office-reference-browser-evidence

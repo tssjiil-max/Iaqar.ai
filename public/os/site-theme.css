@@ -10,7 +10,7 @@ button,input,select,textarea{font-family:inherit}
 .os-app :is(.os-card,.ref-path,.ref-task-card,.ref-record-card,.os-set-list,.os-property-summary,.os-detail-panel){border:1px solid #d9e8ef;border-radius:16px;background:linear-gradient(120deg,#fff,#f7fcff);box-shadow:0 3px 14px #17465d0b}
 .os-app :is(.os-page-head,.ref-detail-header){margin:4px 0 14px;gap:8px;min-width:0}
 .os-app :is(.os-page-title,.ref-path-heading h2){font-size:22px;line-height:1.45}
-.os-app .os-page-title{overflow-wrap:anywhere}
+.os-app .os-page-title{min-width:0;white-space:normal;overflow-wrap:anywhere}
 .os-app :is(.os-sub,.os-set-text small,.ref-task-copy p,.ref-record-copy p){color:#586b80;line-height:1.6}
 .os-app :is(.os-input,.os-textarea,select.os-input){border:1px solid #d3e5ee;border-radius:11px;background:#fff}
 .os-app :is(.os-btn,.os-chip,.os-back){border-radius:11px;min-height:44px}
@@ -85,3 +85,20 @@ button:focus-visible,a:focus-visible{outline:3px solid #099fb4;outline-offset:3p
 .os-app .os-follow-tab{font-size:13px;line-height:1.5}
 .os-app .os-follow-tab span{white-space:normal;overflow-wrap:anywhere;text-align:center}
 @media(max-width:350px){.os-app .ref-path{padding-inline:6px}.os-app .ref-steps{gap:1px}.os-app .ref-steps>.ref-step small{white-space:normal;overflow-wrap:anywhere;max-width:100%}}
+
+/* Align the room's sticky action bar with the shared shell padding. */
+.os-session-app{--gutter:10px;max-width:560px;padding-bottom:12px}
+.os-app .os-select{min-width:0;max-width:100%}
+@media(min-width:768px){.os-session-app{--gutter:22px}}
+
+/* Original token names used by legacy and standalone product pages. */
+html:root{--color-primary:var(--brand-primary);--color-primary-dark:var(--brand-dark);--color-primary-soft:var(--brand-tint);--color-background:#eff8fc;--color-surface:#fff;--color-surface-soft:#f4faff;--color-text:#101733;--color-text-muted:#586b80;--color-border:var(--brand-line);--green:var(--brand-primary);--green-dark:var(--brand-dark);--green-2:#07859b;--green-soft:var(--brand-tint);--green-pale:var(--brand-tint-2);--bg:#eff8fc;--card:#fff;--text:#101733;--muted:#586b80;--line:var(--brand-line);--opp-card-border:var(--brand-line);--opp-page-bg:var(--bg);--opp-progress-fill:var(--brand-primary)}
+body :is(button,input,select,textarea,h1,h2,h3,h4,h5,h6){font-family:var(--font)!important}
+body .opp-v2-page{--opp-v2-green:var(--brand-primary);--opp-v2-green-soft:var(--brand-tint);--opp-v2-green-text:var(--brand-primary);--opp-v2-border:var(--brand-line);--opp-v2-page-bg:var(--bg);--opp-v2-text:var(--text);--opp-v2-muted:var(--muted);--opp-v2-icon:var(--brand-primary);--opp-v2-card-radius:16px}
+body>.shell :is(.stat,.tabs button.active,.badge){background:var(--brand-tint)}
+body>.shell :is(.btn,.nav button,.tabs button){min-height:44px;border-radius:11px}
+body>.shell :is(.stat,.list-item,input,select,textarea){border-color:var(--brand-line)}
+body>.wrap :is(h1,.done h2),body>main>h1{color:var(--brand-dark)}
+body>.wrap :is(input,select){border-color:var(--brand-line)}
+body>.wrap :is(input,select):focus{outline-color:var(--brand-accent);border-color:var(--brand-primary)}
+body>.wrap .muted,body>main>p{color:var(--muted)}
