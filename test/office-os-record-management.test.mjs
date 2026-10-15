@@ -134,7 +134,7 @@ test("the repository screen has no section tabs; kind and «بلا مطابقة�
   const repo = fs.readFileSync(path.join(ROOT, "public/os/views/repository.js"), "utf8");
   assert.doesNotMatch(repo, /جميع السجلات/, "no «جميع السجلات | العروض | الطلبات» sections");
   assert.doesNotMatch(repo, /class: "os-seg"/, "no segmented section control on the list");
-  assert.match(repo, /"data-kind-label":view\.kind/, "each card carries its «عرض/طلب» label");
+  assert.match(repo, /"data-kind-label":\s*view\.kind/, "each card carries its «عرض/طلب» label");
   assert.match(repo, /"data-repo-filters"/);
   assert.match(repo, /"data-tab": "UNMATCHED"/);
   const detail = fs.readFileSync(path.join(ROOT, "public/os/views/record-detail.js"), "utf8");

@@ -1,0 +1,289 @@
+{
+  "at": "2026-10-14T17:04:01.019Z",
+  "widths": [
+    320,
+    390,
+    768,
+    1440
+  ],
+  "screens": [
+    "office",
+    "tasks",
+    "menu-sheet",
+    "repository",
+    "repository-filters",
+    "tool-calculator",
+    "tool-forms",
+    "scout",
+    "scout-new",
+    "settings-notifications",
+    "review",
+    "settings",
+    "settings-profile"
+  ],
+  "results": [
+    {
+      "width": 320,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tool-calculator",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tool-forms",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "scout",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "scout-new",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-notifications",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-profile",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tool-calculator",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tool-forms",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "scout",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "scout-new",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-notifications",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-profile",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tool-calculator",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tool-forms",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "scout",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "scout-new",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-notifications",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-profile",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "tool-calculator",
+      "issues": [
+        "failed to render: page.goto: Timeout 10000ms exceeded."
+      ]
+    },
+    {
+      "width": 1440,
+      "screen": "tool-forms",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "scout",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "scout-new",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "settings-notifications",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 1440,
+      "screen": "settings-profile",
+      "issues": []
+    }
+  ],
+  "consoleErrors": []
+}

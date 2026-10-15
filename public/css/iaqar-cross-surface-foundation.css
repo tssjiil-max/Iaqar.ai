@@ -1,0 +1,74 @@
+/* iAqar cross-surface visual foundation — staged migration.
+   Loaded after each legacy/admin entrypoint's local styles.
+   Presentation-only: no navigation, authorization, data or event modifications. */
+@font-face {
+  font-family: "Noto Naskh Arabic";
+  src: url("/fonts/noto-naskh-arabic/noto-naskh-arabic-var.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  --ia-primary: #03677A;
+  --ia-accent: #099FB4;
+  --ia-dark: #082F3A;
+  --ia-text: #1C3A44;
+  --ia-muted: #566E77;
+  --ia-bg: #F3F8F9;
+  --ia-surface: #FFFFFF;
+  --ia-tint: #EDF5F7;
+  --ia-line: #D4E5E9;
+  --ia-success: #23764B;
+  --ia-danger: #B03A3A;
+  --ia-radius: 20px;
+  --ia-control-radius: 14px;
+  --ia-shadow: 0 4px 18px rgb(8 47 58 / 5%);
+  --ia-font: "Noto Naskh Arabic", "Geeza Pro", Tahoma, sans-serif;
+  color-scheme: light;
+}
+html { direction: rtl; }
+body { font-family: var(--ia-font); background: var(--ia-bg); color: var(--ia-text); }
+:where(button, input, select, textarea) { font-family: var(--ia-font); }
+:where(button, a, input, select, textarea, [role="button"]):focus-visible {
+  outline: 3px solid #9BCAD2;
+  outline-offset: 3px;
+}
+:where(input, select, textarea) { text-align: start; }
+:where(img, svg) { max-width: 100%; }
+:where(p, h1, h2, h3, h4) { overflow-wrap: break-word; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
+/* Existing legacy custom properties take the same source values as Office OS. */
+:root {
+  --green: var(--ia-primary);
+  --green-dark: var(--ia-dark);
+  --green-2: var(--ia-accent);
+  --green-soft: var(--ia-tint);
+  --green-pale: #F5FAFB;
+  --blue: var(--ia-primary);
+  --blue-deep: var(--ia-primary);
+  --navy: var(--ia-dark);
+}
+/* The admin entrypoint declares these exact variables in its inline :root. */
+:root {
+  --bg: var(--ia-bg);
+  --card: var(--ia-surface);
+  --line: var(--ia-line);
+  --text: var(--ia-text);
+  --muted: var(--ia-muted);
+  --brand: var(--ia-primary);
+  --accent: var(--ia-accent);
+  --ok: var(--ia-success);
+  --danger: var(--ia-danger);
+}
+body:has(.shell > .card) :where(.card) {
+  box-shadow: var(--ia-shadow);
+  border-color: var(--ia-line);
+}
+body:has(.shell > .card) :where(.nav button, .btn, input, select, textarea) {
+  font-family: var(--ia-font);
+}
+@media (max-width: 430px) {
+  body:has(.shell > .card) .shell { padding-inline: 14px; }
+}
