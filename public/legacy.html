@@ -75,11 +75,14 @@
 
   <style>
     :root {
-      --green:#005C4B;
-      --green-dark:#003F34;
-      --green-2:#08715E;
-      --green-soft:#EAF5F1;
-      --green-pale:#F5FAF8;
+      /* Realigned to the shared brand teal (public/os/site-theme.css --brand-primary/--brand-accent).
+         Variable names kept as-is — only the color values moved — so every component that already
+         reads --green/--green-2/etc. below picks up the shared identity automatically. */
+      --green:#03677A;
+      --green-dark:#082F3A;
+      --green-2:#099FB4;
+      --green-soft:#EDF7FB;
+      --green-pale:#F6FBFF;
       --gold:#C5A059;
       --orange:#E56612;
       --orange-soft:#FFF1E5;
@@ -104,7 +107,7 @@
       --opp-missing-border:#fecdca;
       --opp-card-border:#E4EAE7;
       --opp-card-shadow:none;
-      --opp-progress-fill:#005C4B;
+      --opp-progress-fill:#03677A;
       --opp-radius-card:14px;
       --opp-spacing-card:10px;
       --opp-spacing-inner:14px;
