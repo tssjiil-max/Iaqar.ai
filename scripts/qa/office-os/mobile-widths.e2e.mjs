@@ -61,6 +61,13 @@ const SCREENS = [
   { name: "public-form-coop-broker", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('[data-testid="submitter-capacity"]').selectOption("LICENSED_BROKER"); await p.locator('input[name="externalBrokerLicense"]').waitFor(); } },
   { name: "public-form-errors", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.locator(".os-field.invalid").first().waitFor(); } },
   { name: "login", url: "/", wait: 'input[name="phone"]', auth: false },
+  // The three standalone entrypoints outside the main hash-routed app (public/admin/index.html,
+  // public/legacy.html, public/complete.html). Visual-only checks: real token/office params are
+  // not seeded for these, so the data-driven parts show their own empty/error states — that is
+  // expected and checked here as much as the chrome around it.
+  { name: "admin-shell", url: "/admin/", wait: "text=لوحة إدارة", auth: false },
+  { name: "complete-shell", url: "/complete.html", wait: "text=استكمال البيانات", auth: false },
+  { name: "legacy-shell", url: "/legacy.html?legacyContent=1", wait: "body", auth: false },
   { name: "register", url: "/#/register", wait: "[data-broker-form]", auth: false },
   { name: "register-states", url: "/#/register", wait: "[data-broker-form]", auth: false, act: async (p) => { await p.fill('input[name="email"]', "x"); await p.fill('input[name="password"]', "short"); await p.fill('input[name="phone"]', "0512345678"); await p.locator('input[name="brokerName"]').focus(); await p.locator('[data-field="password"].invalid').waitFor(); } },
   { name: "forgot-password", url: "/", wait: "[data-forgot]", auth: false, act: async (p) => { await p.locator("[data-forgot]").click(); await p.locator("[data-forgot-form]").waitFor(); } },

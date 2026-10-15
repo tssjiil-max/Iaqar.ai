@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p qa-evidence
           cp qa/visual-unification-widths/widths-report.json qa-evidence/ || true
-          for n in 320-login 390-office 1024-office 390-repository 390-tasks 1024-tasks 390-settings 390-journey-negotiation 1024-journey-negotiation 390-record-detail 320-public-office 1440-office 390-menu-sheet 390-community 430-channels; do
+          for n in 320-login 390-office 1024-office 1440-office 390-admin-shell 1024-admin-shell 390-complete-shell 390-legacy-shell 1024-legacy-shell 390-repository 390-tasks 390-settings 390-journey-negotiation 390-record-detail 320-public-office 390-menu-sheet; do
             cp "qa/visual-unification-widths/$n.png" qa-evidence/ 2>/dev/null || true
           done
           git config user.name "claude-ci-evidence"
