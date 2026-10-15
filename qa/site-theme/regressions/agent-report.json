@@ -1,0 +1,102 @@
+{
+  "at": "2026-10-14T22:50:13.499Z",
+  "passed": 19,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "the agent status stays accessible in the expandable office status panel",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the agent is shown as off before the manager switches it on (never «يعمل» by default)",
+      "ok": true,
+      "detail": "OFF"
+    },
+    {
+      "name": "there are seeded decisions waiting",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "name": "no horizontal scroll: 01-home-card",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "«تحتاج تدخلك» comes first",
+      "ok": true,
+      "detail": "NEEDS_YOU"
+    },
+    {
+      "name": "home «تحتاج تدخلك» = the cards in that lane",
+      "ok": true,
+      "detail": "5 vs 5"
+    },
+    {
+      "name": "home «بانتظار رد/يتابعها» = the cards in that lane",
+      "ok": true,
+      "detail": "0 vs 0"
+    },
+    {
+      "name": "every card that needs the broker says why",
+      "ok": true,
+      "detail": "5/5"
+    },
+    {
+      "name": "no card is listed twice across lanes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 02-tasks-lanes",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the home card opens Daily Tasks filtered on «تحتاج تدخلك»",
+      "ok": true,
+      "detail": "NEEDS_YOU,NEEDS_YOU,NEEDS_YOU,NEEDS_YOU,NEEDS_YOU"
+    },
+    {
+      "name": "no horizontal scroll: 03-tasks-needs-you",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "switched on: without a model key it says it works by rules, not «يعمل»",
+      "ok": true,
+      "detail": "SETUP"
+    },
+    {
+      "name": "no horizontal scroll: 04-settings",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the office manager answers from the office's data with cards to open",
+      "ok": true,
+      "detail": "عندك 5 معاملات تحتاج تدخلك، هذي أهمها:"
+    },
+    {
+      "name": "a binding decision is refused in the chat",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 05-chat",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll: 06-home-320",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no browser console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+{
+  "at": "2026-10-14T22:51:23.645Z",
+  "widths": [
+    360,
+    390,
+    430,
+    768,
+    1280
+  ],
+  "screens": [
+    "public-office",
+    "office",
+    "tasks",
+    "repository",
+    "settings"
+  ],
+  "results": [
+    {
+      "width": 360,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings",
+      "issues": []
+    }
+  ],
+  "consoleErrors": []
+}

@@ -63,7 +63,8 @@ async function shot(page, name) {
   check(`no horizontal scroll: ${name}`, overflow <= 1, `${overflow}px`);
   await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
 }
-const go = async (page, hash, wait) => { await page.goto(`${h.origin}/#/${hash}`); await page.reload(); if (wait) await page.locator(wait).first().waitFor(); };
+let navigationId = 0;
+const go = async (page, hash, wait) => { await page.goto(`${h.origin}/?qaNavigation=${++navigationId}#/${hash}`); if (wait) await page.locator(wait).first().waitFor(); };
 
 try {
   // 1 — one header on the three main screens
@@ -72,7 +73,7 @@ try {
   await page.locator(".ref-office-tools").waitFor();
   const headerShape = async () => page.evaluate(() => {
     const box = (sel) => { const el = document.querySelector(sel); if (!el) return null; const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return [Math.round(r.width), Math.round(r.height), s.backgroundColor, s.borderRadius].join("|"); };
-    return { bell: box(".ref-shell-header .ref-bell"), menu: box(".ref-shell-header .ref-menu"), title: document.querySelector(".ref-shell-title h1")?.textContent };
+    return { bell: box(".ref-shell-header .ref-bell"), menu: box(".ref-shell-header .ref-menu"), title: document.querySelector(".ref-reference-header h1")?.textContent };
   });
   const officeHeader = await headerShape();
   await go(page, "tasks", ".ref-path");
@@ -113,7 +114,7 @@ try {
 
   // 3 — the six office tools all work
   step = "3: office tools";
-  check("six tool buttons, none marked «قريبًا» or disabled", (await page.locator("button.ref-office-tool").count()) === 6 && (await page.locator(".ref-office-soon, .ref-office-tool[aria-disabled='true']").count()) === 0);
+  check("twelve tool buttons, none marked «قريبًا» or disabled", (await page.locator("button.ref-office-tool").count()) === 12 && (await page.locator(".ref-office-soon, .ref-office-tool[aria-disabled='true']").count()) === 0);
   const openTool = async (label, wait) => { await go(page, "office", ".ref-office-tools"); await page.locator(`button.ref-office-tool[data-office-tool="${label}"]`).click(); await page.locator(wait).first().waitFor(); };
   await openTool("ملفاتي", "[data-lib-content]");
   check("«ملفاتي» opens the office library", page.url().endsWith("#/library"));
@@ -283,9 +284,12 @@ try {
   step = "14: viewing outcomes";
   const summaryOf = (purpose, district, price) => ({ propertyType: "شقة", purpose, city: "الرياض", district, price, priceStatus: "NEGOTIABLE" });
   const seedJourney = (id, data) => h.store.seed(`offices/${OFFICE_A}/journeys/${id}`, {
-    officeId: OFFICE_A, journeyId: id, matchId: `m_${id}`, offerId: "opp_seed_offer", requestId: "opp_seed_request", assignedBrokerId: OWNER_A, status: "ACTIVE",
+    officeId: OFFICE_A, journeyId: id, matchId: `m_${id}`, offerId: "opp_viewing_offer", requestId: "opp_viewing_request", assignedBrokerId: OWNER_A, status: "ACTIVE",
     offerSummary: summaryOf("RENT", "الملقا", 65000), requestSummary: summaryOf("LEASE_REQUEST", "الملقا", 70000), openTasks: {}, activeProposals: {}, createdAt: iso(900), updatedAt: iso(30), ...data
   });
+  // Viewing fixtures must be active: earlier sections intentionally deleted opp_seed_request.
+  h.store.seed(`offices/${OFFICE_A}/opportunities/opp_viewing_offer`, { ...h.store.get(`offices/${OFFICE_A}/opportunities/opp_seed_offer`), id: "opp_viewing_offer", lifecycleStatus: "ACTIVE", deletedAt: null });
+  h.store.seed(`offices/${OFFICE_A}/opportunities/opp_viewing_request`, { ...h.store.get(`offices/${OFFICE_A}/opportunities/opp_seed_request`), id: "opp_viewing_request", lifecycleStatus: "ACTIVE", deletedAt: null });
   const viewedAt = iso(180);
   seedJourney("jr_seed_viewed", { stage: "VIEWING", viewing: { state: "CONFIRMED", at: viewedAt, confirmedAt: iso(600) }, currentAction: { type: "VIEWING_RESULT", taskId: "seed_vr", label: "نتيجة المعاينة" }, openTasks: { seed_vr: { type: "VIEWING_RESULT", ref: `viewing:${viewedAt}`, status: "OPEN" } } });
   await go(page, "journey/jr_seed_viewed", "#now [data-result]");

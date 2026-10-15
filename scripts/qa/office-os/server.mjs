@@ -126,9 +126,9 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
         if (del) store.remove(docPath); else if (merge) store.patch(docPath, data); else store.seed(docPath, data);
         return send(200, "application/json", "{}");
       }
-      if (url.pathname.startsWith("/worker/")) {
+      if (url.pathname.startsWith("/worker/") || url.pathname.startsWith("/s/")) {
         const chunks = []; for await (const c of req) chunks.push(c);
-        const request = new Request(`https://worker.test${url.pathname.slice("/worker".length)}${url.search}`, {
+        const request = new Request(`https://worker.test${(url.pathname.startsWith("/worker/") ? url.pathname.slice("/worker".length) : url.pathname)}${url.search}`, {
           method: req.method, headers: req.headers, body: ["GET", "HEAD"].includes(req.method) ? undefined : Buffer.concat(chunks)
         });
         env.APP_ORIGIN = origin.value;

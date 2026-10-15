@@ -61,3 +61,27 @@ button:focus-visible,a:focus-visible{outline:3px solid #099fb4;outline-offset:3p
 .os-app .ref-reference-bottom button[aria-current="page"] .os-ico{color:#fff;--ico:#fff}
 .os-app .ref-office-facts{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
 .os-app .ref-office-facts .ref-office-ltr{white-space:nowrap;overflow-wrap:normal}
+.os-app .ref-reference-header .ref-menu{order:0}
+.os-app .ref-reference-header h1{line-height:1.45}
+.os-app[data-view="office"] .ref-reference-copy strong{font-size:clamp(15px,3.6vw,25px);line-height:1.5}
+.os-app[data-view="office"] :is(.ref-reference-copy small,.ref-office-row-text span,.ref-office-row-text b,.ref-office-services,.ref-office-profile-main>.ref-office-profile-row b){font-size:13px;line-height:1.5;color:#586b80}
+.os-app[data-view="office"] .ref-reference-heading p{color:#586b80}
+.os-app[data-view="office"] .ref-reference-copy small{color:#586b80}
+.os-app[data-view="office"] .ref-reference-tool{min-height:82px}
+.os-app[data-view="office"] .ref-office-facts{grid-template-columns:minmax(0,1fr)}
+.os-app[data-view="office"] .ref-office-profile-row{min-height:44px}
+.os-app[data-view="office"] .ref-reference-bottom button{font-size:13px}
+.os-app .ref-reference-bottom button{font-size:13px}
+.os-app .ref-reference-header h1{white-space:normal;text-wrap:balance}
+.os-app .os-btn.primary{background-color:#03677a}
+.os-app[data-view="office"] .tone-green{--tool-text:#08764f}
+.os-app[data-view="office"] .tone-blue{--tool-text:#095ba8}
+.os-app[data-view="office"] .tone-purple{--tool-text:#6331cf}
+.os-app[data-view="office"] .tone-gold{--tool-text:#865c12}
+.os-app[data-view="office"] .ref-office-services>span{color:var(--tool-text,#082f3a)}
+.os-app[data-view="office"] .ref-reference-heading h2{line-height:1.45}
+.os-app[data-view="office"] .ref-reference-heading p{font-size:clamp(13px,3vw,21px);line-height:1.5}
+.os-app .ref-reference-header .ref-search{order:0}
+.os-app .os-follow-tab{font-size:13px;line-height:1.5}
+.os-app .os-follow-tab span{white-space:normal;overflow-wrap:anywhere;text-align:center}
+@media(max-width:350px){.os-app .ref-path{padding-inline:6px}.os-app .ref-steps{gap:1px}.os-app .ref-steps>.ref-step small{white-space:normal;overflow-wrap:anywhere;max-width:100%}}

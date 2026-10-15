@@ -116,10 +116,10 @@ export function renderShellHeader({ active = "office" } = {}) {
     const bell = h("button",{type:"button",class:"ref-bell","data-header-bell":"","aria-label":"التنبيهات",onClick:openNotifications},ic("bell"),h("i",{class:"ref-bell-dot"}));
     refreshBellDot(bell);
     return h("header",{class:"ref-shell-header ref-reference-header","aria-label":localTitle || "مكاتب عقارية ذكية"},
-      h("button",{type:"button",class:"os-icon-btn","aria-label":"القائمة والإعدادات",onClick:openMenu},ic("reference-menu")),
+      h("button",{type:"button",class:"os-icon-btn ref-menu","aria-label":"القائمة والإعدادات",onClick:openMenu},ic("reference-menu")),
       h("span",{class:"ref-logo","aria-label":"iAqar.ai"}),
       h("h1",{text:"مكاتب عقارية ذكية"}),
-      h("button",{type:"button",class:"os-icon-btn","data-header-search":"","aria-label":"البحث الشامل",onClick:()=>go("search")},ic("search")),bell,
+      h("button",{type:"button",class:"os-icon-btn ref-search","data-header-search":"","aria-label":"البحث الشامل",onClick:()=>go("search")},ic("search")),bell,
       h("button",{type:"button",class:"os-icon-btn","aria-label":"حسابي",onClick:()=>go("settings")},ic("user")));
 }
 

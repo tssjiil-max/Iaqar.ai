@@ -1,0 +1,33 @@
+✔ signup entry opens the application form inside the new UI
+✔ office page shows office name, broker, license, city
+✔ office tools and bottom navigation are visible
+✔ reload keeps the same office
+✔ home: no «مكتبي» title and no «أدوات إضافية» block
+✔ home: every tool card is a working button (no «قريبًا» placeholders)
+✔ share office link works inside the new UI
+✔ without a photo no card is stored (the preview uses the platform logo)
+✔ settings save shows the new toast and stays in Office OS (double click saves once)
+✔ broker photo shows on the office card after reload (and the city change persisted)
+✔ route #/office: no legacy link, not blank
+✔ route #/tasks: no legacy link, not blank
+✔ route #/settings: no legacy link, not blank
+✔ route #/settings/profile: no legacy link, not blank
+✔ route #/settings/link: no legacy link, not blank
+✔ route #/settings/cooperation: no legacy link, not blank
+✔ route #/settings/channels: no legacy link, not blank
+✔ route #/settings/brokers: no legacy link, not blank
+✔ route #/community: no legacy link, not blank
+✔ sweep: the old app was never requested
+✔ logout returns to the login screen
+✔ login again returns to the same office (no duplicate office)
+✔ exactly one OFFER with the right office and broker
+✔ exactly one REQUEST in the same office
+✔ match links this offer and request in this office — opp_os_6086bbca1252ed162b1f1c7137d4/opp_os_adddc0266133a7a3fd6f49c2a089
+✔ one MATCH_REVIEW task in Daily Tasks
+✔ review shows this property and client
+✔ no legacy screen was opened
+✔ approving the match starts the journey inside Office OS
+✔ tripwire: the old app was never requested during the whole journey
+✔ no browser console errors
+
+31/31 fresh-broker checks passed

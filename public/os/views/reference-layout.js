@@ -222,7 +222,7 @@ const REFERENCE_TOOLS = [
  ["الدعم والمساعدة","إرسال بلاغ أو استفسار","support","support","blue"]
 ];
 function referenceTool([label,hint,route,icon,tone]) {
- return h("button",{type:"button",class:`ref-reference-tool tone-${tone}`,"data-reference-tool":"","data-tool-route":route,onClick:()=>route === "support" ? openSupportTicket() : go(route)},
+ return h("button",{type:"button",class:`ref-reference-tool ref-office-tool tone-${tone}`,"data-office-tool":route === "library" ? "ملفاتي" : route === "tools/market" ? "السوق" : label,"data-reference-tool":"","data-tool-route":route,onClick:()=>route === "support" ? openSupportTicket() : go(route)},
  h("span",{class:"ref-reference-icon"},ic(icon)),h("span",{class:"ref-reference-copy"},h("strong",{text:label}),h("small",{text:hint})));
 }
 

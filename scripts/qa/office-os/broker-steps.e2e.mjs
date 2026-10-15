@@ -281,7 +281,7 @@ try {
         const W = document.documentElement.clientWidth;
         const outside = [...document.querySelectorAll("main button, main a, main summary")].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && !el.closest("details:not([open])") || el.matches("summary") ? (r.left < -1 || r.right > W + 1) : false; }).length;
         const clipped = [...document.querySelectorAll("main button")].filter((el) => el.getBoundingClientRect().width > 0 && el.scrollWidth > el.clientWidth + 2).length;
-        return { overflow: document.scrollingElement.scrollWidth - W, outside, clipped };
+        return { overflow: document.scrollingElement.scrollWidth - W, outside, clipped, clippedLabels: [...document.querySelectorAll("main button")].filter(el => el.getBoundingClientRect().width > 0 && el.scrollWidth > el.clientWidth + 2).map(el => ({text:el.textContent,cls:el.className})) };
       });
       check(`${width}px ${name}: no horizontal scroll, no control outside the screen, no clipped button text`, res.overflow <= 1 && res.outside === 0 && res.clipped === 0, JSON.stringify(res));
     }

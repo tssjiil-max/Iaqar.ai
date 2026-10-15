@@ -226,8 +226,8 @@ function typeIssues() {
   };
   if (document.documentElement.dir !== "rtl") issues.push("not-rtl <html>");
   const family = getComputedStyle(document.body).fontFamily;
-  if (!/^"?Noto Naskh Arabic/.test(family)) issues.push(`font-family ${family.slice(0, 40)}`);
-  if (!document.fonts.check('600 18px "Noto Naskh Arabic"', "عقار")) issues.push("font-not-loaded Noto Naskh Arabic");
+  if (!/^"?Office Tajawal/.test(family)) issues.push(`font-family ${family.slice(0, 40)}`);
+  if (!document.fonts.check('700 18px "Office Tajawal"', "عقار")) issues.push("font-not-loaded Office Tajawal");
   const parse = (c) => { const m = String(c).match(/rgba?\(([^)]+)\)/); if (!m) return null; const v = m[1].split(/[,\s/]+/).filter(Boolean).map(Number); return { r: v[0], g: v[1], b: v[2], a: v.length > 3 ? v[3] : 1 }; };
   const mix = (top, under) => ({ r: top.r * top.a + under.r * (1 - top.a), g: top.g * top.a + under.g * (1 - top.a), b: top.b * top.a + under.b * (1 - top.a), a: 1 });
   const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };

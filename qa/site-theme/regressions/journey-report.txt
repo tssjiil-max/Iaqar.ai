@@ -1,0 +1,48 @@
+✔ no horizontal scroll: 01-public-office — overflow=0px
+✔ no horizontal scroll: 02-public-offer-form — overflow=0px
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_4f0euceexof","officeId":"office-alpha","at":"2026-10-14T22:48:30.833Z"}
+✔ no horizontal scroll: 03-public-submitted — overflow=0px
+✔ office link submission stored in the right office with assigned broker
+✔ no horizontal scroll: 04-office-login — overflow=0px
+✔ no horizontal scroll: 05-add-request-form — overflow=0px
+✔ no horizontal scroll: 06-request-saved-detail — overflow=0px
+✔ request saved without area
+✔ review card shows property, location and client
+✔ one review task
+✔ no horizontal scroll: 07-daily-tasks-review — overflow=0px
+✔ no horizontal scroll: 08-match-review — overflow=0px
+✔ no horizontal scroll: 09-workspace-start — overflow=0px
+✔ one journey for the approved match
+✔ no horizontal scroll: 10-composer — overflow=0px
+✔ no horizontal scroll: 11-composer-prepared — overflow=0px
+✔ WhatsApp opened with the client's number and message — https://wa.me/966551234567?text=%D9%85%D8%B1%D8%AD%D8%A8%D9%
+✔ handoff recorded as opened only (no sent/delivered)
+✔ other-app share includes the same reply link
+✔ other-app share updates waiting task automatically
+✔ cancelled share does not change the task or handoff count
+✔ reply page shows no owner data
+✔ no horizontal scroll: 12-reply-page — overflow=0px
+✔ no horizontal scroll: 13-reply-saved — overflow=0px
+✔ double press + reload → one saved reply — events=1
+✔ no horizontal scroll: 14-daily-tasks-reply — overflow=0px
+✔ no horizontal scroll: 15-workspace-reply — overflow=0px
+✔ no horizontal scroll: 16-daily-tasks-confirm-viewing — overflow=0px
+✔ accepted viewing is not confirmed or done
+✔ viewing results start with no preselection
+✔ no horizontal scroll: 17-workspace-viewing-result — overflow=0px
+✔ interest after viewing moves to agreement, deal not completed
+✔ no horizontal scroll: 18-workspace-agreement — overflow=0px
+✔ no horizontal scroll: 19-workspace-closed — overflow=0px
+✔ deal completed explicitly and archived
+✔ closed opportunity links stop accepting replies
+✔ no horizontal scroll: 20-repository — overflow=0px
+✔ repository is one list with no section tabs
+✔ every repository card carries a «عرض» or «طلب» label
+✔ repository has the «بلا مطابقة» filter
+✔ unmatched filter never shows more than all records
+✔ no horizontal scroll: 20b-repository-unmatched — overflow=0px
+✔ no horizontal scroll: 21-desktop-workspace — overflow=0px
+✔ office B repository contains only its own records
+✔ no browser console errors
+
+45/45 checks passed
