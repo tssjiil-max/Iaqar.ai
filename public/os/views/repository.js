@@ -28,12 +28,18 @@ function recordCard(record) {
   const when = record.createdAt?.toDate ? record.createdAt.toDate() : new Date(record.createdAt || "");
   const dateLabel = Number.isNaN(when.getTime()) ? "" : when.toLocaleDateString("en-CA");
   const externalBroker = isExternalBroker(record);
+  // Build the meta spans first (not inline) so the accessible label below can read each one's
+  // *actual* rendered textContent — an icon's inline SVG markup can carry incidental whitespace
+  // between its <path> tags, which becomes part of the span's textContent. Reconstructing the
+  // string separately ("4" + " غرف") would silently drift from what a screen reader announces.
+  const roomsSpan = view.rooms ? h("span", {}, ic("bed"), view.rooms + " غرف") : null;
+  const areaSpan = view.areaLabel ? h("span", {}, ic("area"), view.areaLabel) : null;
   // Card body keeps the shorter "2,000,000 ريال" style (no "السعر/الميزانية" prefix); the full
   // "السعر 2,000,000 ريال" / "الميزانية ..." phrasing moves into the accessible name below,
   // alongside every other visible badge, so nothing a sighted user sees is left unannounced.
   const accessibleLabel = [view.kindLabel, view.propertyType || view.title, view.location, view.priceLabel,
     externalBroker ? "وسيط متعاون" : "", view.state !== "ACTIVE" ? view.lifecycleLabel : "",
-    dateLabel, view.rooms ? view.rooms + " غرف" : "", view.areaLabel].filter(Boolean).join("، ");
+    dateLabel, roomsSpan?.textContent, areaSpan?.textContent].filter(Boolean).join("، ");
   return h("article", { class: "os-card ref-record-card", "data-record": view.id, "data-record-kind": view.kind },
     h("button", { type: "button", class: "ref-record-open", "aria-label": accessibleLabel, onClick: () => go(`record/${view.id}`) },
       photo(record),
@@ -47,8 +53,8 @@ function recordCard(record) {
         view.state !== "ACTIVE" ? h("span", { class: "ref-status ref-state", "data-state-label": view.state, text: view.lifecycleLabel }) : null),
       h("div", { class: "ref-record-meta" },
         h("span", { text: dateLabel }),
-        view.rooms ? h("span", {}, ic("bed"), view.rooms + " غرف") : null,
-        view.areaLabel ? h("span", {}, ic("area"), view.areaLabel) : null)));
+        roomsSpan,
+        areaSpan)));
 }
 
 export function openRecordMenu(record) {
