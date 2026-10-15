@@ -65,7 +65,7 @@ const SCREENS = [
   // public/legacy.html, public/complete.html). Visual-only checks: real token/office params are
   // not seeded for these, so the data-driven parts show their own empty/error states — that is
   // expected and checked here as much as the chrome around it.
-  { name: "admin-shell", url: "/admin/", wait: "text=لوحة إدارة", auth: false },
+  { name: "admin-shell", url: "/admin/index.html", wait: "text=لوحة إدارة", auth: false },
   { name: "complete-shell", url: "/complete.html", wait: "text=استكمال البيانات", auth: false },
   { name: "legacy-shell", url: "/legacy.html?legacyContent=1", wait: "body", auth: false },
   { name: "register", url: "/#/register", wait: "[data-broker-form]", auth: false },
