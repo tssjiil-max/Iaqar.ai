@@ -1,0 +1,46 @@
+name: Claude visual unification — full width matrix
+
+on:
+  push:
+    branches:
+      - claude/visual-unification-20261015
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  widths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - run: npx playwright install --with-deps chromium
+      - name: Full 7-width matrix across every discovered screen
+        run: |
+          WIDTHS=320,360,390,430,768,1024,1440 OUT_DIR=qa/visual-unification-widths node scripts/qa/office-os/mobile-widths.e2e.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-unification-widths-evidence
+          path: qa/visual-unification-widths
+          retention-days: 14
+      - name: Publish the JSON report + a representative sample via git (artifact blob storage is unreachable from the review sandbox)
+        if: always()
+        run: |
+          mkdir -p qa-evidence
+          cp qa/visual-unification-widths/widths-report.json qa-evidence/ || true
+          for n in 320-login 390-office 1024-office 1440-office 390-admin-shell 1024-admin-shell 390-complete-shell 390-legacy-shell 1024-legacy-shell 390-repository 390-tasks 390-settings 390-journey-negotiation 390-record-detail 320-public-office 390-menu-sheet; do
+            cp "qa/visual-unification-widths/$n.png" qa-evidence/ 2>/dev/null || true
+          done
+          git config user.name "claude-ci-evidence"
+          git config user.email "actions@users.noreply.github.com"
+          git add -f qa-evidence
+          git commit -m "ci: publish widths-report.json + representative screenshot sample [skip ci]" || echo "nothing to commit"
+          git push origin HEAD:claude/visual-unification-20261015

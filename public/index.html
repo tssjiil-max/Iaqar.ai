@@ -32,9 +32,13 @@
   <link rel="stylesheet" href="/os/os.css">
   <link rel="stylesheet" href="/os/reference-layout.css">
   <link rel="stylesheet" href="/os/office-desk.css">
-  <link rel="stylesheet" href="/os/mobile-reference-polish.css">
   <link rel="stylesheet" href="/os/office-reference.css">
   <link rel="stylesheet" href="/os/site-theme.css">
+  <!-- Loaded last on purpose: its [data-view="office"|"tasks"|"repo"|"tool"] desktop-grid rule
+       (≥1024px) and site-theme.css's plain [data-view] base rule are equal specificity, so
+       whichever file loads second would always win the cascade. mobile-reference-polish.css's
+       desktop rule must win, so it stays last. -->
+  <link rel="stylesheet" href="/os/mobile-reference-polish.css">
 </head>
 <body>
   <div id="app"><main class="os-app"><div class="os-skeleton" style="height:180px"></div><div class="os-skeleton"></div></main></div>

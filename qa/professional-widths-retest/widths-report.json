@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-14T17:04:50.897Z",
+  "widths": [
+    1440
+  ],
+  "screens": [
+    "tool-calculator"
+  ],
+  "results": [
+    {
+      "width": 1440,
+      "screen": "tool-calculator",
+      "issues": []
+    }
+  ],
+  "consoleErrors": []
+}
