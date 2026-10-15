@@ -27,7 +27,8 @@ try {
       }));
       assert.equal(metrics.rtl, true);
       assert.ok(metrics.overflow <= 1, `${width}/${name}: overflow`);
-      assert.ok(metrics.font.includes("Noto Naskh Arabic"));
+      assert.ok(metrics.font.includes("Office Tajawal"), "published page must use the shared office font");
+      assert.ok(await page.evaluate(() => document.fonts.check('700 18px "Office Tajawal"', "عقار")), "shared font must load");
       await page.screenshot({ path: path.join(out, `${width}-${name}.png`), fullPage: true });
       results.push({ width, name, ...metrics });
     };
