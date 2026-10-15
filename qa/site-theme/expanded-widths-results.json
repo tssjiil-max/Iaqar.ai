@@ -1,0 +1,1568 @@
+{
+  "at": "2026-10-15T07:02:12.766Z",
+  "widths": [
+    320,
+    390,
+    768,
+    1280
+  ],
+  "screens": [
+    "public-success",
+    "public-office",
+    "public-form",
+    "public-form-smart",
+    "public-form-smart-review",
+    "public-request-form",
+    "public-request-smart-review",
+    "public-form-coop-broker",
+    "public-form-errors",
+    "login",
+    "register",
+    "register-states",
+    "forgot-password",
+    "office",
+    "task-detail",
+    "tasks",
+    "menu-sheet",
+    "repository",
+    "repository-filters",
+    "search",
+    "inbox",
+    "audit",
+    "channels",
+    "tool-calculator",
+    "tool-forms",
+    "record-detail",
+    "record-form",
+    "record-form-new-smart",
+    "record-form-new-manual",
+    "quick-add",
+    "scout",
+    "scout-new",
+    "settings-agent",
+    "settings-scout",
+    "settings-notifications",
+    "tool-guide",
+    "tool-services",
+    "review",
+    "journey-negotiation",
+    "party-proposal",
+    "composer-sheet",
+    "journey-viewing-confirm",
+    "journey-viewing-result",
+    "journey-closed",
+    "settings",
+    "community",
+    "community-details",
+    "settings-profile",
+    "settings-link",
+    "settings-cooperation",
+    "settings-brokers",
+    "reply-page",
+    "reply-counter-field",
+    "reply-saved-state",
+    "session-owner-price",
+    "session-owner-typed",
+    "session-client-waiting",
+    "session-owner-viewing",
+    "room-client-term-options",
+    "room-owner-info-topics",
+    "room-owner-note-to-broker",
+    "session-broker",
+    "room-broker-rephrase",
+    "deal-card-tasks-open",
+    "deal-follow-hub",
+    "deal-follow-contact-log",
+    "deal-follow-closed",
+    "journey-documents-library-picker",
+    "notifications-sheet",
+    "bot-cards",
+    "bot-switch-confirm",
+    "bot-alerts-link",
+    "record-bot-link",
+    "public-form-sent"
+  ],
+  "results": [
+    {
+      "width": 320,
+      "screen": "public-success",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-form-smart",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-form-smart-review",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-request-form",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-request-smart-review",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-form-coop-broker",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-form-errors",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "register",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "register-states",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "forgot-password",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "search",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "inbox",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "audit",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "channels",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tool-calculator",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tool-forms",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "record-form-new-smart",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "record-form-new-manual",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "quick-add",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "scout",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "scout-new",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-agent",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-scout",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-notifications",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tool-guide",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "tool-services",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "community",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "community-details",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-profile",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-link",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-cooperation",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings-brokers",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "session-owner-price",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "session-owner-typed",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "session-client-waiting",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "session-owner-viewing",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "room-client-term-options",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "room-owner-info-topics",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "room-owner-note-to-broker",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "session-broker",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "room-broker-rephrase",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "deal-card-tasks-open",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "deal-follow-hub",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "deal-follow-contact-log",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "deal-follow-closed",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "journey-documents-library-picker",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "notifications-sheet",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "bot-cards",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "bot-switch-confirm",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "bot-alerts-link",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "record-bot-link",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "public-form-sent",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-success",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-form-smart",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-form-smart-review",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-request-form",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-request-smart-review",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-form-coop-broker",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-form-errors",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "register",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "register-states",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "forgot-password",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "search",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "inbox",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "audit",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "channels",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tool-calculator",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tool-forms",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "record-form-new-smart",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "record-form-new-manual",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "quick-add",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "scout",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "scout-new",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-agent",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-scout",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-notifications",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tool-guide",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "tool-services",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "community",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "community-details",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-profile",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-link",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-cooperation",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings-brokers",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "session-owner-price",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "session-owner-typed",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "session-client-waiting",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "session-owner-viewing",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "room-client-term-options",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "room-owner-info-topics",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "room-owner-note-to-broker",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "session-broker",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "room-broker-rephrase",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "deal-card-tasks-open",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "deal-follow-hub",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "deal-follow-contact-log",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "deal-follow-closed",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "journey-documents-library-picker",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "notifications-sheet",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "bot-cards",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "bot-switch-confirm",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "bot-alerts-link",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "record-bot-link",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "public-form-sent",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-success",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-form-smart",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-form-smart-review",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-request-form",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-request-smart-review",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-form-coop-broker",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-form-errors",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "register",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "register-states",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "forgot-password",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "search",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "inbox",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "audit",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "channels",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tool-calculator",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tool-forms",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "record-form-new-smart",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "record-form-new-manual",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "quick-add",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "scout",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "scout-new",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-agent",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-scout",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-notifications",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tool-guide",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "tool-services",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "community",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "community-details",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-profile",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-link",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-cooperation",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings-brokers",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "session-owner-price",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "session-owner-typed",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "session-client-waiting",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "session-owner-viewing",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "room-client-term-options",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "room-owner-info-topics",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "room-owner-note-to-broker",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "session-broker",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "room-broker-rephrase",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "deal-card-tasks-open",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "deal-follow-hub",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "deal-follow-contact-log",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "deal-follow-closed",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "journey-documents-library-picker",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "notifications-sheet",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "bot-cards",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "bot-switch-confirm",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "bot-alerts-link",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "record-bot-link",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "public-form-sent",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-success",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-office",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-form",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-form-smart",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-form-smart-review",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-request-form",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-request-smart-review",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-form-coop-broker",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-form-errors",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "login",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "register",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "register-states",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "forgot-password",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "office",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "task-detail",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "tasks",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "menu-sheet",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "repository",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "repository-filters",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "search",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "inbox",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "audit",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "channels",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "tool-calculator",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "tool-forms",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "record-detail",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "record-form",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "record-form-new-smart",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "record-form-new-manual",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "quick-add",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "scout",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "scout-new",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings-agent",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings-scout",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings-notifications",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "tool-guide",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "tool-services",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "review",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "journey-negotiation",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "party-proposal",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "composer-sheet",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "journey-viewing-confirm",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "journey-viewing-result",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "journey-closed",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "community",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "community-details",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings-profile",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings-link",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings-cooperation",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "settings-brokers",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "reply-page",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "reply-counter-field",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "reply-saved-state",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "session-owner-price",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "session-owner-typed",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "session-client-waiting",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "session-owner-viewing",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "room-client-term-options",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "room-owner-info-topics",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "room-owner-note-to-broker",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "session-broker",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "room-broker-rephrase",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "deal-card-tasks-open",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "deal-follow-hub",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "deal-follow-contact-log",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "deal-follow-closed",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "journey-documents-library-picker",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "notifications-sheet",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "bot-cards",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "bot-switch-confirm",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "bot-alerts-link",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "record-bot-link",
+      "issues": []
+    },
+    {
+      "width": 1280,
+      "screen": "public-form-sent",
+      "issues": []
+    }
+  ],
+  "consoleErrors": []
+}

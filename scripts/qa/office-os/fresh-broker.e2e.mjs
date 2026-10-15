@@ -26,6 +26,7 @@ USERS[UID] = { phone: PHONE, email: `${UID}@test.local`, officeId: OFFICE, passw
 const office = { officeId: OFFICE, officeName: "مكتب الجديد للتسويق", brokerName: "فهد الجديد", licenseNumber: "1200055555", city: "جدة", phone: PHONE, whatsapp: PHONE, ownerUid: UID, active: true, publicSlug: `qa${stamp % 100000}`, specialties: ["sale"], platformOpportunityOnboardingAckAt: "2026-09-01T00:00:00Z" };
 h.store.seed(`offices/${OFFICE}`, office);
 h.store.seed(`publicOffices/${OFFICE}`, office);
+h.store.seed(`officeSlugClaims/${office.publicSlug}`, { officeId: OFFICE });
 h.store.seed(`offices/${OFFICE}/members/${UID}`, { uid: UID, role: "owner", active: true });
 for (const key of [`+966${PHONE.slice(1)}`, PHONE, `966${PHONE.slice(1)}`]) h.store.seed(`loginDirectory/${sha256(key)}`, { uid: UID, officeId: OFFICE, email: USERS[UID].email, phone: PHONE, active: true });
 
@@ -43,7 +44,8 @@ try {
   await ctx.route(/\/legacy\.html/, (route) => { legacyHits.push(route.request().url()); route.fulfill({ status: 200, contentType: "text/html", body: "legacy" }); });
   const page = await ctx.newPage(); page.setDefaultTimeout(10000);
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("response", r => { if (r.status() >= 400) console.log(`HTTP ${r.status()} ${new URL(r.url()).pathname}`); });
+page.on("pageerror", (e) => errors.push(e.message));
   const login = async () => {
     await page.goto(`${h.origin}/`);
     await page.getByRole("heading", { name: "دخول المكتب" }).waitFor();
@@ -72,7 +74,7 @@ try {
 
   step = "2b: office home is clean (no placeholder grid of extras) and settings keep the user in the new UI";
   check("home: no «مكتبي» title and no «أدوات إضافية» block", !(await page.locator("body").innerText()).includes("مكتبي") && (await page.locator(".ref-office-extras-wrap").count()) === 0);
-  check("home: every tool card is a working button (no «قريبًا» placeholders)", (await page.locator("button.ref-office-tool").count()) === 6 && (await page.locator(".ref-office-tool[aria-disabled='true'], .ref-office-soon").count()) === 0);
+  check("home: every tool card is a working button (no «قريبًا» placeholders)", (await page.locator("button.ref-office-tool").count()) === 12 && (await page.locator(".ref-office-tool[aria-disabled='true'], .ref-office-soon").count()) === 0);
   await page.locator(".ref-menu, [aria-label='القائمة والإعدادات']").first().click();
   await page.getByRole("button", { name: "مشاركة رابط المكتب" }).click();
   await page.locator(".os-toast, .os-sheet").first().waitFor();
@@ -102,7 +104,11 @@ try {
     const blank = (await page.locator("body").innerText()).trim().length < 20;
     check(`route #/${route}: no legacy link, not blank`, anchors === 0 && !blank);
     for (const tab of await page.locator("[role='tab'], [data-tab]").all()) { await tab.click().catch(() => {}); }
-    for (const nav of await page.locator(".ref-bottom button").all()) { await nav.click().catch(() => {}); await page.waitForTimeout(150); }
+    for (const label of await page.locator(".ref-bottom button").allTextContents()) {
+      await page.goto(`${h.origin}/#/${route}`);
+      await page.locator(".ref-bottom").getByRole("button", { name: label, exact: true }).click();
+      await page.waitForTimeout(150);
+    }
   }
   check("sweep: the old app was never requested", legacyHits.length === 0, legacyHits.join(","));
 
@@ -116,7 +122,7 @@ try {
   check("login again returns to the same office (no duplicate office)", (await page.locator("body").innerText()).includes("مكتب الجديد للتسويق") && h.store.list("offices").filter((o) => o.ownerUid === UID).length === 1);
 
   step = "4: add the first OFFER";
-  await page.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
+  await page.locator('[data-reference-tool][data-tool-route="repo"]').click();
   await page.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await page.getByRole("button", { name: "إضافة عرض", exact: true }).click();
   await page.locator('[data-fill-mode="manual"]').click();
@@ -134,7 +140,7 @@ try {
   step = "5: add a matching REQUEST";
   await page.goto(`${h.origin}/#/office`);
   await page.locator(".ref-bottom").waitFor();
-  await page.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
+  await page.locator('[data-reference-tool][data-tool-route="repo"]').click();
   await page.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await page.getByRole("button", { name: "إضافة طلب", exact: true }).click();
   await page.locator('[data-fill-mode="manual"]').click();

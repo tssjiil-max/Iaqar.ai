@@ -1,3 +1,4 @@
+import { SPECIALTIES } from "../domain/office-profile-domain.js";
 import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 import { openGeneralTask } from "./task-fallback.js";
 import { h, ic, clear, append } from "../core/dom.js";
@@ -205,6 +206,26 @@ function supportCard() {
   return card;
 }
 
+// Routes already implemented by app.js; labels describe their actual scope.
+const REFERENCE_TOOLS = [
+ ["المهام اليومية","متابعة المهام والمواعيد","tasks","reference-calendar","blue"],
+ ["العروض والطلبات","إدارة العروض والطلبات","repo","reference-home","gold"],
+ ["الباحث العقاري","الباحث عن الفرص العقارية","scout","search","purple"],
+ ["المطابقة الذكية","مراجعة مطابقات الطلبات والعروض","tasks?step=0","reference-target","green"],
+ ["الدليل","خطوات العمل العقاري","tools/guide","clipboard","blue"],
+ ["النماذج","رسائل جاهزة للمالك والعميل","tools/forms","contract","red"],
+ ["الخدمات","الجهات والمنصات الرسمية","tools/services","building","gold"],
+ ["الحاسبة","تقدير السعي والضريبة","tools/calculator","reference-calculator","blue"],
+ ["مدير المكتب","المساعد ومتابعة أعمال المكتب","agent","robot","green"],
+ ["البيانات والمستندات","مكتبة ملفات المكتب","library","reference-folder","purple"],
+ ["مؤشرات المكتب","إحصاءات العروض والطلبات","tools/market","chart-up","gold"],
+ ["الدعم والمساعدة","إرسال بلاغ أو استفسار","support","support","blue"]
+];
+function referenceTool([label,hint,route,icon,tone]) {
+ return h("button",{type:"button",class:`ref-reference-tool ref-office-tool tone-${tone}`,"data-office-tool":route === "library" ? "ملفاتي" : route === "tools/market" ? "السوق" : label,"data-reference-tool":"","data-tool-route":route,onClick:()=>route === "support" ? openSupportTicket() : go(route)},
+ h("span",{class:"ref-reference-icon"},ic(icon)),h("span",{class:"ref-reference-copy"},h("strong",{text:label}),h("small",{text:hint})));
+}
+
 export function renderOffice(container){
   clear(container);
   const office = session.office || {};
@@ -222,24 +243,41 @@ export function renderOffice(container){
   // The full name always shows: up to two lines, with a slightly smaller size for long names — never clipped.
   const nameSize = officeName.length > 30 ? "is-long" : officeName.length > 20 ? "is-mid" : "";
 
-  append(container,
-    h("section", { class: "os-card ref-office-profile" },
-      h("div", { class: "ref-office-profile-main" },
-        h("div", { class: "ref-office-profile-head" },
-          h("h2", { class: nameSize, text: officeName })),
-        profileRow("user", "الوسيط", broker),
-        profileRow("license", "ترخيص فال", license, { ltr: true }),
-        profileRow("pin", "", city)),
-      h("div", { class: "ref-office-profile-logo" }, h("div", { class: "ref-office-logo-box" }, brokerAvatar(office) || officeLogo(office)))),
+  const detailsId = "office-profile-details";
+  const details = h("div", { id: detailsId, class: "ref-office-expanded" },
+    h("div", { class: "ref-office-facts" },
+      profileRow("license", "ترخيص فال", license, { ltr: true }),
+      profileRow("pin", "", city),
+      office.licenseDate ? profileRow("calendar", "تاريخ الرخصة", String(office.licenseDate), {ltr:true}) : null),
+    office.description ? h("p",{class:"ref-office-description",text:office.description}) : null);
+  const toggle = h("button", {type:"button",class:"ref-profile-toggle","aria-label":"طي تفاصيل المكتب","aria-expanded":"true","aria-controls":detailsId},ic("chev-right"));
+  const profile = h("section", {class:"os-card ref-office-profile"},
+    h("div",{class:"ref-office-profile-main"},
+      h("div",{class:"ref-office-profile-head"},h("h2",{class:nameSize,text:officeName})),
+      profileRow("user", "الوسيط", broker),details),
+    h("div",{class:"ref-office-profile-logo"},h("div",{class:"ref-office-logo-box"},brokerAvatar(office)||officeLogo(office))),toggle);
+  const services = SPECIALTIES.filter(item=>Array.isArray(office.specialties)&&office.specialties.includes(item.value));
+  if(services.length) profile.append(h("div",{class:"ref-office-services"},h("b",{text:"الخدمات العقارية"}),...services.map((item,index)=>h("span",{class:`tone-${["green","blue","purple","gold"][index%4]}`},ic(({sale:"home",purchase:"cart",rent:"key",property_management:"building"})[item.value] || "home"),item.label))));
+  toggle.addEventListener("click",()=>{
+    const expanded=toggle.getAttribute("aria-expanded")!=="true";
+    toggle.setAttribute("aria-expanded",String(expanded));
+    toggle.setAttribute("aria-label",expanded?"طي تفاصيل المكتب":"فتح تفاصيل المكتب");
+    profile.classList.toggle("is-collapsed",!expanded);
+    details.inert=!expanded;
+  });
+  append(container, profile,
+    h("section",{class:"os-card ref-reference-section"},
+      h("div",{class:"ref-reference-heading ref-office-heading"},h("h2", { text: "أدوات المكتب" }),h("p",{text:"كل ما تحتاجه لإدارة أعمالك العقارية في مكان واحد"})),
+      h("div",{class:"ref-reference-grid ref-office-tools"},REFERENCE_TOOLS.map(referenceTool))),
 
     // «إضافة سريعة»: paste an ad (one or several) → review → save into this office.
     h("button", { type: "button", class: "os-btn primary block ref-quick-add", "data-quick-add": "", onClick: () => go("quick-add") }, ic("sparkles"), "إضافة سريعة", h("small", { text: "الصق إعلانًا من واتساب أو تيليجرام" })),
 
     // Order (approved): office card → office tools → التعاون → مركز التواصل والدعم; the bottom bar stays fixed.
-    h("section", { class: "os-card ref-office-section" },
-      h("div", { class: "ref-office-heading" }, h("h2", { text: "أدوات المكتب" })),
+    h("details", { class: "os-card ref-office-section ref-office-status" },
+      h("summary", { text: "حالة مدير المكتب والباحث العقاري" }),
       agentCard(),
-      h("div", { class: "ref-office-tools", "aria-label": "أدوات المكتب" }, PRIMARY_OFFICE_TOOLS.map(officeToolCard)),
+
       // «الباحث عن الفرص»: shown only where it is available; opens its own page.
       scoutHomeCard()),
 

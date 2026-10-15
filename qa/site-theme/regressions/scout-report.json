@@ -1,0 +1,415 @@
+{
+  "at": "2026-10-14T22:51:43.024Z",
+  "checks": [
+    {
+      "name": "office page shows «الباحث عن الفرص» under the office tools, stopped until the manager switches it on",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 01-home-card-off",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll: 02-scout-off",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the manager switches the scout on from its page; the state reads «يعمل الآن»",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "an offer with no buyer in the office gets a search for a buyer by itself",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a request with no property in the office gets a search for a property by itself",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the page counts real searches: one offer looking for buyers, one request looking for properties",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 03-scout-on-searches",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll: 04-record-searching",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "«إيقاف البحث لهذا السجل» stops this record only; the scout and the other searches keep running",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "inside an offer the button is «ابحث عن مشتري»",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 05-record-start-button",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "one press starts the search from the record itself: nothing is asked again (type, district, price read from the offer)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "inside a request the search is for a property",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 06-feed-sheet",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "five pasted messages become exactly the two finds worth a call (the rest are not shown)",
+      "ok": true,
+      "detail": "2 cards · قرأنا 4 إعلانات — فرصتان قويتان تجدها أعلى الصفحة."
+    },
+    {
+      "name": "one is a likely buyer for the office's building, the other a property for the office's client",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the strong land with no way to reach its advertiser is kept inside only: not shown, no alert",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the weak and the unrelated messages were not stored as finds",
+      "ok": true,
+      "detail": "3 kept"
+    },
+    {
+      "name": "no record was created from the digest (the office's records are the two the broker added)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 07-scout-board",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "an alert was written for the very strong finds, saying the point without a contact detail",
+      "ok": true,
+      "detail": "2 · فرصة قوية — وجد الباحث عن الفرص طلب شراء حديثًا مناسبًا لـ«عمارة للبيع في حي شوران»."
+    },
+    {
+      "name": "the find says what, why it fits, which record it is for, its source, freshness and confidence",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "nothing technical is shown (no score, no queue, no model, no ids)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 08-find-detail",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "«تواصل» shows the advertiser's number to the broker (the scout itself sends nothing)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 09-find-contact",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "WhatsApp is opened by the broker's own press, with no text prepared; the find records «فُتح التواصل» only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«حفظ لوقت لاحق» keeps the find on the board as saved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«تجاهل» takes the find off the board",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the sentence is understood: urgent, a building for sale, شوران or الهجرة, up to two million, direct owner preferred — nothing typed twice",
+      "ok": true,
+      "detail": "{\"mode\":\"URGENT\",\"tx\":\"sale\",\"seek\":\"OFFER\",\"type\":\"عمارة\",\"districts\":\"شوران، الهجرة\",\"max\":\"2000000\",\"owner\":true,\"city\":\"المدينة المنورة\"}"
+    },
+    {
+      "name": "no horizontal scroll: 10-new-search-understood",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the urgent search ran its first round at once and is queued at the highest priority, every scheduler beat",
+      "ok": true,
+      "detail": "{\"c\":1,\"e\":1,\"r\":0,\"n\":1792018572897,\"p\":3}"
+    },
+    {
+      "name": "no horizontal scroll: 11-task-urgent",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "pausing one search leaves the others running",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ending a search keeps what it found and removes it from the schedule",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 12-task-ended",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the settings list only the sources verified as usable (no عقار, no حراج, no test source)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 13-settings",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "switching the scout off stops every automatic search safely: nothing is scheduled, and the finds, searches and settings are all still there",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "switching it on again queues the running searches",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "another office sees none of this office's finds or searches, and cannot open them by id",
+      "ok": true,
+      "detail": "404 403"
+    },
+    {
+      "name": "a link to a site that forbids automated reading is not fetched: the broker is asked to paste the ad's text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a link the site lets be read: the ad is read from its page and added — type, district, city, price and area shown back, what is missing named",
+      "ok": true,
+      "detail": "فيلا للبيع في حي الملقا · 3,200,000 ريال · 400 م² — غير مذكور: تاريخ النشر"
+    },
+    {
+      "name": "no horizontal scroll: 15-add-by-link",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the ad is kept for the broker in any city (a الرياض villa in a المدينة office), and no official record was created",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the page has the lists: الكل، مطابقة، جديدة، قيد المراجعة، محفوظة، مستبعدة — with real counts",
+      "ok": true,
+      "detail": "ALL:2 MATCHED:0 NEW:1 REVIEW:1 SAVED:0 EXCLUDED:1"
+    },
+    {
+      "name": "«جديدة» holds the ad just added (matched to nothing of the office yet)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the page says when the last successful search was",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 16-lists",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "every source shows its true state: the office's own are connected; عقار، حراج، بيوت، وصلت and the paid searches need a permission; private WhatsApp groups are not available",
+      "ok": true,
+      "detail": "{\"office_inbox\":\"CONNECTED\",\"broker_feed\":\"CONNECTED\",\"telegram_groups\":\"NEEDS_PERMISSION\",\"web_search\":\"NEEDS_PERMISSION\",\"x_search\":\"NEEDS_PERMISSION\",\"partner_feed\":\"NEEDS_PERMISSION\",\"aqar\":\"NEEDS_PERMISSION\",\"haraj\":\"NEEDS_PERMISSION\",\"bayut\":\"NEEDS_PERMISSION\",\"wasalt\":\"NEEDS_PERMISSION\",\"whatsapp_groups\":\"UNAVAILABLE\"}"
+    },
+    {
+      "name": "no horizontal scroll: 17-source-status",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the find shows its original source, the discovery date, and what the ad left out",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«أنشئ مهمة متابعة» wrote one task for this broker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the task is in Daily Tasks as «متابعة فرصة خارجية», at the «تواصل» step",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 18-daily-task",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "its button opens the find itself",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«سجّل نتيجة التواصل» keeps the result on the find, moves it to «قيد المراجعة», and closes the task",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«ابحث عن مطابقات»: the find is matched with the office's new request — an estimated fit, the reasons, and the price difference",
+      "ok": true,
+      "detail": "91%"
+    },
+    {
+      "name": "no horizontal scroll: 19-find-matched",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "«استبعاد» moves the find to «مستبعدة» (off the main list)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "and it can be taken back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 20-search-settings",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the office sets its own price and area range, kinds, pace and alerts",
+      "ok": true,
+      "detail": "{\"priceMax\":4000000,\"cadence\":720,\"kinds\":[\"OFFER\"],\"notify\":false}"
+    },
+    {
+      "name": "no horizontal scroll at 320px: scout",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 320px: scout/new",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 320px: settings/scout",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 320px: scout/opp/so_8207981718413_a7c09cca",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 360px: scout",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 360px: scout/new",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 360px: settings/scout",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 360px: scout/opp/so_8207981718413_a7c09cca",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 390px: scout",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 390px: scout/new",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 390px: settings/scout",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 390px: scout/opp/so_8207981718413_a7c09cca",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 430px: scout",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 430px: scout/new",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 430px: settings/scout",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll at 430px: scout/opp/so_8207981718413_a7c09cca",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no horizontal scroll: 14-home-card-on",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "no page errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -1,0 +1,557 @@
+{
+  "at": "2026-10-14T22:54:58.551Z",
+  "passed": 110,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "bell and settings have the same shape on المكتب / المهام اليومية / العروض والطلبات",
+      "ok": true,
+      "detail": "[{\"bell\":\"36|40|rgba(0, 0, 0, 0)|10px\",\"menu\":\"36|40|rgba(0, 0, 0, 0)|10px\",\"title\":\"مكاتب عقارية ذكية\"},{\"bell\":\"36|40|rgba(0, 0, 0, 0)|10px\",\"menu\":\"36|40|rgba(0, 0, 0, 0)|10px\",\"title\":\"مكاتب عقارية ذكية\"},{\"bell\":\"36|40|rgba(0, 0, 0, 0)|10px\",\"menu\":\"36|40|rgba(0, 0, 0, 0)|10px\",\"title\":\"مكاتب عقارية ذكية\"}]"
+    },
+    {
+      "name": "a long office name shows in full at 320px (wraps, never «…»)",
+      "ok": true,
+      "detail": "{\"text\":\"مكتب سلطان الصاعدي للخدمات والاستشارات العقارية\",\"clipped\":false,\"overflow\":\"clip\",\"wrap\":\"normal\"}"
+    },
+    {
+      "name": "no horizontal scroll: 01-office-long-name-320",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "a wide logo is stored whole: both side edges kept, letterboxed top and bottom (no crop)",
+      "ok": true,
+      "detail": "{\"w\":256,\"h\":256,\"top\":[255,255,255],\"midLeft\":[2,103,121],\"midRight\":[2,103,121],\"bottom\":[255,255,255]}"
+    },
+    {
+      "name": "the office card shows the image with contain fit and no circular mask",
+      "ok": true,
+      "detail": "{\"fit\":\"contain\",\"radius\":\"0px\"}"
+    },
+    {
+      "name": "no horizontal scroll: 02-office-card-logo",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "twelve tool buttons, none marked «قريبًا» or disabled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«ملفاتي» opens the office library",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«النماذج»: drafts are filled with the office name and link, no raw placeholders",
+      "ok": true,
+      "detail": "لوب، وصور حديثة. ⏎ ويمكنكم تسجيله مباشرة من رابط المكتب: ⏎ http://127.0.0.1:46205/m/sultan"
+    },
+    {
+      "name": "«النماذج»: copy puts the draft on the clipboard",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«النماذج»: groups switch (للعميل)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 03-tool-forms",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "«الدليل»: seven working steps for a manager",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«الدليل»: a step opens its screen (مرحلة التطابق)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«الخدمات»: official https links that open outside the app",
+      "ok": true,
+      "detail": "[\"https://rega.gov.sa/\",\"https://www.ejar.sa/\",\"https://srem.moj.gov.sa/\",\"https://najiz.sa/\",\"https://sakani.sa/\",\"https://balady.gov.sa/\"]"
+    },
+    {
+      "name": "no horizontal scroll: 04-tool-services",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "«الحاسبة»: sale of 1,000,000 → 25,000 commission, 3,750 VAT, 50,000 tax, 1,078,750 total",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«الحاسبة»: rent has no transaction tax row",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 05-tool-calculator",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "«السوق»: counts come from this office's own active records",
+      "ok": true,
+      "detail": "2|1|1"
+    },
+    {
+      "name": "«السوق»: a request with no matching offer is listed as a gap",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 06-tool-market",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "an unknown tool address returns to the office page (no blank screen)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "six stage buttons",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "stage badges count the tasks in each stage and the closed deals of this office only",
+      "ok": true,
+      "detail": "0|0|1|1|0|1"
+    },
+    {
+      "name": "pressing «معاينة» lists only viewing-stage tasks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 07-path-viewing",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "an empty stage says so instead of showing other tasks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«إغلاق» lists the office's closed deals — never another office's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 08-path-closed",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "«عرض كل المهام» clears the stage",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a stage survives reload (deep link ?step=5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "one list: no section tabs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "offers and requests are listed together, each labelled «عرض» or «طلب»",
+      "ok": true,
+      "detail": "عرض|طلب"
+    },
+    {
+      "name": "kind filter under «خيارات البحث» narrows to requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«مسح الفلاتر» restores the full list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search works across offers and requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 09-repository-unified",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "three photos preview before saving; nothing is uploaded yet",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "choose the main photo and remove one before saving",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 10-offer-form-photos",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "a non-image file is refused with a clear message",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the offer is saved with two photos linked to the record and the office",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the chosen main photo is the cover, and it loads from the Worker",
+      "ok": true,
+      "detail": "{\"rgb\":[41,60,199],\"w\":640,\"h\":480}"
+    },
+    {
+      "name": "a 2400×1600 photo is resized to 1600 on its long edge and stored as a light JPEG",
+      "ok": true,
+      "detail": "1600x1067 10812B"
+    },
+    {
+      "name": "no horizontal scroll: 11-offer-with-photos",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the repository card shows the cover photo",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "editing shows the saved photos",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "removing a photo on edit updates the record and deletes the file",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a request form has no photo picker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "an active record offers تعديل · إيقاف · أرشفة · حذف",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "cancelling the confirmation changes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "pause: the record is «موقوف مؤقتًا» and offers استئناف",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 12-record-paused",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "a paused record leaves the active list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "…and is found under «الموقوفة مؤقتًا» with a state label",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "resume returns it to the active list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "archive: «مؤرشف», with إعادة للنشطة and حذف",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "delete asks first and is a soft delete (the document and its data stay)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the audit trail has pause, restore, archive, delete and photo changes",
+      "ok": true,
+      "detail": "RECORD_UPDATED,RECORD_MEDIA_UPDATED,RECORD_CREATED,RECORD_ARCHIVED,RECORD_RESTORED,RECORD_PAUSED,RECORD_DELETED"
+    },
+    {
+      "name": "six viewing answers, none preselected",
+      "ok": true,
+      "detail": "مناسب|يحتاج تفاوض|معاينة أخرى|لم يحضر|لا يوجد رد|غير مناسب"
+    },
+    {
+      "name": "no horizontal scroll: 13-viewing-answers",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "choosing «لم يحضر» shows the next step before saving",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«لم يحضر» keeps the deal open in the viewing stage and asks for a new time",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the workspace now asks for a new viewing time",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the documents checklist is open in the agreement stage with the rent template",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "summary: المطلوب · الموجود · الناقص · المراجعة",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "statuses are saved by the Worker and the summary follows",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "an own document can be added (it counts as required)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 14-deal-documents",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the checklist survives reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the deal card moved to «مستندات» in Daily Tasks",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "every document change is on the deal timeline",
+      "ok": true,
+      "detail": "5"
+    },
+    {
+      "name": "closing names the missing documents before the final confirmation",
+      "ok": true,
+      "detail": "إتمام الصفقة مع مستندات ناقصة؟  هذا إجراء نهائي يُغلق الفرصة كصفقة تمت، ويؤرشفها مع حفظ سجلها. مستندات ناقصة (2): عقد ال"
+    },
+    {
+      "name": "the deal closes with its full history and the documents state kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a closed deal shows its documents read-only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the closed deal appears under «إغلاق»",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "before setup both channels say «غير مرتبط» and offer no button that cannot work",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "WhatsApp card shows number, webhook status and the coexistence method",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 30-channels-not-configured",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "Telegram link: a one-time deep link to the central bot, state «بانتظار إتمام الربط»",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 31-telegram-pending",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "after «ابدأ» in Telegram the screen turns «مرتبط» by itself, with reconnect and disconnect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "messages follow the linked chat: greeting kept, offer processed, unknown chat ignored",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "WhatsApp can be linked once Meta is configured: a «ربط» button and a ready webhook",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "before opening Meta the manager is told the number and the app stay as they are",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a linked WhatsApp shows «مرتبط», the masked number, reconnect and disconnect",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the channels screen never shows a token, a secret or a full number",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 32-channels-linked",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "disconnect switches off routing on the server without deleting the account record",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«إعادة الربط» shows a new one-time link while the current chat stays «مرتبط»",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«مركز التواصل» lists the office's messages with their class",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a kept greeting says why it was not converted and can be converted by hand; a processed offer cannot",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "class chips filter the list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 33-inbox",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "search asks for at least two letters before searching",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search finds the office's records by district",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search finds closed deals, and never another office's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search finds channel messages",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search finds a record by phone number",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 34-search",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "a search result opens its record",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "search says clearly when nothing matches",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "«سجل النشاط» lists who did what: records, deals and channels",
+      "ok": true,
+      "detail": "CHANNEL_LINK_STARTED,CHANNEL_UNLINKED,DEAL_CLOSED,DEAL_DOCUMENT_UPDATED,RECORD_DELETED,RECORD_ARCHIVED,RECORD_RESTORED,RECORD_PAUSED,RECORD_MEDIA_UPDATED,RECORD_UPDATED,RECORD_CREATED"
+    },
+    {
+      "name": "audit lines are plain Arabic (no internal codes on screen)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "audit filter narrows to channel actions",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal scroll: 35-audit",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "the menu opens search, the communication center and the audit trail",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "menu → «مركز التواصل» opens the page",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no browser console errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

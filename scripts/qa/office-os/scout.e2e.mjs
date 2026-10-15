@@ -77,6 +77,7 @@ const DIGEST = [
 try {
   step = "home card (off)";
   await page.goto(`${h.origin}/#/office`);
+  await page.locator(".ref-office-status > summary").click();
   await page.locator("[data-scout-card]:not([hidden])").waitFor();
   check("office page shows «الباحث عن الفرص» under the office tools, stopped until the manager switches it on", (await page.locator("[data-scout-card] [data-scout-status]").getAttribute("data-scout-status")) === "off");
   await shot(page, "01-home-card-off");
@@ -323,6 +324,7 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${h.origin}/#/office`);
+  await page.locator(".ref-office-status > summary").click();
   await page.locator('[data-scout-card] [data-scout-status="on"]').waitFor();
   await shot(page, "14-home-card-on");
 } catch (error) {

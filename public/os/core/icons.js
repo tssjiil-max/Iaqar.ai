@@ -1,3 +1,4 @@
+import { OUTLINE_ICONS } from "./outline-icons.js";
 /**
  * Icon set — 24px outline icons in one consistent style (rounded 2px strokes),
  * matched to the reference screens. Filled variants where the reference fills.
@@ -13,6 +14,13 @@
 const S = 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"';
 const T2 = 'class="t2" opacity=".38"';
 const P = {
+  "reference-menu": '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M3 12h18M3 19h18"/></g>',
+  "reference-home": '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2 10 10-8 10 8M5 8v14h5v-8h4v8h5V8"/></g>',
+  "reference-calendar": '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M7 2v5M17 2v5M3 10h18m-14 6 3 3 6-6"/></g>',
+  "reference-target": '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10a9 9 0 1 1-6-7M16 9a5 5 0 1 0 1 4M12 12l9-9m-5 0h5v5"/></g>',
+  "reference-calculator": '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 5h8v4H8zM8 13h1m3 0h1m3 0h.1M8 17h1m3 0h1m3 0v3M8 20h1m3 0h1"/></g>',
+  "reference-folder": '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M2 7V5a2 2 0 0 1 2-2h5l3 4h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z"/>',
+
   home: '<path fill-rule="evenodd" d="M12.9 2.9a1.3 1.3 0 0 0-1.8 0L2.6 10.6A1.1 1.1 0 0 0 3.4 12.5H5V20a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 20v-7.5h1.6a1.1 1.1 0 0 0 .8-1.9ZM10 21.5v-5.2a.8.8 0 0 1 .8-.8h2.4a.8.8 0 0 1 .8.8v5.2Z"/>',
   "home-plus": '<path d="M12.9 2.9a1.3 1.3 0 0 0-1.8 0L2.6 10.6A1.1 1.1 0 0 0 3.4 12.5H5V20a1.5 1.5 0 0 0 1.5 1.5H12a6.5 6.5 0 0 1 7-9.1l1.6.1a1.1 1.1 0 0 0 .8-1.9Z"/><path fill-rule="evenodd" d="M18 12.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm-.9 2.2v1.9h-1.9v1.8h1.9v1.9h1.8v-1.9h1.9v-1.8h-1.9v-1.9Z"/>',
   building: '<path ' + T2 + ' d="M15.5 8.5h4a1.5 1.5 0 0 1 1.5 1.5v11h-5.5Z"/><path fill-rule="evenodd" d="M5.5 2.5h8a1.5 1.5 0 0 1 1.5 1.5v17H10v-3.5H9V21H4V4a1.5 1.5 0 0 1 1.5-1.5ZM7 6v2h2V6Zm3.5 0v2h2V6ZM7 10v2h2v-2Zm3.5 0v2h2v-2ZM7 14v2h2v-2Zm3.5 0v2h2v-2Z"/><rect x="2.5" y="20.5" width="19" height="1.5" rx=".75"/>',
@@ -118,7 +126,7 @@ export function propertyTypeIcon(type) {
 export const BRAND_ICONS = new Set(["whatsapp", "telegram"]);
 
 export function iconMarkup(name) {
-  return P[name] || P.info;
+  return OUTLINE_ICONS[name] || P[name] || OUTLINE_ICONS.info;
 }
 
 export function icon(name, { filled, label = "" } = {}) {

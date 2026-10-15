@@ -93,11 +93,12 @@ function render() {
   if (!current.deal) forgetDeal();
   const page = h("main", { class: "os-app", "data-view": current.name });
   append(root, page);
-  if (current.main) append(page, renderShellHeader({ active: current.name }));
+  if (session.officeId) append(page, renderShellHeader({ active: current.name }));
   const body = h("section", { class: "os-view" });
   append(page, body);
+  if (current.name === "tasks" || current.name === "repo") append(body, h("h1", { class: "os-page-title", text: current.name === "tasks" ? "المهام اليومية" : "العروض والطلبات" }));
   cleanup = current.run(body) || null;
-  if (current.main) append(page, renderBottomNav(current.name));
+  if (session.officeId) append(page, renderBottomNav(current.name));
   window.scrollTo({ top: 0 });
 }
 

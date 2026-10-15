@@ -1,0 +1,345 @@
+{
+  "results": [
+    {
+      "width": 360,
+      "overflow": 0,
+      "rtl": "rtl",
+      "cards": [
+        {
+          "route": "tasks",
+          "x": 183,
+          "y": 380.890625
+        },
+        {
+          "route": "repo",
+          "x": 17,
+          "y": 380.890625
+        },
+        {
+          "route": "scout",
+          "x": 183,
+          "y": 497.890625
+        },
+        {
+          "route": "tasks?step=0",
+          "x": 17,
+          "y": 497.890625
+        },
+        {
+          "route": "tools/guide",
+          "x": 183,
+          "y": 634.390625
+        },
+        {
+          "route": "tools/forms",
+          "x": 17,
+          "y": 634.390625
+        },
+        {
+          "route": "tools/services",
+          "x": 183,
+          "y": 770.890625
+        },
+        {
+          "route": "tools/calculator",
+          "x": 17,
+          "y": 770.890625
+        },
+        {
+          "route": "agent",
+          "x": 183,
+          "y": 887.890625
+        },
+        {
+          "route": "library",
+          "x": 17,
+          "y": 887.890625
+        },
+        {
+          "route": "tools/market",
+          "x": 183,
+          "y": 1024.390625
+        },
+        {
+          "route": "support",
+          "x": 17,
+          "y": 1024.390625
+        }
+      ],
+      "broken": 0
+    },
+    {
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "cards": [
+        {
+          "route": "tasks",
+          "x": 198,
+          "y": 380.890625
+        },
+        {
+          "route": "repo",
+          "x": 17,
+          "y": 380.890625
+        },
+        {
+          "route": "scout",
+          "x": 198,
+          "y": 497.890625
+        },
+        {
+          "route": "tasks?step=0",
+          "x": 17,
+          "y": 497.890625
+        },
+        {
+          "route": "tools/guide",
+          "x": 198,
+          "y": 634.390625
+        },
+        {
+          "route": "tools/forms",
+          "x": 17,
+          "y": 634.390625
+        },
+        {
+          "route": "tools/services",
+          "x": 198,
+          "y": 751.390625
+        },
+        {
+          "route": "tools/calculator",
+          "x": 17,
+          "y": 751.390625
+        },
+        {
+          "route": "agent",
+          "x": 198,
+          "y": 868.390625
+        },
+        {
+          "route": "library",
+          "x": 17,
+          "y": 868.390625
+        },
+        {
+          "route": "tools/market",
+          "x": 198,
+          "y": 1004.890625
+        },
+        {
+          "route": "support",
+          "x": 17,
+          "y": 1004.890625
+        }
+      ],
+      "broken": 0
+    },
+    {
+      "width": 430,
+      "overflow": 0,
+      "rtl": "rtl",
+      "cards": [
+        {
+          "route": "tasks",
+          "x": 218,
+          "y": 385.34375
+        },
+        {
+          "route": "repo",
+          "x": 17,
+          "y": 385.34375
+        },
+        {
+          "route": "scout",
+          "x": 218,
+          "y": 503.0625
+        },
+        {
+          "route": "tasks?step=0",
+          "x": 17,
+          "y": 503.0625
+        },
+        {
+          "route": "tools/guide",
+          "x": 218,
+          "y": 640.28125
+        },
+        {
+          "route": "tools/forms",
+          "x": 17,
+          "y": 640.28125
+        },
+        {
+          "route": "tools/services",
+          "x": 218,
+          "y": 758
+        },
+        {
+          "route": "tools/calculator",
+          "x": 17,
+          "y": 758
+        },
+        {
+          "route": "agent",
+          "x": 218,
+          "y": 875.71875
+        },
+        {
+          "route": "library",
+          "x": 17,
+          "y": 875.71875
+        },
+        {
+          "route": "tools/market",
+          "x": 218,
+          "y": 993.4375
+        },
+        {
+          "route": "support",
+          "x": 17,
+          "y": 993.4375
+        }
+      ],
+      "broken": 0
+    },
+    {
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "cards": [
+        {
+          "route": "tasks",
+          "x": 390,
+          "y": 501.796875
+        },
+        {
+          "route": "repo",
+          "x": 29,
+          "y": 501.796875
+        },
+        {
+          "route": "scout",
+          "x": 390,
+          "y": 692.796875
+        },
+        {
+          "route": "tasks?step=0",
+          "x": 29,
+          "y": 692.796875
+        },
+        {
+          "route": "tools/guide",
+          "x": 390,
+          "y": 883.796875
+        },
+        {
+          "route": "tools/forms",
+          "x": 29,
+          "y": 883.796875
+        },
+        {
+          "route": "tools/services",
+          "x": 390,
+          "y": 1074.796875
+        },
+        {
+          "route": "tools/calculator",
+          "x": 29,
+          "y": 1074.796875
+        },
+        {
+          "route": "agent",
+          "x": 390,
+          "y": 1265.796875
+        },
+        {
+          "route": "library",
+          "x": 29,
+          "y": 1265.796875
+        },
+        {
+          "route": "tools/market",
+          "x": 390,
+          "y": 1456.796875
+        },
+        {
+          "route": "support",
+          "x": 29,
+          "y": 1456.796875
+        }
+      ],
+      "broken": 0
+    },
+    {
+      "width": 1280,
+      "overflow": 0,
+      "rtl": "rtl",
+      "cards": [
+        {
+          "route": "tasks",
+          "x": 646,
+          "y": 501.796875
+        },
+        {
+          "route": "repo",
+          "x": 237,
+          "y": 501.796875
+        },
+        {
+          "route": "scout",
+          "x": 646,
+          "y": 692.796875
+        },
+        {
+          "route": "tasks?step=0",
+          "x": 237,
+          "y": 692.796875
+        },
+        {
+          "route": "tools/guide",
+          "x": 646,
+          "y": 883.796875
+        },
+        {
+          "route": "tools/forms",
+          "x": 237,
+          "y": 883.796875
+        },
+        {
+          "route": "tools/services",
+          "x": 646,
+          "y": 1074.796875
+        },
+        {
+          "route": "tools/calculator",
+          "x": 237,
+          "y": 1074.796875
+        },
+        {
+          "route": "agent",
+          "x": 646,
+          "y": 1265.796875
+        },
+        {
+          "route": "library",
+          "x": 237,
+          "y": 1265.796875
+        },
+        {
+          "route": "tools/market",
+          "x": 646,
+          "y": 1456.796875
+        },
+        {
+          "route": "support",
+          "x": 237,
+          "y": 1456.796875
+        }
+      ],
+      "broken": 0
+    }
+  ],
+  "errors": []
+}

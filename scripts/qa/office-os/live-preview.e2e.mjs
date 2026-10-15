@@ -170,7 +170,7 @@ try {
   await page.getByRole("button", { name: "دخول المكتب" }).click();
   await page.locator(".ref-office-tools").waitFor();
   check("live: real «دخول المكتب» login (phone → Worker resolve → Firebase Auth → membership)", true);
-  await page.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
+  await page.locator('[data-reference-tool][data-tool-route="repo"]').click();
   await page.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await page.getByRole("button", { name: "إضافة طلب", exact: true }).click();
   await page.locator('[data-fill-mode="manual"]').click();
@@ -342,7 +342,7 @@ try {
 
     await page.goto(`${PREVIEW_URL}/#/office`);
     await page.locator(".ref-office-tools").waitFor();
-    check("live: the 6 office tools are working buttons (no «قريبًا» placeholders)", (await page.locator("button.ref-office-tool").count()) === 6 && (await page.locator(".ref-office-soon").count()) === 0);
+    check("live: the 12 office tools are working buttons (no «قريبًا» placeholders)", (await page.locator("button.ref-office-tool").count()) === 12 && (await page.locator(".ref-office-soon").count()) === 0);
 
     const api = (route, body) => page.evaluate(async ([w, r, b]) => {
       const token = await firebase.auth().currentUser.getIdToken();

@@ -1,0 +1,104 @@
+/* Shared visual identity, based on the approved office. Layout and business rules stay in each view. */
+@font-face{font-family:"Office Tajawal";src:url('/fonts/tajawal/tajawal-400.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Office Tajawal";src:url('/fonts/tajawal/tajawal-700.woff2') format('woff2');font-weight:600 900;font-style:normal;font-display:swap}
+:root{--brand-primary:#03677a;--brand-accent:#099fb4;--brand-dark:#082f3a;--brand:#03677a;--accent:#099fb4;--brand-tint:#edf7fb;--brand-tint-2:#f5faff;--brand-line:#d6e7ee;--bg:#eff8fc;--bg-top:#f6fbff;--surface:#fff;--surface-2:#f4faff;--card:#fff;--text:#101733;--navy:#101733;--muted:#586b80;--line:#d6e7ee;--frame:#d4e5ed;--frame-soft:#e0edf4;--font:"Office Tajawal",Tahoma,sans-serif;--radius:16px;--radius-sm:10px;--shadow:0 3px 14px #17465d0b;--shadow-strong:0 8px 28px #17465d18}
+html{direction:rtl}body{font-family:var(--font)!important;background:linear-gradient(125deg,#f6fbff,#edf7fc);color:var(--text)}
+button,input,select,textarea{font-family:inherit}
+.os-app,.os-app[data-view],.os-session-app{font-family:var(--font);color:#101733;background:linear-gradient(125deg,#f6fbff,#edf7fc);max-width:864px;min-height:100dvh;padding:12px 10px calc(96px + env(safe-area-inset-bottom));margin-inline:auto}
+.os-app :is(button,input,select,textarea){font-family:var(--font)}
+.os-app :is(h1,h2,h3,h4){color:#101733;font-weight:700;line-height:1.45}
+.os-app :is(.os-card,.ref-path,.ref-task-card,.ref-record-card,.os-set-list,.os-property-summary,.os-detail-panel){border:1px solid #d9e8ef;border-radius:16px;background:linear-gradient(120deg,#fff,#f7fcff);box-shadow:0 3px 14px #17465d0b}
+.os-app :is(.os-page-head,.ref-detail-header){margin:4px 0 14px;gap:8px;min-width:0}
+.os-app :is(.os-page-title,.ref-path-heading h2){font-size:22px;line-height:1.45}
+.os-app .os-page-title{min-width:0;white-space:normal;overflow-wrap:anywhere}
+.os-app :is(.os-sub,.os-set-text small,.ref-task-copy p,.ref-record-copy p){color:#586b80;line-height:1.6}
+.os-app :is(.os-input,.os-textarea,select.os-input){border:1px solid #d3e5ee;border-radius:11px;background:#fff}
+.os-app :is(.os-btn,.os-chip,.os-back){border-radius:11px;min-height:44px}
+.os-app .os-btn.primary{background:linear-gradient(120deg,#03677a,#07859b);border-color:#03677a;color:#fff;box-shadow:0 3px 8px #03677a12}
+.os-app .os-btn.secondary{background:#edf7ff;border:1px solid #d0e6f5;color:#03677a}
+.os-app .os-set-row{border-color:#deebf2;min-height:68px}
+.os-app .os-set-row:nth-child(4n+1) .os-set-icon{background:#e5f1ff;color:#0878df;--ico:#0878df}
+.os-app .os-set-row:nth-child(4n+2) .os-set-icon{background:#eee7ff;color:#6331cf;--ico:#6331cf}
+.os-app .os-set-row:nth-child(4n+3) .os-set-icon{background:#e3f9ef;color:#0c9167;--ico:#0c9167}
+.os-app .os-set-row:nth-child(4n) .os-set-icon{background:#fff1db;color:#ad7111;--ico:#ad7111}
+.os-app .os-set-icon{border:0;border-radius:11px;box-shadow:none;width:42px;height:42px}
+.os-app .os-set-icon svg{width:27px;height:27px}
+.os-app .ref-reference-header{margin:0 0 12px;background:#ffffffed;border:1px solid #f2f8fc;border-radius:14px;gap:5px;padding:5px 8px;min-height:50px}
+.os-app .ref-reference-header h1{font-size:clamp(13px,3.7vw,28px);color:#101733}
+.os-app .ref-reference-header button{min-width:36px;min-height:40px;background:transparent}
+.os-app .ref-reference-header .os-ico{color:inherit}
+.os-app .ref-reference-bottom{grid-template-columns:repeat(5,minmax(0,1fr));background:#fff;width:100%;max-width:864px;min-height:64px;padding:5px 8px max(8px,env(safe-area-inset-bottom));border:0;border-radius:16px 16px 0 0;box-shadow:0 -3px 16px #03677a10}
+.os-app .ref-reference-bottom button{font-family:var(--font);font-size:12px;min-height:48px;gap:3px;color:#607184;border-radius:11px}
+.os-app .ref-reference-bottom button[aria-current="page"]{background:#036f84;color:#fff}
+.os-app .ref-reference-bottom button:before{display:none}
+.os-app .ref-reference-bottom .os-ico{color:inherit;width:25px;height:25px}
+.os-app .ref-steps span{background:#e6f2ff;color:#137ce0;--ico:currentColor;box-shadow:none}
+.os-app .ref-steps>div:nth-child(2) span{background:#e7eaff;color:#6353bf}
+.os-app .ref-steps>div:nth-child(3) span{background:#e5f9f0;color:#0b9368}
+.os-app .ref-steps>div:nth-child(4) span{background:#fff2db;color:#a96e13}
+.os-app .ref-steps>div:nth-child(5) span{background:#efe7ff;color:#6935c9}
+.os-app .ref-steps .active span{background:#036f84;color:#fff}
+.os-app .ref-task-card{background:linear-gradient(115deg,#fff,#f1f8ff);margin-bottom:10px}
+.os-app .ref-record-card{background:linear-gradient(115deg,#fff,#f3faff)}
+.os-app .ref-photo{border:0;background:#e5f1ff;color:#0878df;--ico:currentColor;border-radius:11px}
+.os-app .os-ico{flex-shrink:0;vertical-align:middle;shape-rendering:geometricPrecision}
+.os-app .os-ico:not(.os-brand) .t2{opacity:1}
+.os-sheet,.os-toast{font-family:var(--font)}
+.os-sheet{background:#f8fcff;border:1px solid #d6e7ee;border-radius:20px 20px 0 0}
+.os-menu button{min-height:48px;border-radius:10px;font-family:var(--font)}
+:is(.card,.panel){border-color:#d9e8ef;border-radius:16px;box-shadow:0 3px 14px #17465d0b}
+body>.wrap h1,body>.shell h1,body>.shell h2{color:#082f3a}
+body>.wrap button{background:#03677a}
+button:focus-visible,a:focus-visible{outline:3px solid #099fb4;outline-offset:3px}
+@media(min-width:768px){.os-app,.os-app[data-view]{padding-inline:22px}.os-app .ref-reference-header{min-height:70px;gap:12px}.os-app .ref-reference-header button{width:44px;min-width:44px;height:44px}.os-app .ref-reference-bottom button{font-size:14px}.os-app .ref-reference-header .ref-logo{width:46px;height:48px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+.os-app .os-page-head{grid-template-columns:auto minmax(0,1fr) auto}
+.os-app .os-page-head .os-ref{max-width:min(34vw,200px);white-space:normal;overflow-wrap:anywhere;word-break:break-all;line-height:1.5}
+.os-app .os-view>.os-page-title{font-size:21px;margin:2px 0 12px}
+.os-app .ref-office-services{flex-wrap:nowrap;overflow-x:auto;max-width:100%;min-width:0;scrollbar-width:thin}
+.os-app .ref-office-services>b,.os-app .ref-office-services>span{flex-shrink:0;white-space:nowrap}
+.os-app .ref-office-services .os-ico{color:var(--tool-color)}
+.os-app .ref-reference-bottom button[aria-current="page"] .os-ico{color:#fff;--ico:#fff}
+.os-app .ref-office-facts{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+.os-app .ref-office-facts .ref-office-ltr{white-space:nowrap;overflow-wrap:normal}
+.os-app .ref-reference-header .ref-menu{order:0}
+.os-app .ref-reference-header h1{line-height:1.45}
+.os-app[data-view="office"] .ref-reference-copy strong{font-size:clamp(15px,3.6vw,25px);line-height:1.5}
+.os-app[data-view="office"] :is(.ref-reference-copy small,.ref-office-row-text span,.ref-office-row-text b,.ref-office-services,.ref-office-profile-main>.ref-office-profile-row b){font-size:13px;line-height:1.5;color:#586b80}
+.os-app[data-view="office"] .ref-reference-heading p{color:#586b80}
+.os-app[data-view="office"] .ref-reference-copy small{color:#586b80}
+.os-app[data-view="office"] .ref-reference-tool{min-height:82px}
+.os-app[data-view="office"] .ref-office-facts{grid-template-columns:minmax(0,1fr)}
+.os-app[data-view="office"] .ref-office-profile-row{min-height:44px}
+.os-app[data-view="office"] .ref-reference-bottom button{font-size:13px}
+.os-app .ref-reference-bottom button{font-size:13px}
+.os-app .ref-reference-header h1{white-space:normal;text-wrap:balance}
+.os-app .os-btn.primary{background-color:#03677a}
+.os-app[data-view="office"] .tone-green{--tool-text:#08764f}
+.os-app[data-view="office"] .tone-blue{--tool-text:#095ba8}
+.os-app[data-view="office"] .tone-purple{--tool-text:#6331cf}
+.os-app[data-view="office"] .tone-gold{--tool-text:#865c12}
+.os-app[data-view="office"] .ref-office-services>span{color:var(--tool-text,#082f3a)}
+.os-app[data-view="office"] .ref-reference-heading h2{line-height:1.45}
+.os-app[data-view="office"] .ref-reference-heading p{font-size:clamp(13px,3vw,21px);line-height:1.5}
+.os-app .ref-reference-header .ref-search{order:0}
+.os-app .os-follow-tab{font-size:13px;line-height:1.5}
+.os-app .os-follow-tab span{white-space:normal;overflow-wrap:anywhere;text-align:center}
+@media(max-width:350px){.os-app .ref-path{padding-inline:6px}.os-app .ref-steps{gap:1px}.os-app .ref-steps>.ref-step small{white-space:normal;overflow-wrap:anywhere;max-width:100%}}
+
+/* Align the room's sticky action bar with the shared shell padding. */
+.os-session-app{--gutter:10px;max-width:560px;padding-bottom:12px}
+.os-app .os-select{min-width:0;max-width:100%}
+@media(min-width:768px){.os-session-app{--gutter:22px}}
+
+/* Original token names used by legacy and standalone product pages. */
+html:root{--color-primary:var(--brand-primary);--color-primary-dark:var(--brand-dark);--color-primary-soft:var(--brand-tint);--color-background:#eff8fc;--color-surface:#fff;--color-surface-soft:#f4faff;--color-text:#101733;--color-text-muted:#586b80;--color-border:var(--brand-line);--green:var(--brand-primary);--green-dark:var(--brand-dark);--green-2:#07859b;--green-soft:var(--brand-tint);--green-pale:var(--brand-tint-2);--bg:#eff8fc;--card:#fff;--text:#101733;--muted:#586b80;--line:var(--brand-line);--opp-card-border:var(--brand-line);--opp-page-bg:var(--bg);--opp-progress-fill:var(--brand-primary)}
+body :is(button,input,select,textarea,h1,h2,h3,h4,h5,h6){font-family:var(--font)!important}
+body .opp-v2-page{--opp-v2-green:var(--brand-primary);--opp-v2-green-soft:var(--brand-tint);--opp-v2-green-text:var(--brand-primary);--opp-v2-border:var(--brand-line);--opp-v2-page-bg:var(--bg);--opp-v2-text:var(--text);--opp-v2-muted:var(--muted);--opp-v2-icon:var(--brand-primary);--opp-v2-card-radius:16px}
+body>.shell :is(.stat,.tabs button.active,.badge){background:var(--brand-tint)}
+body>.shell :is(.btn,.nav button,.tabs button){min-height:44px;border-radius:11px}
+body>.shell :is(.stat,.list-item,input,select,textarea){border-color:var(--brand-line)}
+body>.wrap :is(h1,.done h2),body>main>h1{color:var(--brand-dark)}
+body>.wrap :is(input,select){border-color:var(--brand-line)}
+body>.wrap :is(input,select):focus{outline-color:var(--brand-accent);border-color:var(--brand-primary)}
+body>.wrap .muted,body>main>p{color:var(--muted)}

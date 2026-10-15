@@ -87,7 +87,7 @@ try {
   await owner.fill('input[name="password"]', "pass-a");
   await owner.getByRole("button", { name: "دخول المكتب" }).click();
   await owner.locator(".ref-office-tools").waitFor();
-  await owner.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
+  await owner.locator('[data-reference-tool][data-tool-route="repo"]').click();
   await owner.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await owner.getByRole("button", { name: "إضافة طلب", exact: true }).click();
   await owner.locator('[data-fill-mode="manual"]').click();
@@ -271,7 +271,7 @@ try {
   await other.fill('input[name="password"]', "pass-b");
   await other.getByRole("button", { name: "دخول المكتب" }).click();
   await other.getByText("مكتب الأفق للعقار").first().waitFor();
-  await other.locator(".ref-bottom").getByRole("button", { name: "العروض والطلبات", exact: true }).click();
+  await other.locator('[data-reference-tool][data-tool-route="repo"]').click();
   await other.locator("[data-record]").first().waitFor();
   const otherText = await other.content();
   check("office B repository contains only its own records", !otherText.includes("المطيري") && !otherText.includes("السبيعي") && await other.locator('[data-record="opp_b_offer"]').count() === 1 && await other.locator("[data-record]").count() === 1);
