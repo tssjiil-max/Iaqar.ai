@@ -1,6 +1,9 @@
 name: Claude npm-test diagnostic
 
 on:
+  push:
+    branches:
+      - codex/unified-staging-lineage-2026-08-29
   workflow_dispatch:
 
 permissions:
