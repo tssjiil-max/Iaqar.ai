@@ -40,6 +40,7 @@ export async function guestSearch(ctx,{input={},ip=''}){
   const offers=await ctx.store.list(['offices',office.id,'opportunities'],300);if(offers.length>=300)inventoryLimited=true;
   for(const row of offers){
    if(row.officeId&&row.officeId!==office.id||!live(row,ctx.now())||!eq(row.city,source.city)||!eq(row.propertyType,source.propertyType))continue;
+   if(priceOf(row)>check.value.price)continue;
    const same=eq(row.district,source.district);let km=null;
    if(!same){const from=point(office.districtCenters?.[source.district]),to=point(row.coordinates);if(!from||!to)continue;km=distance(from,to);if(km>5)continue;}
    const scored=scoreMatch(opportunityToMatchInput(source),opportunityToMatchInput(row,{id:row.id}));if(!scored.eligible)continue;
@@ -53,7 +54,7 @@ export async function guestSearch(ctx,{input={},ip=''}){
    const ref=`${x.office.id}:${x.row.id}`,key=x.row.canonicalPropertyId||`${x.office.id}:${x.row.propertyId||x.row.id}`;
    if(seen.has(key)){seen.get(key).sources.push({officeId:x.office.id,officeName:clean(x.office.officeName),reference:ref});continue;}
    const photo=recordImages(x.row).find(image=>keyBelongsTo(image.path,x.office.id,x.row.id));
-   const item={imagePath:photo?'/media/public/'+photo.path.split('/').map(encodeURIComponent).join('/'):'',reference:ref,officeId:x.office.id,officeName:clean(x.office.officeName)||'مكتب عقاري',propertyType:clean(x.row.propertyType,40),purpose:clean(x.row.purpose),city:clean(x.row.city),district:clean(x.row.district),price:priceOf(x.row),rooms:Number(x.row.rooms)||null,area:Number(x.row.area)||null,score:x.scored.score,reasons:x.scored.reasons||[],nearby:!x.same,distanceKm:x.km===null?null:Math.round(x.km*10)/10,distanceType:x.km===null?null:'straight_line',sources:[{officeId:x.office.id,officeName:clean(x.office.officeName),reference:ref}]};
+   const item={imagePath:photo?'/media/public/'+photo.path.split('/').map(encodeURIComponent).join('/'):'',reference:ref,officeId:x.office.id,officeName:clean(x.office.officeName)||'مكتب عقاري',propertyType:clean(x.row.propertyType,40),purpose:clean(x.row.purpose),city:clean(x.row.city),district:clean(x.row.district),price:priceOf(x.row),rooms:Number(x.row.rooms)||null,area:Number(x.row.area)||null,score:x.scored.score,reasons:(x.scored.reasons||[]).map(reason=>String(reason).replace(/ وقابل للتفاوض/g,'')),nearby:!x.same,distanceKm:x.km===null?null:Math.round(x.km*10)/10,distanceType:x.km===null?null:'straight_line',sources:[{officeId:x.office.id,officeName:clean(x.office.officeName),reference:ref}]};
    seen.set(key,item);
   }results=[...seen.values()].slice(0,10);return {ok:true};
  }}});

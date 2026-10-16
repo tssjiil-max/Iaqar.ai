@@ -75,3 +75,9 @@ test('guest UI extracts criteria, requires contact and renders real results with
   assert.equal(root.querySelectorAll('[data-search-result]').length,10);assert.ok(root.textContent.includes('الإرسال الآلي لهذه القناة غير مفعّل'));assert.ok(!root.textContent.includes('0551234567'));
  }finally{globalThis.fetch=fetchDouble;for(const k of globals)if(previous[k]===undefined)delete globalThis[k];else globalThis[k]=previous[k];dom.window.close();}
 });
+
+test('guest results respect the entered budget and do not imply an owner approved a discount',async()=>{
+ h.store.seed(`offices/${OFFICE_A}/opportunities/over-budget`,{...offer,district:'العقيق',priceOrBudget:560000,salePrice:560000,priceStatus:'FIXED'});
+ const r=await call('/os/public/search',{...input,requestKey:'strict-budget-test-0001',criteria:{...input.criteria,district:'العقيق'}});
+ assert.equal(r.status,200);assert.equal(r.body.results.length,0);
+});

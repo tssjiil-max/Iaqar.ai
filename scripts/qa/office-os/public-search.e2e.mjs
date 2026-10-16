@@ -9,7 +9,7 @@ try {
   const page=await browser.newPage({viewport:{width,height:844}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`${h.origin}/?view=search`);await page.locator('[data-guest-search-form]').waitFor();
   assert.equal(await page.locator('[data-login-form]').count(),0);
-  await page.locator('[name=description]').fill('مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف');
+  await page.locator('textarea[name=description]').fill('مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف');
   await page.locator('[data-guest-analyze]').click();await page.waitForFunction(()=>document.querySelector('[name=price]').value==='550000');
   assert.equal(await page.locator('[name=propertyType]').inputValue(),'شقة');
   await page.locator('[name=contactName]').fill('عميل تجربة');await page.locator('[name=contactPhone]').fill('0557000222');await page.locator('[name=channel]').selectOption('whatsapp');
