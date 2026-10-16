@@ -203,7 +203,7 @@ export async function restoreRecord(ctx, { actor, officeId, recordId }) {
  * Candidates below the automatic threshold are included and flagged, so the broker can
  * still decide — the numbers are the engine's, never cosmetic.
  */
-export async function findCandidates(ctx, { officeId, recordId, limit = 10 }) {
+export async function findCandidates(ctx, { officeId, recordId, limit = 10, allCandidates = false }) {
   const record = await ctx.store.get(["offices", officeId, "opportunities", recordId]);
   if (!record) throw ctx.deps.appError("record_not_found", 404, "السجل غير موجود");
   if (lifecycleOf(record) !== LIFECYCLE.ACTIVE) return { ok: true, candidates: [], inactive: true };
@@ -232,7 +232,7 @@ export async function findCandidates(ctx, { officeId, recordId, limit = 10 }) {
     });
   }
   candidates.sort((a, b) => b.score - a.score);
-  return { ok: true, candidates: candidates.slice(0, Math.min(20, Math.max(1, limit))) };
+  return { ok: true, candidates: allCandidates ? candidates : candidates.slice(0, Math.min(20, Math.max(1, limit))) };
 }
 
 /** Broker picked a pair by hand: persist the match and its review task. */
