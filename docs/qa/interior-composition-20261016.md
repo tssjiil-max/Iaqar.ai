@@ -65,3 +65,15 @@ python scripts/qa/office-os/build-interior-report.py
 ```
 
 Use `SCREEN` to rerun only affected states. Capture source changes before producing new report images. Keep approval metadata honest: images present are not automatically images reviewed.
+
+## Admin interior follow-up (2026-10-16)
+
+Implemented real shared officeSection/formGrid/field/actionBar composition in authenticated admin overview, office list, office detail, activity, billing and audit. Detail now has five sections; every existing control ID, handler and AdminApi call is retained. AdminApi, server authorization and Firebase boot logic are unchanged.
+
+Validation: admin/domain/authorization unit gate 15/15; browser fixture 42 current captures and 42 faithful baseline captures across 320,360,390,430,768,1024,1440; no horizontal document overflow or page errors. All five management actions (subscription, license, note, suspend, reactivate) retained exact request payloads at every width. These tests mock only admin transport in the local harness, so they are NOT evidence of live platform-admin authorization.
+
+Actual evidence: `qa/structural-visual/admin-interior-review.html`, before/after matrices in `admin-before/results.json` and `admin-after/results.json`. Detail at390 and1440 inspected directly; other comparison pairs remain pending individual visual acceptance. Independent code review found no important product regressions and requested faithful baseline HTML; capture script now substitutes baseline HTML as well as JS/CSS.
+
+Reproduce: `node scripts/qa/office-os/admin-interiors.e2e.mjs`; baseline `SOURCE_REF=730d299 node scripts/qa/office-os/admin-interiors.e2e.mjs`. Raw captures are reproducible intermediates; selected actual screenshots are embedded in the committed report.
+
+Next: authenticated legacy interiors and remaining individual visual reviews. This batch does not satisfy the whole-site release gate. PR235 remains draft; no Staging merge/deployment of this round.

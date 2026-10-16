@@ -271,3 +271,14 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
  .os-public-shell .os-record-sections>.os-office-section:nth-child(2) .os-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
  .os-public-shell .os-record-sections>.os-office-section:first-child .os-field{max-width:560px}
 }
+
+/* Admin interiors reuse office sections and form controls, preserving API actions. */
+.os-admin-shell{max-width:1180px}
+.os-admin-shell #viewRoot{display:grid;gap:14px}
+.os-admin-content{min-width:0}
+.os-admin-shell .os-office-section{margin:0}
+.os-admin-shell .os-office-section-body .meta{overflow-wrap:anywhere}
+.os-admin-shell .os-action-bar .btn{width:auto;flex:1;min-width:0}
+.os-admin-shell .os-field input,.os-admin-shell .os-field select,.os-admin-shell .os-field textarea{min-width:0}
+.os-admin-shell .toolbar{grid-template-columns:minmax(0,1fr)}
+@media(min-width:768px){.os-admin-shell .toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.os-admin-shell .grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

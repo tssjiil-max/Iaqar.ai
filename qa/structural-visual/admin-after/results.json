@@ -1,0 +1,299 @@
+{
+  "fixture": "UI transport only; not live platform admin authorization",
+  "results": [
+    {
+      "name": "overview",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "offices",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "detail",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 5
+    },
+    {
+      "name": "activity",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "billing",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "audit",
+      "width": 320,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "overview",
+      "width": 360,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "offices",
+      "width": 360,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "detail",
+      "width": 360,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 5
+    },
+    {
+      "name": "activity",
+      "width": 360,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "billing",
+      "width": 360,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "audit",
+      "width": 360,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "overview",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "offices",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "detail",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 5
+    },
+    {
+      "name": "activity",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "billing",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "audit",
+      "width": 390,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "overview",
+      "width": 430,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "offices",
+      "width": 430,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "detail",
+      "width": 430,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 5
+    },
+    {
+      "name": "activity",
+      "width": 430,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "billing",
+      "width": 430,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "audit",
+      "width": 430,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "overview",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "offices",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "detail",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 5
+    },
+    {
+      "name": "activity",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "billing",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "audit",
+      "width": 768,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "overview",
+      "width": 1024,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "offices",
+      "width": 1024,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "detail",
+      "width": 1024,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 5
+    },
+    {
+      "name": "activity",
+      "width": 1024,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "billing",
+      "width": 1024,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "audit",
+      "width": 1024,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "overview",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "offices",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "detail",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 5
+    },
+    {
+      "name": "activity",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "billing",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    },
+    {
+      "name": "audit",
+      "width": 1440,
+      "overflow": 0,
+      "rtl": "rtl",
+      "sections": 1
+    }
+  ]
+}
