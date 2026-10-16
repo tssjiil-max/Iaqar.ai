@@ -57,7 +57,23 @@ Old greens/reds in status lines: legacy `--success #388E3C` + `#087064`; negotia
 - `a5cadb9` «مستندات» step label clipped at 351–389px (pre-existing; full sweep 537/539 → fixed).
 - `78bef22` merged parallel Staging work (guest public search #237, d94c6a5). Conflict in record-form.js resolved keeping both. **Found and fixed a regression that came with that work**: `#/search` (office «البحث») showed brokers the guest form; completion 95/96 on pure staging → 110/110.
 
-## BLOCKER (owner decision needed) — public «أبحث عن عقار» path
+## Stage: direct matching journey — PR #239 (stacked on #235), branch `claude/direct-matching-20261016`
+
+Owner decision (2026-10-16): «أبحث عن عقار» = guest search. That resolves the blocker below.
+Delivered: search without contact → ≤10 real matches with status → choose → name/phone/two consents →
+WhatsApp handoff (client's own app, office number, reference prefilled, sent:false) or Telegram (bot;
+«العرض الثاني» understood). Real interest notice (others only, 14 days, no identity/count). Listing
+states from facts. Official reservation: manager + person only, compare-and-set, AI assistant forbidden.
+Rules: `public/os/domain/direct-match-domain.js`. Server: `worker/src/office-os/public-search-service.js`,
+`reservation-service.js`. UI: `public/os/views/public-search.js`, record page reservation row.
+Evidence: domain 10/10, journey (real Worker+store, concurrent reservation race) 8/8, public-search 8/8,
+public-search.e2e 7 widths × 2 clients, public widths 72/72 (9 widths), full widths 553/553, non-jsdom unit
+files 1343 pass / 0 real fail. CI gate dispatched on 5b8eb17 (run 38959608332).
+Waiting on external activation: WhatsApp Cloud API (no automated sending claimed); Claude conversation over
+WhatsApp; owner negotiation floor field (rule exists, no data field yet).
+Next: owner review of #239 → merge #239 into #235 → #235 into Staging → Staging deploy + live check.
+
+## (Resolved) BLOCKER — public «أبحث عن عقار» path
 
 CI run 38951990908 on 78bef22: unit+worker ✅, Firestore rules ✅, browser job ❌ — 10 failures, all `public-request-form`, `public-request-smart-review`, `public-form-sent` at 320/360/375/390.
 Cause: staging commit 6002482 (guest public search) changed `renderPublicOffice` so the client path renders `publicSearchForm(office)` instead of the request intake form. That is an intentional **product** change from the parallel work, not a visual one. The same failure exists on their branch gate (38948163081) and both Staging deploys since (9adae47, d94c6a5) failed, so it is not live.
