@@ -79,9 +79,11 @@ function chooseSheet(x, i, searchToken) {
  requestAnimationFrame(() => sheet.querySelector('[name=contactName]')?.focus({ preventScroll: true }));
 }
 
-export function publicSearchForm(office = null) {
+export function publicSearchForm(office = null, { initialText = '', notice = '' } = {}) {
  const id = office?.id || '', requestKey = crypto.randomUUID();
  const description = h('textarea', { class: 'os-textarea', name: 'description', rows: '3', maxlength: '4000', placeholder: 'أبغى شقة تمليك في الجماوات، أربع غرف، بحدود 500 ألف', required: true });
+ // Text carried from «لدي عقار» when it was really a request: kept as written, never retyped.
+ if (initialText) description.value = String(initialText).slice(0, 4000);
  const status = feedback({ class: 'os-alert info', role: 'status', hidden: true });
  const say = (tone, text) => { status.className = `os-alert ${tone} os-feedback`; status.querySelector('.os-feedback-copy').textContent = text; status.hidden = false; };
  const scope = h('select', { class: 'os-input', name: 'scope', 'aria-label': 'نطاق البحث' }, id ? h('option', { value: 'office', text: 'عروض هذا المكتب' }) : null, h('option', { value: 'all', text: 'جميع المكاتب المشاركة' }));
@@ -111,6 +113,7 @@ export function publicSearchForm(office = null) {
  const results = h('section', { 'aria-live': 'polite', 'data-guest-results': '' });
  const form = surface('form', { class: 'os-card os-form', 'data-guest-search-form': '', novalidate: true },
   h('div', {}, h('h2', { class: 'os-h2', text: 'وش العقار اللي تدور عليه؟' }), h('p', { class: 'os-sub', text: 'اكتب طلبك أو الصق رسالة واتساب، ونعرض لك حتى 10 عقارات مناسبة.' })),
+  notice ? feedback({ class: 'os-alert info', 'data-kind-notice': '', text: notice }) : null,
   field('نطاق البحث', scope), field('طلبك العقاري', description), analyze, review, status, submit,
   h('p', { class: 'os-sub', text: 'بدون حساب. نطلب اسمك ورقمك فقط إذا اخترت عقارًا.' }));
  form.addEventListener('submit', async (event) => {

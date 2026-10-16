@@ -463,7 +463,7 @@ export default {
       // Office OS (new office experience). Registered before the outbound-send guard
       // below, which blocks any path containing "send"/"messages".
       if (isOfficeOsPath(url.pathname)) {
-        return await handleOfficeOs(request, env, officeOsDeps(), { requestId });
+        return await handleOfficeOs(request, env, officeOsDeps(), { requestId, waitUntil: (job) => executionContext?.waitUntil?.(job) });
       }
 
       if (request.method === "GET" && url.pathname.startsWith("/s/")) {

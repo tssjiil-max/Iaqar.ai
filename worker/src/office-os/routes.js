@@ -181,7 +181,7 @@ export function isOfficeOsPath(pathname) {
   return pathname === "/os" || String(pathname || "").startsWith("/os/");
 }
 
-export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}) {
+export async function handleOfficeOs(request, env, deps, { requestId = "", waitUntil = null } = {}) {
   const url = new URL(request.url);
   if (request.method !== "POST") {
     return deps.jsonResponse({ ok: false, error: "method_not_allowed", requestId }, 405);
@@ -202,6 +202,8 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
       // Server-side configuration only (which integrations are set up); never returned to a client as is.
       env,
       appOrigin: deps.resolveAppOrigin(env),
+      // Work that may finish after the response (office push/Telegram alerts). Absent → callers await.
+      waitUntil: typeof waitUntil === "function" ? waitUntil : null,
       now: () => new Date()
     };
   };

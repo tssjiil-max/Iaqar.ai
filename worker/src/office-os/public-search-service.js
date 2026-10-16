@@ -147,7 +147,8 @@ async function recordChoice(ctx,{sessionId,session,item,listing,name,phoneDigits
   criteriaJson:session.criteriaJson||'{}',readinessScore:ready.score,readinessEvents:ready.events,readinessIsApproval:false,
   status:'new',processingState:'kept',isProcessed:false,consentProcessing:true,consentContact:true,consentAt:ctx.now(),publicSearchSessionId:sessionId,via,createdAt:ctx.now()};
  const createdLead=await ctx.store.create(['offices',listing.officeId,'inbox',leadId],lead);
- if(createdLead)await notifyOffice(ctx.store,ctx.deps,{officeId:listing.officeId,key:`public-search:${leadId}`,title:'عميل اختار عقارًا من بحث العملاء',body:`${name} — ${item.propertyType} في ${item.district} (المرجع ${item.reference})`,route:'inbox',now:ctx.now()});
+ // The lead is saved above; telling the office's devices must never hold up the client's screen.
+ if(createdLead){const job=notifyOffice(ctx.store,ctx.deps,{officeId:listing.officeId,key:`public-search:${leadId}`,title:'عميل اختار عقارًا من بحث العملاء',body:`${name} — ${item.propertyType} في ${item.district} (المرجع ${item.reference})`,route:'inbox',now:ctx.now()}).catch(error=>console.warn('[public-search] office notify failed',error?.message));if(ctx.waitUntil)ctx.waitUntil(job);else await job;}
  await ctx.store.update(['publicSearchSessions',sessionId],()=>({name,phone,channel,consentProcessing:true,consentContact:true,consentAt:ctx.now(),selectedReference:item.reference,readinessEvents:ready.events,readinessScore:ready.score,status:'SELECTED'}));
  return {key,ready,leadCreated:Boolean(createdLead)};
 }

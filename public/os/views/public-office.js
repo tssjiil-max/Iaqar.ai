@@ -311,9 +311,10 @@ export async function renderPublicOffice(root, target) {
     append(main, 
       pageHeader(h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"), action: h("span") }),
       h("p", { class: "os-public-office-name", text: office.officeName || "" }),
-      kind === "client" ? publicSearchForm(office) : intakeForm(root, office, kind, { switchKind: choose, carry }));
+      kind === "client" ? publicSearchForm(office, { initialText: carry?.text || "", notice: carry?.notice || "" }) : intakeForm(root, office, kind, { switchKind: choose, carry }));
     window.scrollTo({ top: 0 });
-    if (carry?.text) main.querySelector("[data-smart-analyze]")?.click();
+    // A request pasted on «لدي عقار» arrives here with its text: read it straight away.
+    if (carry?.text) main.querySelector("[data-smart-analyze], [data-guest-analyze]")?.click();
   };
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}`);
   const path = (kind, iconName, title, sub) => h("button", { type: "button", class: "os-path-card", "data-path": kind, onClick: () => choose(kind) },
