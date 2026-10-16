@@ -112,6 +112,17 @@ export function surface(tag = 'section', props = {}, ...children) {
   return h(tag, { ...props, class: [...classes].join(' '), 'data-ui': 'surface' }, ...children);
 }
 
+/** Shared semantic section: same title/icon/description hierarchy across office tools. */
+export function officeSection({ title, iconName = 'office', description = '', className = '', attrs = {}, count = null }, ...children) {
+  return surface('section', { ...attrs, class: `os-office-section ${className}`.trim(), 'aria-label': title },
+    h('header', { class: 'os-office-section-head' },
+      h('span', { class: 'os-page-icon', 'aria-hidden': 'true' }, ic(iconName)),
+      h('div', { class: 'os-office-section-copy' },
+        h('div', { class: 'os-office-section-title' }, h('h2', { class: 'os-h2', text: title }), count === null ? null : h('span', { class: 'os-center-count', text: String(count) })),
+        description ? h('p', { class: 'os-sub', text: description }) : null)),
+    h('div', { class: 'os-office-section-body' }, ...children));
+}
+
 /** The same icon / title / supporting line hierarchy used by office tool tiles. */
 export function navigationTile({ title, hint = '', iconName = 'office', tone = 'blue', attrs = {}, onClick }) {
   return h('button', { ...attrs, type: 'button', class: `os-set-row ref-reference-tool ref-office-tool tone-${tone}`, 'data-ui': 'navigation-tile', onClick },

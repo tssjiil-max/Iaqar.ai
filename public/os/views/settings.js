@@ -1,6 +1,6 @@
 /** Manager settings: assignment rule, deal-completion permission, brokers list. */
 
-import { h, ic, clear, append, pageHeader, surface, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, officeSection, field, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { listMembers, officeSetting, saveOfficeSetting } from "../core/live.js";
@@ -37,20 +37,18 @@ export function renderSettings(container) {
         await saveOfficeSetting(session.officeId, "assignment", { defaultBrokerId: select.value, updatedBy: session.user.uid });
         await saveOfficeSetting(session.officeId, "deals", { brokerMayClose: mayClose.checked, updatedBy: session.user.uid });
       }, { success: "تم حفظ الإعدادات" }));
-      append(body, 
-        surface("div", { class: "os-card" },
-          h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("inbox"), "إسناد ما يصل من رابط المكتب"),
-          h("p", { class: "os-sub", style: { marginBottom: "8px" }, text: "العروض والطلبات المسجلة عبر رابط المكتب تُسند تلقائيًا لهذا الوسيط، وتصله مهامها وتنبيهاتها." }),
-          select),
-        surface("div", { class: "os-card" },
-          h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("shield"), "إتمام الصفقات"),
-          h("label", { style: { display: "flex", gap: "10px", alignItems: "center" } }, mayClose,
-            h("span", { text: "السماح للوسيط المسؤول عن الفرصة بإتمام الصفقة (وإلا يتطلب مدير المكتب)" }))),
-        surface("div", { class: "os-card" },
-          h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("users"), "الوسطاء"),
-          h("ul", { class: "os-list" }, active.map((m) => h("li", {}, ic("user"), `${memberName(m)} — ${ROLE_LABEL[m.role] || "وسيط"}`))),
-          h("p", { class: "os-sub", style: { marginTop: "8px", fontSize: ".86rem" }, text: "إضافة وسيط جديد تتم من إدارة المنصة." })),
-        save
+      append(body,
+        h("div", { class: "os-office-sections", "data-ui": "office-sections" },
+          officeSection({ title: "إسناد ما يصل من رابط المكتب", iconName: "inbox",
+              description: "العروض والطلبات المسجلة عبر رابط المكتب تُسند تلقائيًا لهذا الوسيط، وتصله مهامها وتنبيهاتها." },
+            field("الوسيط المسؤول افتراضيًا", select)),
+          officeSection({ title: "إتمام الصفقات", iconName: "shield" },
+            h("label", { class: "os-office-check" }, mayClose,
+              h("span", { text: "السماح للوسيط المسؤول عن الفرصة بإتمام الصفقة (وإلا يتطلب مدير المكتب)" }))),
+          officeSection({ title: "الوسطاء", iconName: "users" },
+            h("ul", { class: "os-list" }, active.map((m) => h("li", {}, ic("user"), `${memberName(m)} — ${ROLE_LABEL[m.role] || "وسيط"}`))),
+            h("p", { class: "os-sub", text: "إضافة وسيط جديد تتم من إدارة المنصة." }))),
+        h("div", { class: "os-office-settings-actions" }, save)
       );
     })
     .catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل الإعدادات." })); });
