@@ -52,3 +52,37 @@ test("shared office sections preserve RTL structure, group identity and existing
     dom.window.close();
   }
 });
+
+test("navigation tiles preserve button actions and native external-link semantics", async () => {
+  const dom = new JSDOM('<main dir="rtl"></main>', { url: "https://example.test/" });
+  const previous = new Map(["window", "document", "Node"].map(key => [key, globalThis[key]]));
+  for (const key of previous.keys()) globalThis[key] = dom.window[key];
+  try {
+    const { navigationTile } = await import("../public/os/core/dom.js");
+    let activations = 0;
+    const action = navigationTile({ title: "بيانات المكتب", hint: "إدارة بيانات المكتب", iconName: "office",
+      attrs: { "data-settings": "profile" }, onClick: () => { activations++; } });
+    assert.equal(action.tagName, "BUTTON");
+    assert.equal(action.type, "button");
+    action.click();
+    assert.equal(activations, 1);
+    assert.equal(action.querySelector(".ref-reference-copy strong").textContent, "بيانات المكتب");
+    const link = navigationTile({ title: "خدمة رسمية", hint: "زيارة الجهة", iconName: "link",
+      href: "https://example.org/service", attrs: { class: "os-service-row", target: "_blank",
+        rel: "noopener noreferrer", "data-service": "official" } });
+    assert.equal(link.tagName, "A");
+    assert.equal(link.getAttribute("href"), "https://example.org/service");
+    assert.equal(link.getAttribute("target"), "_blank");
+    assert.equal(link.getAttribute("rel"), "noopener noreferrer");
+    assert.equal(link.dataset.service, "official");
+    assert.ok(link.classList.contains("os-service-row"));
+    assert.equal(link.querySelector(".ref-reference-copy small").textContent, "زيارة الجهة");
+    assert.equal(link.getAttribute("data-ui"), "navigation-tile");
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete globalThis[key];
+      else globalThis[key] = value;
+    }
+    dom.window.close();
+  }
+});
