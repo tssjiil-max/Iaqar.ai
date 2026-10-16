@@ -1,3 +1,4 @@
+import { deliverGuestSearchTelegram } from "./public-search-service.js";
 /**
  * «قنوات المكتب» — each office links its own channels; the link is stored on the server
  * against the office id and decides which office an inbound message belongs to.
@@ -232,6 +233,8 @@ export async function handleCentralTelegramWebhook({ request, env, store, deps, 
   const message = update.message || update.channel_post || update.edited_message || {};
   const chat = message.chat || {};
   // «مدير المكتب الذكي»: an office's own bot link (t.me/<bot>?start=of_<officeId>).
+  const publicSearchToken = update.message && /^\/start(?:@\w+)?\s+ps_([a-f0-9]{48})\s*$/.exec(String(message.text || ""));
+  if (publicSearchToken && bot) return deliverGuestSearchTelegram(bot, { token: publicSearchToken[1], chat });
   const visitorOffice = update.message ? parseOfficeStart(message.text) : "";
   if (visitorOffice) {
     if (!bot) return { ok: true, status: 200, ignored: true, reason: "bot_off" };

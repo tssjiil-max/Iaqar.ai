@@ -5,6 +5,7 @@
  */
 
 import { searchThroughCentral } from "./central-search-service.js";
+import { analyzeGuestSearch, guestSearch } from "./public-search-service.js";
 import { createStore } from "./store.js";
 import { reviewExternalCooperation } from "./external-broker-service.js";
 import { resolveActor } from "./permissions.js";
@@ -31,6 +32,8 @@ import { startScoutChatLink, unlinkScoutChat } from "./scout-telegram.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
+  "/os/public/search/analyze": (ctx,b,meta) => analyzeGuestSearch(ctx,{officeId:b.officeId,text:typeof b.text === "string"?b.text:"",ip:meta.ip}),
+  "/os/public/search": (ctx,b,meta) => guestSearch(ctx,{input:b,ip:meta.ip}),
   // «تعبئة ذكية» on the office's public page: the text is analysed, nothing is saved.
   "/os/public/smart-fill": (ctx, body, meta) => analyzePublicText(ctx, { officeId: body.officeId, text: typeof body.text === "string" ? body.text : "", ip: meta.ip }),
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),

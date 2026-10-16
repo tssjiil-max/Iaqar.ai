@@ -18,6 +18,7 @@ export function renderLogin(root, { onSignedIn, message = "", entry = "" } = {})
     authField({ label: "رقم الجوال", input: phone, name: "phone" }),
     authField({ label: "كلمة المرور", input: password, name: "password", control: passwordControl(password) }),
     status, submit,
+    h("a", { class: "os-btn secondary block", href: "/?view=search", text: "ابحث عن عقار — بدون تسجيل" }),
     h("button", { type: "button", class: "os-btn ghost os-auth-link", "data-forgot": "", onClick: () => renderForgotPassword(root, { onBack: back }) }, "نسيت كلمة المرور"),
     h("div", { class: "os-auth-divider", "aria-hidden": "true" }),
     h("button", { type: "button", class: "os-btn secondary block", "data-broker-signup": "", onClick: () => renderBrokerApplication(root, { onBack: back }) }, "تسجيل وسيط جديد"));

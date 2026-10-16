@@ -43,6 +43,7 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
     error.details = check.errors;
     throw error;
   }
+  if ("publicSearchVisible" in input && !actor?.isManager) throw ctx.deps.appError("forbidden", 403, "نشر العرض في بحث العملاء لمدير المكتب فقط");
   const now = ctx.now();
   let id = String(recordId || "").trim();
   let existing = null;
@@ -66,6 +67,7 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
   const fields = recordFields(check.value, {
     officeId, brokerId: actor.uid, sourceType: sourceType === "TELEGRAM_AGENT" ? "TELEGRAM_AGENT" : "BROKER_DIRECT", sourceReference: sourceType === "TELEGRAM_AGENT" ? "office-os:telegram-agent" : `office-os:${actor.uid}`, existing, now
   });
+  if ("publicSearchVisible" in input) fields.publicSearchVisible = input.publicSearchVisible === true && check.value.kind === "OFFER";
   if (!existing) fields.deduplicationFingerprint = recordFingerprint(check.value, officeId);
   // «مدة العرض أو الطلب»: a new record always gets one (the person's choice, or the announced default of a
   // month, marked as not chosen); an edit changes it only when the form sends a choice. Saving it is a
