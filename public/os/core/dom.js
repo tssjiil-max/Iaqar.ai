@@ -71,7 +71,10 @@ export function clearFieldErrors(root) {
 }
 
 export function emptyState(iconName, title, text, action = null) {
-  return h("div", { class: "os-empty" }, ic(iconName), h("h3", { text: title }), text ? h("p", { class: "os-sub", text }) : null, action);
+  return h("div", { class: "os-empty", "data-ui": "empty-state" },
+    h("span", { class: "os-state-icon", "aria-hidden": "true" }, ic(iconName)),
+    h("div", { class: "os-state-copy" }, h("h3", { text: title }), text ? h("p", { class: "os-sub", text }) : null),
+    action ? h("div", { class: "os-state-actions" }, action) : null);
 }
 
 /** Shared office composition. Callers pass their original controls, not copies. */
@@ -144,4 +147,11 @@ export function feedback(props = {}, ...children) {
   return h('div', { ...attrs, class: `${tone} os-feedback`.trim(), 'data-ui': 'feedback', role: props.role || (tone.includes('bad') ? 'alert' : 'status') },
     h('span', { class: 'os-feedback-icon', 'aria-hidden': 'true' }, ic(tone.includes('bad') || tone.includes('warn') ? 'alert' : 'info')),
     text ? h('span', { class: 'os-feedback-copy', text }) : null, ...children);
+}
+
+/** Shared comparison grid; accepts existing cell nodes and keeps column order in RTL. */
+export function comparisonTable({ label, columns, rows, className = 'os-compare' }) {
+  return h('table', { class: className, 'data-ui': 'comparison-table', 'aria-label': label },
+    h('thead', {}, h('tr', {}, columns.map(text => h('th', { scope: 'col', text })))),
+    h('tbody', {}, rows.map(cells => h('tr', {}, cells.map(cell => h('td', {}, cell))))));
 }

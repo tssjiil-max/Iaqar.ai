@@ -4,7 +4,7 @@
  */
 
 import { botAskLine } from "./bot-settings.js";
-import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback, comparisonTable } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -20,13 +20,12 @@ const STATE_ICON = { match: "check", differ: "alert", unknown: "question" };
 
 function compareTable(offer, request) {
   const rows = compareRecords(offer, request);
-  return h("table", { class: "os-compare" },
-    h("thead", {}, h("tr", {}, h("th", { text: "" }), h("th", { text: "العرض" }), h("th", { text: "الطلب" }))),
-    h("tbody", {}, rows.map((row) => h("tr", {},
-      h("td", {}, h("span", { class: `os-state ${row.state}` }, ic(STATE_ICON[row.state])), row.label),
-      h("td", { text: row.offer }),
-      h("td", {}, row.request, row.note ? h("small", { style: { display: "block", color: row.state === "match" ? "var(--ok)" : "var(--warn)" }, text: row.note }) : null)
-    ))));
+  return comparisonTable({ label: "مقارنة العرض والطلب", columns: ["", "العرض", "الطلب"],
+    rows: rows.map(row => [
+      h("span", {}, h("span", { class: `os-state ${row.state}` }, ic(STATE_ICON[row.state])), row.label),
+      row.offer,
+      h("span", {}, row.request, row.note ? h("small", { style: { display: "block", color: row.state === "match" ? "var(--ok)" : "var(--warn)" }, text: row.note }) : null)
+    ]) });
 }
 
 function openInfoRequest(match) {

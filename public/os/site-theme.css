@@ -157,3 +157,10 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-feedback-icon{flex:0 0 22px;display:grid;place-items:center;margin-top:2px}
 .os-feedback-icon svg{width:22px;height:22px;color:inherit;--ico:currentColor}
 .os-feedback-copy{min-width:0;overflow-wrap:anywhere}
+
+.os-empty[data-ui="empty-state"]{display:grid;justify-items:center;gap:10px;padding:24px 16px;border:1px dashed var(--brand-line);border-radius:var(--radius);background:var(--surface-2)}
+.os-state-icon{display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:var(--brand-tint);color:var(--brand-primary)}
+.os-state-icon svg{width:30px;height:30px;color:inherit;--ico:currentColor}
+.os-state-copy{min-width:0;max-width:38ch}.os-state-copy>h3{margin:0 0 6px}.os-state-copy>.os-sub{margin:0}
+.os-state-actions{max-width:100%}
+[data-ui="comparison-table"] th{border-bottom:1px solid var(--brand-line);padding-bottom:8px}

@@ -47,3 +47,12 @@ test('feedback surface retains alert text updates, hidden state and tone styling
  setup();assert.equal(typeof dom.feedback,'function');const alert=dom.feedback({class:'os-alert bad',hidden:true,role:'alert',text:'تعذر التحميل','data-error':''});
  assert.equal(alert.hidden,true);assert.equal(alert.getAttribute('role'),'alert');assert.equal(alert.textContent.trim(),'تعذر التحميل');alert.textContent='حاول مجددًا';assert.equal(alert.textContent,'حاول مجددًا');assert.ok(alert.classList.contains('bad'));
 });
+test('comparison table preserves RTL column order and custom cell nodes',()=>{
+ setup();assert.equal(typeof dom.comparisonTable,'function');const note=dom.h('small',{text:'فرق السعر'});
+ const table=dom.comparisonTable({label:'مقارنة العرض والطلب',columns:['البند','العرض','الطلب'],rows:[['السعر','100',dom.h('span',{},'110',note)]]});
+ assert.equal(table.getAttribute('aria-label'),'مقارنة العرض والطلب');assert.deepEqual([...table.querySelectorAll('thead th')].map(n=>n.textContent),['البند','العرض','الطلب']);assert.equal(table.querySelector('thead th').scope,'col');assert.equal(table.querySelector('tbody td:last-child small'),note);
+});
+test('empty states use office icon and copy slots and retain their original action',()=>{
+ setup();const action=dom.h('button',{text:'إضافة عرض'});const empty=dom.emptyState('offers','لا توجد عروض','أضف العرض الأول',action);
+ assert.equal(empty.dataset.ui,'empty-state');assert.ok(empty.querySelector('.os-state-icon svg'));assert.equal(empty.querySelector('.os-state-actions').firstChild,action);assert.equal(empty.querySelector('h3').textContent,'لا توجد عروض');
+});
