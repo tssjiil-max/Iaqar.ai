@@ -39,3 +39,11 @@ test('control groups keep tab semantics and original interactive children',()=>{
  const group=dom.controlGroup('div',{class:'os-chips',role:'group','aria-label':'نوع السجل'},tab);
  assert.equal(group.dataset.ui,'control-group');assert.equal(group.getAttribute('aria-label'),'نوع السجل');assert.equal(group.firstChild,tab);assert.equal(tab.getAttribute('aria-pressed'),'true');
 });
+test('loading state announces progress and preserves requested dimensions and data selectors',()=>{
+ setup();assert.equal(typeof dom.loadingState,'function');const el=dom.loadingState({style:{height:'60px'},'data-test-loading':''});
+ assert.equal(el.getAttribute('role'),'status');assert.equal(el.getAttribute('aria-busy'),'true');assert.equal(el.style.height,'60px');assert.ok(el.querySelector('.os-loading-lines'));assert.equal(el.textContent,'جارٍ التحميل…');
+});
+test('feedback surface retains alert text updates, hidden state and tone styling',()=>{
+ setup();assert.equal(typeof dom.feedback,'function');const alert=dom.feedback({class:'os-alert bad',hidden:true,role:'alert',text:'تعذر التحميل','data-error':''});
+ assert.equal(alert.hidden,true);assert.equal(alert.getAttribute('role'),'alert');assert.equal(alert.textContent.trim(),'تعذر التحميل');alert.textContent='حاول مجددًا';assert.equal(alert.textContent,'حاول مجددًا');assert.ok(alert.classList.contains('bad'));
+});

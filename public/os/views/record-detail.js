@@ -3,7 +3,7 @@
 import { partyBotRow } from "./bot-settings.js";
 import { externalCooperationPanel } from "./external-cooperation.js";
 import { isExternalBroker } from "../domain/external-broker-domain.js";
-import { h, ic, clear, emptyState, append, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, emptyState, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -82,7 +82,7 @@ export function renderRecordDetail(container, { recordId }) {
     const head = pageHeader(h("h1", { class: "os-page-title", text: "تفاصيل السجل" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("repo") }, ic("chev-right"), "العروض والطلبات"), action: record ? h("span", { class: "os-ref", text: `#${recordView(record).reference}` }) : h("span") });
     append(container, head);
     if (!record) {
-      append(container, state.recordsReady ? h("div", { class: "os-alert bad", text: "السجل غير موجود أو حُذف." }) : h("div", { class: "os-skeleton" }));
+      append(container, state.recordsReady ? feedback({ class: "os-alert bad", text: "السجل غير موجود أو حُذف." }) : loadingState({ class: "os-skeleton" }));
       return;
     }
     const view = recordView(record);
@@ -113,7 +113,7 @@ export function renderRecordDetail(container, { recordId }) {
         fact("area", "المساحة", view.areaLabel || "غير محددة"),
         view.rooms ? fact("bed", "الغرف", String(view.rooms)) : null),
       view.notes ? h("p", { style: { margin: "10px 0 0" }, text: view.notes }) : null,
-      view.missing.length ? h("div", { class: "os-alert warn", style: { marginTop: "10px" }, text: `بيانات ناقصة للمطابقة: ${view.missing.map((k) => MISSING_LABELS[k] || k).join("، ")}` }) : null,
+      view.missing.length ? feedback({ class: "os-alert warn", style: { marginTop: "10px" }, text: `بيانات ناقصة للمطابقة: ${view.missing.map((k) => MISSING_LABELS[k] || k).join("، ")}` }) : null,
       h("hr", { class: "os-divider" }),
       h("div", { class: "os-party-head" }, h("div", { class: "av" }, ic("user")),
         h("div", {}, h("b", { text: view.contactName || (isRequest ? "العميل" : "المالك") }), h("span", { dir: "ltr", text: view.contactPhone || "بدون رقم" }))),
@@ -152,7 +152,7 @@ export function renderRecordDetail(container, { recordId }) {
     // Linked opportunities + pending reviews
     const reviews = state.tasks.filter((t) => String(t.type).toUpperCase() === "MATCH_REVIEW" && (t.offerId === recordId || t.requestId === recordId || t.opportunityId === recordId));
     const linkCard = surface("div", { class: "os-card" }, h("div", { class: "os-card-head" }, h("h2", { class: "os-h2" }, ic("handshake"), "الفرص المرتبطة")));
-    if (linked === null) append(linkCard, h("div", { class: "os-skeleton", style: { height: "60px" } }));
+    if (linked === null) append(linkCard, loadingState({ class: "os-skeleton", style: { height: "60px" } }));
     else if (!linked.length && !reviews.length) append(linkCard, h("p", { class: "os-sub", text: "لا توجد فرص مرتبطة بعد. السجل محفوظ ويُعاد فحصه عند وصول بيانات مناسبة." }));
     for (const task of reviews) {
       append(linkCard, h("button", { type: "button", class: "os-btn soft block", style: { marginBottom: "6px", justifyContent: "space-between" }, onClick: () => go(`review/${task.matchId}`) },

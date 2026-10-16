@@ -4,7 +4,7 @@
  * see, nothing about the other party), and saves the chosen reply server-side.
  */
 
-import { h, ic, clear, append, surface } from "./core/dom.js";
+import { h, ic, clear, append, surface, feedback } from "./core/dom.js";
 import { workerBase } from "./core/runtime.js";
 import { formatDateTime, formatNumber } from "./domain/format-domain.js";
 
@@ -39,7 +39,7 @@ function stateView(data) {
   const tone = data.state === "SUPERSEDED" ? "info" : data.state === "LOCKED" ? "ok" : "warn";
   page(officeCard(data.office),
     surface("div", { class: "os-card" },
-      h("div", { class: `os-alert ${tone}`, text: data.message || "هذا الرابط غير متاح." }),
+      feedback({ class: `os-alert ${tone}`, text: data.message || "هذا الرابط غير متاح." }),
       data.reply ? h("p", { class: "os-sub", style: { marginTop: "10px" }, text: `ردك المسجّل: ${data.reply.label}` }) : null));
 }
 
@@ -60,7 +60,7 @@ function formView(view) {
   const extraInput = h("input", { class: "os-input", name: "text", maxlength: "300" });
   const extraLabel = h("span");
   append(extra, extraLabel, extraInput);
-  const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
+  const status = feedback({ class: "os-alert bad", role: "alert", hidden: true });
   const submit = h("button", { type: "button", class: "os-btn primary block", disabled: true }, ic("send"), "إرسال الرد");
   const options = h("div", { class: "os-options", role: "group", "aria-label": "خيارات الرد" });
   const ICON = { positive: "check-circle", negative: "x-circle", neutral: "clock" };
@@ -123,7 +123,7 @@ async function start() {
     if (!payload.ok || payload.state !== "ACTIVE") { stateView(payload); return; }
     formView(payload);
   } catch (_) {
-    page(surface("div", { class: "os-card" }, h("div", { class: "os-alert warn", text: "تعذر تحميل المقترح — تحقق من الاتصال ثم أعد المحاولة." }),
+    page(surface("div", { class: "os-card" }, feedback({ class: "os-alert warn", text: "تعذر تحميل المقترح — تحقق من الاتصال ثم أعد المحاولة." }),
       h("button", { type: "button", class: "os-btn secondary block", style: { marginTop: "10px" }, onClick: start }, ic("refresh"), "إعادة المحاولة")));
   }
 }

@@ -8,7 +8,7 @@
  * Nothing technical is shown (no queue, no source logs, no model calls); the broker decides, the scout does the work.
  */
 
-import { h, ic, clear, append, emptyState, field, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, field, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../core/ui.js";
@@ -123,7 +123,7 @@ function feedSheet(onDone) {
     fromFile = true;
     toast("قُرئ الملف — راجع النص ثم أرسله", "ok");
   });
-  const result = h("div", { class: "os-alert", role: "status", hidden: true, "data-feed-result": "" });
+  const result = feedback({ class: "os-alert", role: "status", hidden: true, "data-feed-result": "" });
   const readBox = h("div", { class: "os-scout-read", hidden: true, "data-feed-read": "" });
   const send = h("button", { type: "button", class: "os-btn primary block", "data-feed-send": "" }, ic("sparkles"), "اقرأها وابحث فيها");
   const sheet = openSheet("أضف إعلانًا للباحث", h("div", { class: "os-form" },
@@ -160,13 +160,13 @@ const SOURCE_STATUS = Object.freeze({
 export function renderScout(container) {
   let alive = true;
   let bucket = "ALL";
-  const body = h("div", { "data-scout-page": "" }, h("div", { class: "os-skeleton" }));
+  const body = h("div", { "data-scout-page": "" }, loadingState({ class: "os-skeleton" }));
   const settingsBtn = session.isManager ? h("button", { type: "button", class: "os-icon-btn", "aria-label": "إعدادات الباحث عن الفرص", "data-scout-settings": "", onClick: () => go("settings/scout") }, ic("gear")) : null;
   append(container, head("الباحث عن الفرص", { backTo: "office", action: settingsBtn }), body);
   const draw = (overview) => {
     if (!alive) return;
     clear(body);
-    if (overview.available === false) { append(body, h("div", { class: "os-alert info", "data-scout-unavailable": "", text: "الباحث عن الفرص غير متاح على هذه البيئة حاليًا." })); return; }
+    if (overview.available === false) { append(body, feedback({ class: "os-alert info", "data-scout-unavailable": "", text: "الباحث عن الفرص غير متاح على هذه البيئة حاليًا." })); return; }
     const view = statusView(overview);
     const on = overview.settings.enabled === true;
     const c = overview.counters;
@@ -184,7 +184,7 @@ export function renderScout(container) {
           : "الباحث عن الفرص متوقف في هذا المكتب. يشغّله مدير المكتب من الإعدادات." }),
       !on && session.isManager ? h("button", { type: "button", class: "os-btn primary block", "data-scout-enable": "", onClick: (event) => runAction(event.currentTarget, async () => { await saveScoutSettings(OFFICE(), { enabled: true }); refresh(); }, { success: "يعمل الباحث عن الفرص الآن" }) }, ic("play"), "تشغيل الباحث عن الفرص") : null,
       on && overview.health?.lastSuccessAt ? h("small", { class: "os-scout-last", "data-scout-last": "", text: `آخر بحث ناجح: ${relativeAgo(overview.health.lastSuccessAt)}` }) : null,
-      overview.health?.failing ? h("div", { class: "os-alert warn", text: "أحد المصادر متعطل مؤقتًا — البحث مستمر في بقية المصادر." }) : null));
+      overview.health?.failing ? feedback({ class: "os-alert warn", text: "أحد المصادر متعطل مؤقتًا — البحث مستمر في بقية المصادر." }) : null));
     const sourcesCard = () => {
       const all = overview.sourceStatus || [];
       const connected = all.filter((source) => source.status === "CONNECTED").length;
@@ -222,7 +222,7 @@ export function renderScout(container) {
           : surface("div", { class: "os-card" }, h("p", { class: "os-sub", text: "لا توجد عمليات بحث بعد. أضف عرضًا أو طلبًا، أو ابدأ بحثًا جديدًا." }))),
       sourcesCard());
   };
-  const refresh = () => loadScout(OFFICE(), { fresh: true }).then(draw).catch((error) => { if (!alive) return; clear(body); append(body, h("div", { class: "os-alert bad", text: error?.message || "تعذر تحميل الباحث عن الفرص." })); });
+  const refresh = () => loadScout(OFFICE(), { fresh: true }).then(draw).catch((error) => { if (!alive) return; clear(body); append(body, feedback({ class: "os-alert bad", text: error?.message || "تعذر تحميل الباحث عن الفرص." })); });
   refresh();
   return () => { alive = false; };
 }
@@ -269,8 +269,8 @@ export function renderScoutNew(container) {
   const owner = h("input", { type: "checkbox", name: "preferDirectOwner" });
   const cityWide = h("input", { type: "checkbox", name: "allowCityWide" });
   const sentence = h("textarea", { class: "os-textarea", rows: "3", maxlength: "600", "data-scout-sentence": "", placeholder: "مثال: ابحث لي بشكل مستعجل عن عمارة للبيع في شوران أو الهجرة، بحد أقصى مليونين، ويفضل من المالك مباشرة." });
-  const understood = h("div", { class: "os-alert info", role: "status", hidden: true, "data-scout-understood": "" });
-  const error = h("div", { class: "os-alert bad", role: "alert", hidden: true, "data-scout-error": "" });
+  const understood = feedback({ class: "os-alert info", role: "status", hidden: true, "data-scout-understood": "" });
+  const error = feedback({ class: "os-alert bad", role: "alert", hidden: true, "data-scout-error": "" });
   const understand = h("button", { type: "button", class: "os-btn soft block", "data-scout-understand": "" }, ic("sparkles"), "افهم طلبي واملأ البحث");
   let nlText = "";
   understand.addEventListener("click", () => runAction(understand, async () => {
@@ -354,7 +354,7 @@ function outcomeSheet(find, onSaved) {
 
 export function renderScoutFind(container, { id }) {
   let alive = true;
-  const body = h("div", { "data-scout-find-page": "" }, h("div", { class: "os-skeleton" }));
+  const body = h("div", { "data-scout-find-page": "" }, loadingState({ class: "os-skeleton" }));
   append(container, head("فرصة"), body);
   const row = (label, value, name) => (value ? h("div", { class: "ref-detail-row", "data-find-row": name }, h("small", { text: label }), h("b", { text: value, dir: "auto" })) : null);
   const draw = (find) => {
@@ -404,7 +404,7 @@ export function renderScoutFind(container, { id }) {
         ? controlGroup("div", { class: "os-btn-row" }, find.status === OPP_STATUS.IGNORED ? act(OPP_ACTION.RESTORE, "استرجاع إلى الفرص", "secondary", "restore", reload) : h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("offers"), "العروض والطلبات"))
         : h("div", { class: "os-form", "data-find-actions": "" },
           contactable ? h("button", { type: "button", class: "os-btn primary block", "data-find-action": "CONTACT", onClick: () => contactSheet(find, reload) }, ic("phone"), "تواصل")
-            : h("div", { class: "os-alert warn", text: "لا توجد وسيلة تواصل لهذه الفرصة بعد." }),
+            : feedback({ class: "os-alert warn", text: "لا توجد وسيلة تواصل لهذه الفرصة بعد." }),
           controlGroup("div", { class: "os-btn-row" },
             find.status === OPP_STATUS.SAVED ? null : act(OPP_ACTION.SAVE, "إضافة للمتابعة", "secondary", "heart", () => { toast("حُفظت الفرصة للمتابعة", "ok"); reload(); }),
             act(OPP_ACTION.IGNORE, "استبعاد", "secondary", "x", () => { toast("استُبعدت — تجدها في قائمة «مستبعدة»"); go("scout"); })),
@@ -433,7 +433,7 @@ export function renderScoutFind(container, { id }) {
             go(`record/new?kind=${find.draft.kind || "OFFER"}`);
           } }, ic("plus"), "اعتماد الفرصة بعد التحقق")));
   };
-  scoutFind(OFFICE(), id).then((answer) => draw(answer.find)).catch((error) => { if (!alive) return; clear(body); append(body, h("div", { class: "os-alert bad", text: error?.message || "تعذر فتح الفرصة." })); });
+  scoutFind(OFFICE(), id).then((answer) => draw(answer.find)).catch((error) => { if (!alive) return; clear(body); append(body, feedback({ class: "os-alert bad", text: error?.message || "تعذر فتح الفرصة." })); });
   return () => { alive = false; };
 }
 
@@ -441,9 +441,9 @@ export function renderScoutFind(container, { id }) {
 
 export function renderScoutTask(container, { id }) {
   let alive = true;
-  const body = h("div", { "data-scout-task-page": "" }, h("div", { class: "os-skeleton" }));
+  const body = h("div", { "data-scout-task-page": "" }, loadingState({ class: "os-skeleton" }));
   append(container, head("عملية بحث"), body);
-  const load = () => scoutSearchDetail(OFFICE(), id).then(draw).catch((error) => { if (!alive) return; clear(body); append(body, h("div", { class: "os-alert bad", text: error?.message || "تعذر فتح البحث." })); });
+  const load = () => scoutSearchDetail(OFFICE(), id).then(draw).catch((error) => { if (!alive) return; clear(body); append(body, feedback({ class: "os-alert bad", text: error?.message || "تعذر فتح البحث." })); });
   const control = (action, label, kind, iconName, { confirm = null, mode = "", success = "" } = {}) => {
     const button = h("button", { type: "button", class: `os-btn ${kind}`, "data-task-control": action }, ic(iconName), label);
     button.addEventListener("click", async () => {
@@ -487,11 +487,11 @@ export function renderScoutTask(container, { id }) {
  * answer, its sources, and Google's own suggestions block — and it is not kept: closing the sheet is the end of it.
  */
 function liveSearchSheet(taskId) {
-  const body = h("div", { class: "os-form", "data-live-search": "" }, h("div", { class: "os-skeleton" }), h("p", { class: "os-sub", text: "جارٍ البحث في الويب…" }));
+  const body = h("div", { class: "os-form", "data-live-search": "" }, loadingState({ class: "os-skeleton" }), h("p", { class: "os-sub", text: "جارٍ البحث في الويب…" }));
   openSheet("بحث مباشر في الويب", body);
   liveWebSearch(OFFICE(), taskId).then((result) => {
     clear(body);
-    if (!result.grounded) { append(body, h("div", { class: "os-alert info", "data-live-empty": "", text: "لم يُظهر بحث الويب نتائج مناسبة لهذا البحث الآن." })); return; }
+    if (!result.grounded) { append(body, feedback({ class: "os-alert info", "data-live-empty": "", text: "لم يُظهر بحث الويب نتائج مناسبة لهذا البحث الآن." })); return; }
     // Google's block is shown as Google sends it, in a closed frame: its links open in a new tab and it runs nothing here.
     const suggestions = result.suggestions ? h("iframe", { class: "os-live-suggest", title: "اقتراحات بحث Google", sandbox: "allow-popups allow-popups-to-escape-sandbox", referrerpolicy: "no-referrer", "data-live-suggest": "" }) : null;
     if (suggestions) suggestions.srcdoc = result.suggestions;
@@ -502,7 +502,7 @@ function liveSearchSheet(taskId) {
         result.sources.map((source) => h("a", { class: "os-link-btn", href: source.url, target: "_blank", rel: "noopener noreferrer", dir: "auto", text: source.title || "فتح المصدر" }))),
       suggestions,
       h("p", { class: "os-sub", text: "نتائج بحث Google كما وردت. لا تُحفظ ولا تدخل في فرص الباحث — افتح المصدر للتحقق والتواصل." }));
-  }).catch((error) => { clear(body); append(body, h("div", { class: "os-alert warn", "data-live-error": "", text: error?.message || "تعذر البحث في الويب الآن." })); });
+  }).catch((error) => { clear(body); append(body, feedback({ class: "os-alert warn", "data-live-error": "", text: error?.message || "تعذر البحث في الويب الآن." })); });
 }
 
 // ------------------------------------------------------------------ «الاستقبال التلقائي من Claude» (inside the scout settings)
@@ -521,7 +521,7 @@ function ingestCard(settings = {}) {
     const copy = h("button", { type: "button", class: "os-btn primary block", "data-scout-shortcut-copy": "" }, ic("check"), "نسخ نص الاختصار");
     copy.addEventListener("click", () => runAction(copy, async () => { await navigator.clipboard.writeText(text); }, { success: "نُسخ نص الاختصار" }));
     openSheet("اختصار Claude في Chrome", h("div", { class: "os-form" },
-      h("div", { class: "os-alert ok", text: "رُبط هذا المتصفح بالمكتب. المفتاح محفوظ في هذا المتصفح فقط ولا يظهر لأحد." }),
+      feedback({ class: "os-alert ok", text: "رُبط هذا المتصفح بالمكتب. المفتاح محفوظ في هذا المتصفح فقط ولا يظهر لأحد." }),
       h("ol", { class: "os-sub" },
         h("li", { text: "انسخ النص أدناه." }),
         h("li", { text: "في Claude in Chrome (على هذا المتصفح نفسه): احفظه كاختصار، ثم جدوله يوميًا من أيقونة الساعة." }),
@@ -558,7 +558,7 @@ function ingestCard(settings = {}) {
       const endpoint = `${workerBase()}/os/scout/ingest`;
       const token = h("input", { class: "os-input", readonly: true, dir: "ltr", "data-scout-ingest-token": "", value: made.token });
       openSheet("مفتاح API", h("div", { class: "os-form" },
-        h("div", { class: "os-alert warn", text: "يظهر المفتاح هذه المرة فقط. احفظه في أسرار الأداة — لا تضعه في رسالة أو محادثة." }),
+        feedback({ class: "os-alert warn", text: "يظهر المفتاح هذه المرة فقط. احفظه في أسرار الأداة — لا تضعه في رسالة أو محادثة." }),
         token,
         h("p", { class: "os-sub", dir: "ltr", text: `POST ${endpoint}  ·  Authorization: Bearer <key>` }),
         h("p", { class: "os-sub", text: "النتائج تُحفظ كفرص خارجية قيد المراجعة، ولا تصبح عرضًا أو طلبًا إلا باعتمادك." })), { onClose: reload });
@@ -569,7 +569,7 @@ function ingestCard(settings = {}) {
       const made = await createMcpKey(OFFICE());
       const link = `${workerBase()}/mcp/${made.token}`;
       openSheet("رابط ChatGPT", h("div", { class: "os-form" },
-        h("div", { class: "os-alert warn", text: "يظهر الرابط هذه المرة فقط، ويحمل مفتاحًا خاصًا بمكتبك. لا تشاركه مع أحد ولا تضعه في محادثة. تقدر تلغيه من القائمة أعلاه في أي وقت." }),
+        feedback({ class: "os-alert warn", text: "يظهر الرابط هذه المرة فقط، ويحمل مفتاحًا خاصًا بمكتبك. لا تشاركه مع أحد ولا تضعه في محادثة. تقدر تلغيه من القائمة أعلاه في أي وقت." }),
         h("input", { class: "os-input", readonly: true, dir: "ltr", "data-scout-mcp-link": "", value: link }),
         h("ol", { class: "os-sub" },
           h("li", { text: "في ChatGPT: الإعدادات ← التطبيقات والموصلات ← وضع المطور." }),
@@ -608,12 +608,12 @@ function ingestCard(settings = {}) {
 
 export function renderScoutSettings(container) {
   append(container, head("الباحث عن الفرص", { backTo: "settings" }));
-  if (!session.isManager) { append(container, h("div", { class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." })); return null; }
-  const body = h("div", { "data-scout-settings": "" }, h("div", { class: "os-skeleton" }));
+  if (!session.isManager) { append(container, feedback({ class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." })); return null; }
+  const body = h("div", { "data-scout-settings": "" }, loadingState({ class: "os-skeleton" }));
   append(container, body);
   const draw = (overview) => {
     clear(body);
-    if (overview.available === false) { append(body, h("div", { class: "os-alert info", text: "الباحث عن الفرص غير متاح على هذه البيئة حاليًا." })); return; }
+    if (overview.available === false) { append(body, feedback({ class: "os-alert info", text: "الباحث عن الفرص غير متاح على هذه البيئة حاليًا." })); return; }
     const s = overview.settings;
     const view = statusView(overview);
     const toggle = h("button", { type: "button", class: `os-btn ${s.enabled ? "secondary" : "primary"} block`, "data-scout-toggle": s.enabled ? "off" : "on" }, ic(s.enabled ? "pause" : "play"), s.enabled ? "إيقاف الباحث عن الفرص" : "تشغيل الباحث عن الفرص");
@@ -716,7 +716,7 @@ export function renderScoutSettings(container) {
       ingestCard(s),
       save);
   };
-  const reload = () => loadScout(OFFICE(), { fresh: true }).then(draw).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل إعدادات الباحث عن الفرص." })); });
+  const reload = () => loadScout(OFFICE(), { fresh: true }).then(draw).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل إعدادات الباحث عن الفرص." })); });
   reload();
   return null;
 }

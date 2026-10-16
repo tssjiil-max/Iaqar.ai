@@ -3,7 +3,7 @@
  * Stage (where it is) and current action (what is needed now) are shown separately.
  */
 
-import { h, ic, clear, append, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { propertyTypeIcon } from "../core/icons.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
@@ -155,7 +155,7 @@ function nowAction(journey, proposals, offer, request, draft) {
     const ack = h("button", { type: "button", class: "os-btn secondary" }, ic("check"), "تمت المراجعة");
     ack.addEventListener("click", () => runAction(ack, () => api("/os/journeys/ack-reply", { officeId: session.officeId, journeyId: jid, proposalId: spec.proposalId }), { success: "تمت مراجعة الرد" }));
     append(card, title("مراجعة الرد"),
-      proposal ? h("div", { class: "os-alert info" },
+      proposal ? feedback({ class: "os-alert info" },
         h("b", { text: `${RECIPIENT_LABEL[proposal.recipientRole]} على ${proposal.label}: ` }), replyLabel(proposal.kind, proposal.reply || {}),
         h("small", { style: { display: "block" }, text: `${relativeAgo(proposal.reply?.at)} · عبر رابط الرد — رد مبدئي` })) : h("p", { class: "os-sub", text: action.reason }),
       controlGroup("div", { class: "os-btn-row", style: { marginTop: "10px" } },
@@ -215,7 +215,7 @@ async function openLinkedFile(button, file) {
 /** «إرفاق من المكتبة»: pick one of the office's library files; only the link is saved on the deal. */
 function openLibraryPicker(row, onPick) {
   const search = h("input", { class: "os-input", type: "search", placeholder: "ابحث باسم المستند أو الملف…", "aria-label": "بحث في المكتبة", "data-library-search": "" });
-  const list = h("div", { class: "os-lib-pick-list", "data-library-pick": "" }, h("div", { class: "os-skeleton" }));
+  const list = h("div", { class: "os-lib-pick-list", "data-library-pick": "" }, loadingState({ class: "os-skeleton" }));
   const body = h("div", { class: "os-form" },
     h("p", { class: "os-sub", text: `اختر الملف الذي يخص «${row.label}». يبقى الملف في المكتبة ويُربط بهذه الصفقة فقط.` }),
     search, list,
@@ -237,7 +237,7 @@ function openLibraryPicker(row, onPick) {
   };
   search.addEventListener("input", draw);
   listLibrary().then((rows) => { items = rows.filter((item) => item.mediaPath); draw(); })
-    .catch(() => { clear(list); append(list, h("div", { class: "os-alert bad", text: "تعذر تحميل المكتبة." })); });
+    .catch(() => { clear(list); append(list, feedback({ class: "os-alert bad", text: "تعذر تحميل المكتبة." })); });
 }
 
 function documentsCard(journey) {
@@ -403,8 +403,8 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
     const refChip = journey ? h("span", { class: "os-ref", text: `فرصة #${String(journeyId).slice(3, 9).toUpperCase()}` }) : h("span");
     append(container, pageHeader(h("h1", { class: "os-page-title", text: "متابعة الفرصة" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => { rememberDeal(journeyId); back("tasks"); } }, ic("chev-right"), "المهام اليومية"), action: refChip }));
     if (journey) append(container, dealFollowBar({ ...journey, journeyId }, { page: "journey", focus }));
-    if (journey === undefined) { append(container, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
-    if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الفرصة غير موجودة." })); return; }
+    if (journey === undefined) { append(container, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" })); return; }
+    if (!journey) { append(container, feedback({ class: "os-alert bad", text: "الفرصة غير موجودة." })); return; }
     const offer = recordById(journey.offerId) || { ...journey.offerSummary, opportunityKind: "OFFER" };
     const request = recordById(journey.requestId) || { ...journey.requestSummary, opportunityKind: "REQUEST" };
     const offerView = recordView({ ...offer, id: journey.offerId });

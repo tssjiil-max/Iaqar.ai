@@ -128,3 +128,20 @@ export function dialogHeading(title, onClose) {
 export function controlGroup(tag = 'div', props = {}, ...children) {
   return h(tag, { ...props, class: `${props.class || ''} os-control-group`.trim(), 'data-ui': 'control-group' }, ...children);
 }
+
+/** Shared loading composition; it never clears or owns the caller's data. */
+export function loadingState(props = {}) {
+  return h('div', { ...props, class: `os-skeleton ${props.class || ''}`.trim(), 'data-ui': 'loading', role: 'status', 'aria-busy': 'true' },
+    h('span', { class: 'os-sr-only', text: 'جارٍ التحميل…' }),
+    h('div', { class: 'os-loading-lines', 'aria-hidden': 'true' },
+      h('span', {}), h('span', {}), h('span', {})));
+}
+
+/** One feedback composition for error, warning and informational states. */
+export function feedback(props = {}, ...children) {
+  const { text, ...attrs } = props;
+  const tone = String(props.class || '');
+  return h('div', { ...attrs, class: `${tone} os-feedback`.trim(), 'data-ui': 'feedback', role: props.role || (tone.includes('bad') ? 'alert' : 'status') },
+    h('span', { class: 'os-feedback-icon', 'aria-hidden': 'true' }, ic(tone.includes('bad') || tone.includes('warn') ? 'alert' : 'info')),
+    text ? h('span', { class: 'os-feedback-copy', text }) : null, ...children);
+}

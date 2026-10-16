@@ -1,6 +1,6 @@
 /** Add / edit a repository record. Server re-validates with the same domain rules. */
 
-import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -165,7 +165,7 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
     if (recordId && !existing) {
       if (!state.recordsReady) return;
       clear(container);
-      append(container, h("div", { class: "os-alert bad", text: "السجل غير موجود." }));
+      append(container, feedback({ class: "os-alert bad", text: "السجل غير موجود." }));
       mounted = true;
       return;
     }
@@ -250,7 +250,7 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
   mount();
   // An ad handed over by «إضافة سريعة» is shown already analysed (no second call).
   if (mounted) container.querySelector("[data-smart-box] textarea")?.value && container.querySelector("[data-smart-analyze]")?.click();
-  if (!mounted) append(container, h("div", { class: "os-skeleton" }));
+  if (!mounted) append(container, loadingState({ class: "os-skeleton" }));
   const off = subscribe((k) => { if (k === "records") mount(); });
   return () => off();
 }

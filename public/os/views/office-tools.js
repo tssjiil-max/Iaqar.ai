@@ -4,7 +4,7 @@
  * profile and records; nothing is sent anywhere by these screens.
  */
 
-import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup, loadingState } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe } from "../core/state.js";
@@ -161,7 +161,7 @@ function renderMarket(container) {
   const stat = (label, value, id) => h("div", { class: "os-market-stat", "data-market-stat": id }, h("b", { text: String(value) }), h("small", { text: label }));
   const draw = () => {
     clear(body);
-    if (!state.recordsReady) { append(body, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
+    if (!state.recordsReady) { append(body, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" })); return; }
     const snap = marketSnapshot(state.records);
     if (!snap.total) {
       append(body, surface("div", { class: "os-card" }, emptyState("chart-up", "لا توجد بيانات بعد", "أضف عروضًا وطلبات لتظهر مؤشرات مكتبك هنا.",

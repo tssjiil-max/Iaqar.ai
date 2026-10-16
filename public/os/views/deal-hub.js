@@ -7,7 +7,7 @@
  * page never changes the deal and never sends anything.
  */
 
-import { h, ic, clear, append, pageHeader, surface } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
@@ -32,8 +32,8 @@ export function renderDealHub(container, { journeyId }) {
     const toTasks = h("button", { type: "button", class: "os-back", "data-back-to-card": "" }, ic("chev-right"), "بطاقة الصفقة");
     toTasks.addEventListener("click", () => { rememberDeal(journeyId); go(tasksRouteToReturnTo()); });
     append(container, pageHeader(h("h1", { class: "os-page-title", text: "متابعة الصفقة" }), { backControl: toTasks, action: h("span") }));
-    if (journey === undefined) { append(container, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
-    if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
+    if (journey === undefined) { append(container, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" })); return; }
+    if (!journey) { append(container, feedback({ class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
 
     const now = new Date();
     const offer = recordById(journey.offerId) || { ...journey.offerSummary, opportunityKind: "OFFER" };

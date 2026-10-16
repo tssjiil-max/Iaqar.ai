@@ -6,7 +6,7 @@
  * The broker watches the whole negotiation and steps in when asked or when he sees a need.
  */
 
-import { h, ic, clear, append, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -193,8 +193,8 @@ export function renderSession(container, { journeyId }) {
     clear(container);
     append(container, pageHeader(h("h1", { class: "os-page-title", text: "غرفة التفاوض" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => { rememberDeal(journeyId); back("tasks"); } }, ic("chev-right"), "رجوع"), action: h("button", { type: "button", class: "os-ref", onClick: () => go(`journey/${journeyId}`), text: "الفرصة" }) }));
     if (journey) append(container, dealFollowBar({ ...journey, journeyId }, { page: "session" }));
-    if (journey === undefined) { append(container, h("div", { class: "os-skeleton" })); return; }
-    if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
+    if (journey === undefined) { append(container, loadingState({ class: "os-skeleton" })); return; }
+    if (!journey) { append(container, feedback({ class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
     const prices = sessionPrices(journey);
     const offer = journey.offerSummary || {};
     const cards = events.filter(isSessionEvent).map(brokerCard);
@@ -230,7 +230,7 @@ export function renderSession(container, { journeyId }) {
         h("summary", {}, ic("broker"), h("span", { text: "سجل تدخلات الوسيط" }), h("span", { class: "os-count", text: String(interventions.length) })),
         sessionEventList(interventions)) : null,
       historyDetails(cards, { emptyText: "لا توجد حركات بعد — أرسل الروابط للطرفين." }),
-      open ? composer(journey, draft) : surface("div", { class: "os-card" }, h("div", { class: "os-alert info", text: "أُغلقت الصفقة وتوقفت روابط الغرفة. السجل محفوظ." })));
+      open ? composer(journey, draft) : surface("div", { class: "os-card" }, feedback({ class: "os-alert info", text: "أُغلقت الصفقة وتوقفت روابط الغرفة. السجل محفوظ." })));
     window.scrollTo({ top: y });
     if (state.requestMode) container.querySelector("textarea[name=requestText]")?.focus({ preventScroll: true });
   };

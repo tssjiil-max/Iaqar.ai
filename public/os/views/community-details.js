@@ -1,6 +1,6 @@
 /** تفاصيل التعاون: الوسطاء (وسيط العرض · وسيط الطلب · وسيط مشارك) واتفاق نسب العمولة. */
 
-import { h, ic, append, clear, surface } from "../core/dom.js";
+import { h, ic, append, clear, surface, loadingState } from "../core/dom.js";
 import { session } from "../core/session.js";
 import { listMembers } from "../core/live.js";
 import { runAction, openSheet } from "../core/ui.js";
@@ -94,7 +94,7 @@ export function openCooperationDetails(view, { onChanged } = {}) {
     const holder = surface("section", { class: "os-card" }, add);
     add.addEventListener("click", async () => {
       clear(holder);
-      append(holder, h("h3", { class: "os-h2", text: "إضافة وسيط مشارك" }), h("div", { class: "os-skeleton" }));
+      append(holder, h("h3", { class: "os-h2", text: "إضافة وسيط مشارك" }), loadingState({ class: "os-skeleton" }));
       let members = [];
       try { members = await listMembers(session.officeId); } catch (_) { /* shown as empty below */ }
       const sides = resolveCooperationSides(record);

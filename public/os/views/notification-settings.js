@@ -1,7 +1,7 @@
 /** «الإشعارات» — which kinds of notifications this office / this account receives. */
 
 import { brokerAlertsCard } from "./bot-settings.js";
-import { h, ic, clear, append, pageHeader, surface } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction } from "../core/ui.js";
@@ -10,7 +10,7 @@ import { NOTIFICATION_CATEGORIES } from "../../js/office-domain.js";
 
 export function renderNotificationSettings(container) {
   append(container, pageHeader(h("h1", { class: "os-page-title", text: "الإشعارات" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => (session.isManager ? go("settings") : back("tasks")) }, ic("chev-right"), "رجوع"), action: h("span") }));
-  const body = h("div", {}, h("div", { class: "os-skeleton" }));
+  const body = h("div", {}, loadingState({ class: "os-skeleton" }));
   append(container, body);
   loadNotificationPrefs().then((prefs) => {
     clear(body);
@@ -21,7 +21,7 @@ export function renderNotificationSettings(container) {
       boxes[category.key] = box;
       return h("label", { class: "os-pref-row" }, h("span", { text: category.label }), box);
     });
-    const status = h("div", { class: "os-alert", role: "status", hidden: true });
+    const status = feedback({ class: "os-alert", role: "status", hidden: true });
     const save = h("button", { type: "button", class: "os-btn primary block", "data-pref-save": "" }, ic("check"), "حفظ تفضيلات الإشعارات");
     save.addEventListener("click", () => runAction(save, async () => {
       const result = await saveNotificationPrefs(Object.fromEntries(Object.entries(boxes).map(([k, el]) => [k, el.checked])));
@@ -35,6 +35,6 @@ export function renderNotificationSettings(container) {
         h("div", { class: "os-pref-list" }, rows)),
       status, save,
       brokerAlertsCard());
-  }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر قراءة تفضيلات الإشعارات لهذا المكتب" })); });
+  }).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر قراءة تفضيلات الإشعارات لهذا المكتب" })); });
   return null;
 }

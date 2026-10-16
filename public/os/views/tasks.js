@@ -4,7 +4,7 @@
  */
 
 import { openGeneralTask } from "./task-fallback.js";
-import { h, ic, clear, emptyState, append, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, emptyState, append, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -287,8 +287,8 @@ export function renderTasks(container, { filter = "all", step = null, lane = nul
       countPill.textContent = dealCountLabel(n);
       append(stageHead, h("b", { text: `مرحلة «${STEPS[CLOSED_STEP][0]}» — ${dealCountLabel(n)}` }),
         h("button", { type: "button", class: "ref-stage-all", "data-stage-all": "", onClick: () => selectStep(null) }, "عرض كل المهام"));
-      if (closed === null) { append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
-      if (closedError) append(list, h("div", { class: "os-alert bad", text: closedError }));
+      if (closed === null) { append(list, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" })); return; }
+      if (closedError) append(list, feedback({ class: "os-alert bad", text: closedError }));
       if (!closed.length && !closedError) {
         append(list, surface("div", { class: "os-card" }, emptyState("check-circle", "لا توجد صفقات مغلقة بعد", "عند إتمام صفقة أو إغلاقها تظهر هنا مع تاريخها الكامل.")));
         return;
@@ -316,7 +316,7 @@ export function renderTasks(container, { filter = "all", step = null, lane = nul
         h("button", { type: "button", class: "ref-stage-all", "data-stage-all": "", onClick: () => selectStep(null) }, "عرض كل المهام"));
     }
     if (!state.tasksReady) {
-      append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" }));
+      append(list, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" }));
       return;
     }
     if (!shown.length && activeLane) {

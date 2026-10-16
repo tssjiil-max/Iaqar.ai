@@ -5,7 +5,7 @@
  * Requests never show a property photo: they show the need, specs and budget.
  */
 
-import { h, ic, clear, emptyState, append, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, emptyState, append, surface, controlGroup, loadingState } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { state, subscribe } from "../core/state.js";
 import { openSheet, closeAllSheets } from "../core/ui.js";
@@ -133,7 +133,7 @@ export function renderRepository(container, { query } = {}) {
   const draw = () => {
     clear(list);
     if (!state.recordsReady) {
-      append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" }));
+      append(list, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" }));
       return;
     }
     let rows = sortRecords(filterRecords(state.records, filters));

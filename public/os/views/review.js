@@ -4,7 +4,7 @@
  */
 
 import { botAskLine } from "./bot-settings.js";
-import { h, ic, clear, append, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -90,12 +90,12 @@ export function renderReview(container, { matchId }) {
   const draw = () => {
     clear(container);
     append(container, pageHeader(h("h1", { class: "os-page-title", text: "مراجعة المطابقة" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "المهام اليومية"), action: h("span") }));
-    if (match === undefined) { append(container, h("div", { class: "os-skeleton" })); return; }
-    if (!match) { append(container, h("div", { class: "os-alert bad", text: "المطابقة غير موجودة أو لم تعد متاحة." })); return; }
+    if (match === undefined) { append(container, loadingState({ class: "os-skeleton" })); return; }
+    if (!match) { append(container, feedback({ class: "os-alert bad", text: "المطابقة غير موجودة أو لم تعد متاحة." })); return; }
     const offer = recordById(match.offerId || match.ownerOfferId);
     const request = recordById(match.requestId || match.clientRequestId);
     if (!offer || !request) {
-      append(container, state.recordsReady ? h("div", { class: "os-alert warn", text: "أحد سجلي المطابقة غير متاح في المستودع." }) : h("div", { class: "os-skeleton" }));
+      append(container, state.recordsReady ? feedback({ class: "os-alert warn", text: "أحد سجلي المطابقة غير متاح في المستودع." }) : loadingState({ class: "os-skeleton" }));
       return;
     }
     const level = compatibilityLevel(match.score);
@@ -103,7 +103,7 @@ export function renderReview(container, { matchId }) {
     const warnings = matchWarnings(match);
     const decided = match.brokerDecision && match.brokerDecision !== "POSTPONED";
     const superseded = match.isCurrent === false || match.status === "superseded";
-    const infoReplies = ["client", "owner"].map((role) => match[`infoReply_${role}`] ? h("div", { class: "os-alert info" }, h("b", { text: role === "client" ? "رد العميل: " : "رد المالك: " }), match[`infoReply_${role}`].label) : null);
+    const infoReplies = ["client", "owner"].map((role) => match[`infoReply_${role}`] ? feedback({ class: "os-alert info" }, h("b", { text: role === "client" ? "رد العميل: " : "رد المالك: " }), match[`infoReply_${role}`].label) : null);
 
     const approveBtn = h("button", { type: "button", class: "os-btn primary block" }, ic("handshake"), "اعتماد وبدء التفاوض");
     approveBtn.addEventListener("click", () => runAction(approveBtn, async () => {
@@ -136,7 +136,7 @@ export function renderReview(container, { matchId }) {
       infoReplies,
       decided || superseded
         ? surface("div", { class: "os-card" },
-          h("div", { class: `os-alert ${match.brokerDecision === "APPROVED" ? "ok" : "info"}`, text: superseded && !decided ? "حُدّثت بيانات أحد السجلين فأصبحت هذه النسخة قديمة." : match.brokerDecision === "APPROVED" ? "تم اعتماد هذه المطابقة." : "تم رفض هذه المطابقة." }),
+          feedback({ class: `os-alert ${match.brokerDecision === "APPROVED" ? "ok" : "info"}`, text: superseded && !decided ? "حُدّثت بيانات أحد السجلين فأصبحت هذه النسخة قديمة." : match.brokerDecision === "APPROVED" ? "تم اعتماد هذه المطابقة." : "تم رفض هذه المطابقة." }),
           match.journeyId ? h("button", { type: "button", class: "os-btn primary block", style: { marginTop: "10px" }, onClick: () => go(`journey/${match.journeyId}`) }, "فتح مساحة الفرصة") : null)
         : surface("div", { class: "os-card" }, approveBtn, moreRow,
           h("p", { class: "os-sub", style: { marginTop: "8px", fontSize: ".86rem" }, text: "لن يُرسل أي شيء للعميل أو المالك قبل قرارك." }))

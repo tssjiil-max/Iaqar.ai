@@ -4,7 +4,7 @@
  * value the visitor sends; the Worker re-checks the intake belongs to that office.
  */
 
-import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { db, workerBase } from "../core/runtime.js";
 import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
@@ -140,8 +140,8 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
   // The rules and the Worker accept up to 5 photos from the public link, for offers only.
   const picker = kind === "owner" ? imagePicker({ max: 5, hint: "حتى 5 صور للعقار. تُصغَّر تلقائيًا قبل الإرسال." }) : null;
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("send"), "إرسال");
-  const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
-  const waiting = h("div", { class: "os-alert info", role: "status", hidden: true, "data-public-waiting": "", text: "جارٍ البحث عن العقارات أو الطلبات المناسبة لك، يرجى الانتظار قليلًا" });
+  const status = feedback({ class: "os-alert bad", role: "alert", hidden: true });
+  const waiting = feedback({ class: "os-alert info", role: "status", hidden: true, "data-public-waiting": "", text: "جارٍ البحث عن العقارات أو الطلبات المناسبة لك، يرجى الانتظار قليلًا" });
   // Consent: processing is required to send; WhatsApp notices are a separate, optional choice.
   const consent = h("input", { type: "checkbox", name: "consentProcessing", "data-consent-processing": "" });
   const consentWa = h("input", { type: "checkbox", name: "consentWhatsapp", "data-consent-whatsapp": "" });
@@ -286,7 +286,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
 
 export async function renderPublicOffice(root, target) {
   clear(root);
-  const main = h("main", { class: "os-app", style: { maxWidth: "560px" } }, h("div", { class: "os-skeleton", style: { height: "220px" } }));
+  const main = h("main", { class: "os-app", style: { maxWidth: "560px" } }, loadingState({ class: "os-skeleton", style: { height: "220px" } }));
   append(root, main);
   let office = null;
   try {

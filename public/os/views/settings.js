@@ -1,6 +1,6 @@
 /** Manager settings: assignment rule, deal-completion permission, brokers list. */
 
-import { h, ic, clear, append, pageHeader, surface } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { listMembers, officeSetting, saveOfficeSetting } from "../core/live.js";
@@ -16,10 +16,10 @@ function memberName(member) {
 export function renderSettings(container) {
   append(container, pageHeader(h("h1", { class: "os-page-title", text: "الوسطاء والإسناد والصلاحيات" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => go("settings") }, ic("chev-right"), "رجوع"), action: h("span") }));
   if (!session.isManager) {
-    append(container, h("div", { class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." }));
+    append(container, feedback({ class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." }));
     return null;
   }
-  const body = h("div", {}, h("div", { class: "os-skeleton" }));
+  const body = h("div", {}, loadingState({ class: "os-skeleton" }));
   append(container, body);
   Promise.all([listMembers(session.officeId), officeSetting(session.officeId, "assignment"), officeSetting(session.officeId, "deals")])
     .then(([members, assignment, deals]) => {
@@ -53,6 +53,6 @@ export function renderSettings(container) {
         save
       );
     })
-    .catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل الإعدادات." })); });
+    .catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل الإعدادات." })); });
   return null;
 }

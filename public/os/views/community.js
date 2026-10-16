@@ -1,6 +1,6 @@
 /** #/community — «التعاون بين الوسطاء»: direct cooperation between the offer broker and the request broker. */
 
-import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { journeyForMatch } from "../core/live.js";
@@ -71,7 +71,7 @@ export function renderCommunity(container) {
       chips.append(h("button", { type: "button", class: "os-chip", "data-tab": t.id, "aria-pressed": String(tab === t.id), onClick: () => { touched = true; tab = t.id; draw(); } }, t.label, n ? h("span", { class: "n", text: String(n) }) : null));
     }
     clear(list);
-    if (!ready) { append(list, h("div", { class: "os-skeleton" })); return; }
+    if (!ready) { append(list, loadingState({ class: "os-skeleton" })); return; }
     if (!tabs[tab].length) {
       append(list, surface("div", { class: "os-card" }, emptyState("handshake", tab === "active" ? "لا يوجد تعاون نشط" : tab === "waiting" ? "لا شيء بانتظار رد" : "السجل فارغ",
         "عند ظهور مطابقة مع مكتب آخر أو وصول طلب تعاون ستجده هنا.")));
@@ -82,6 +82,6 @@ export function renderCommunity(container) {
   append(container, chips, list);
   draw();
   const off = watchCooperation(session.officeId, (next) => { rows = next; ready = true; draw(); },
-    () => { ready = true; clear(list); append(list, h("div", { class: "os-alert bad", text: "تعذر تحميل طلبات التعاون." })); });
+    () => { ready = true; clear(list); append(list, feedback({ class: "os-alert bad", text: "تعذر تحميل طلبات التعاون." })); });
   return off;
 }

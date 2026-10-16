@@ -139,9 +139,21 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .office-standalone .os-page-header .os-page-title{font-size:22px;line-height:1.5;margin:0;color:var(--text);overflow-wrap:anywhere}
 .office-standalone .os-page-header .os-sub{color:var(--muted);margin:4px 0 0;font-size:13px;line-height:1.65}
 .office-standalone .os-page-icon svg{width:27px;height:27px;display:block;color:var(--brand-primary)}
-.office-standalone .os-page-heading{align-items:center;min-width:0}
+.office-standalone .os-page-heading{align-items:flex-start;min-width:0}
 .office-standalone .header .brand .os-page-header{margin:0;padding:8px;border:0;background:none;box-shadow:none}
 .os-app .os-control-group{gap:8px;min-width:0;max-width:100%}
 .os-app .os-control-group:is(.os-chips,.os-seg){padding:6px;border:1px solid var(--brand-line);border-radius:13px;background:var(--surface-2)}
 .os-app .os-control-group .os-chip{flex-shrink:0}
 .os-app .os-settings-grid[data-ui="surface"]{padding:0;border:0;background:none;box-shadow:none}
+
+/* State compositions share the same icon / copy hierarchy as office cards. */
+.os-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.os-skeleton[data-ui="loading"]{display:flex;align-items:center;min-height:88px;padding:16px;border:1px solid var(--brand-line);border-radius:var(--radius);background:var(--surface);animation:none}
+.os-loading-lines{display:grid;gap:10px;width:100%}
+.os-loading-lines>span{display:block;width:92%;height:10px;border-radius:8px;background:var(--brand-tint)}
+.os-loading-lines>span:nth-child(2){width:76%}.os-loading-lines>span:nth-child(3){width:58%}
+.os-feedback{display:flex;gap:10px;align-items:flex-start;line-height:1.7}
+.os-feedback[hidden]{display:none}
+.os-feedback-icon{flex:0 0 22px;display:grid;place-items:center;margin-top:2px}
+.os-feedback-icon svg{width:22px;height:22px;color:inherit;--ico:currentColor}
+.os-feedback-copy{min-width:0;overflow-wrap:anywhere}

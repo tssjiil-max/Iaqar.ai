@@ -1,6 +1,6 @@
 /** «مكتبة المكتب» — contract folders and office files. Any member reads/adds/edits; only managers delete (rules enforce it). */
 
-import { h, ic, clear, append, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, openSheet, runAction, toast } from "../core/ui.js";
@@ -25,7 +25,7 @@ export function renderLibrary(container) {
     Object.entries(DOCUMENT_STATUS_LABELS).map(([k, label]) => h("option", { value: k, text: label })));
   const validity = h("select", { class: "os-select", name: "activeFilter", "aria-label": "السريان" }, h("option", { value: "", text: "الكل" }), h("option", { value: "active", text: "ساري" }), h("option", { value: "expired", text: "منتهي" }));
   const info = h("p", { class: "os-sub", role: "status", "data-lib-status": "" });
-  const content = h("div", { "data-lib-content": "" }, h("div", { class: "os-skeleton" }));
+  const content = h("div", { "data-lib-content": "" }, loadingState({ class: "os-skeleton" }));
   append(container,
     pageHeader(h("h1", { class: "os-page-title", text: "مكتبة المكتب" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "رجوع"), action: h("span") }),
     surface("div", { class: "os-card" }, h("div", { class: "os-lib-filters" }, search, status, validity), info),
@@ -50,7 +50,7 @@ export function renderLibrary(container) {
     const start = input("startDate", item?.startDate || "", { type: "date", dir: "ltr" });
     const expiry = input("expiryDate", item?.expiryDate || "", { type: "date", dir: "ltr" });
     const wrap = (label, control, name) => h("label", { class: "os-field" }, h("span", { text: label }), control, h("span", { class: "os-field-note is-error", "data-field-error": name, hidden: true }));
-    const message = h("div", { class: "os-alert bad", role: "alert", hidden: true });
+    const message = feedback({ class: "os-alert bad", role: "alert", hidden: true });
     const save = h("button", { type: "button", class: "os-btn primary block", "data-lib-save": "" }, ic("check"), editing ? "حفظ التعديلات" : "رفع وحفظ");
     const body = h("div", { class: "os-form" },
       editing ? null : h("div", {}, pick, " ", chosen, file),
@@ -139,7 +139,7 @@ export function renderLibrary(container) {
     } catch (_) {
       info.textContent = "تعذر تحميل المكتبة";
       clear(content);
-      append(content, h("div", { class: "os-alert bad", text: "تعذر تحميل المكتبة — تحقق من الاتصال وأعد المحاولة." }));
+      append(content, feedback({ class: "os-alert bad", text: "تعذر تحميل المكتبة — تحقق من الاتصال وأعد المحاولة." }));
     }
   }
 

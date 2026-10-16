@@ -9,7 +9,7 @@
  * The page refreshes itself while open, so moves from the other side appear directly.
  */
 
-import { h, ic, clear, append, surface } from "./core/dom.js";
+import { h, ic, clear, append, surface, feedback } from "./core/dom.js";
 import { workerBase } from "./core/runtime.js";
 import { formatDateTime, formatNumber, formatPrice } from "./domain/format-domain.js";
 import { historyDetails, roomAgreedCard, roomPropertyCard, roomSidesCard, roomTermsList } from "./views/session-parts.js";
@@ -62,7 +62,7 @@ function stateView(message, tone = "warn") {
   clear(root);
   append(root, h("main", { class: "os-app os-session-app" },
     h("header", { class: "os-session-head" }, h("h1", { class: "os-page-title", text: "غرفة التفاوض" })),
-    surface("div", { class: "os-card" }, h("div", { class: `os-alert ${tone}`, text: message }))));
+    surface("div", { class: "os-card" }, feedback({ class: `os-alert ${tone}`, text: message }))));
 }
 
 function head(office = {}, session = {}) {
@@ -125,7 +125,7 @@ function typedPanel(action, onSend) {
 /** The step that is open for this side now (price or viewing) — the bar stays within reach. */
 function actionsBar(session) {
   const bar = h("section", { class: "os-session-actions", "aria-label": "الإجراء المطلوب منك الآن" });
-  const status = h("div", { class: "os-alert bad", role: "alert", hidden: true, "data-room-error": "" });
+  const status = feedback({ class: "os-alert bad", role: "alert", hidden: true, "data-room-error": "" });
   const pick = async (action) => {
     if (action.typed || action.toggle) {
       open = { ...closed(), typed: open.typed === action.id ? "" : action.id };
@@ -172,7 +172,7 @@ function actionsBar(session) {
  */
 function versusCard(session, live) {
   const room = session.room || {};
-  const status = h("div", { class: "os-alert bad", role: "alert", hidden: true, "data-room-error": "" });
+  const status = feedback({ class: "os-alert bad", role: "alert", hidden: true, "data-room-error": "" });
   const card = surface("section", { class: "os-card os-room-part os-deal-sides", "aria-label": "المالك مقابل العميل", "data-room-part": "versus" },
     h("h2", { class: "os-h2 os-part-title" }, ic("swap"), "المالك مقابل العميل"),
     roomSidesCard({
@@ -274,7 +274,7 @@ function render() {
   const y = window.scrollY;
   clear(root);
   loadPhoto(room.imageVersion || "");
-  const notice = flash ? h("div", { class: "os-alert bad", role: "alert", "data-room-flash": "" }, h("span", { text: flash })) : null;
+  const notice = flash ? feedback({ class: "os-alert bad", role: "alert", "data-room-flash": "" }, h("span", { text: flash })) : null;
   if (notice) {
     const dismiss = h("button", { type: "button", class: "os-icon-btn", "aria-label": "إخفاء التنبيه" }, ic("x"));
     dismiss.addEventListener("click", () => { flash = ""; notice.remove(); });
@@ -291,7 +291,7 @@ function render() {
     roomAgreedCard(room.agreed || []),
     versusCard(session, live),
     historyDetails(session.events, { emptyText: "لا توجد حركات بعد.", note: "لا تظهر بيانات التواصل أو الأسماء بين الطرفين. كل خطوة تُحفظ في السجل." }),
-    live ? actionsBar(session) : surface("div", { class: "os-card" }, h("div", { class: "os-alert info", text: current.message || "انتهت غرفة التفاوض لهذه الصفقة." })));
+    live ? actionsBar(session) : surface("div", { class: "os-card" }, feedback({ class: "os-alert info", text: current.message || "انتهت غرفة التفاوض لهذه الصفقة." })));
   append(root, main);
   window.scrollTo({ top: y });
   if (open.extra === "broker") root.querySelector("textarea[name=brokerNote]")?.focus({ preventScroll: true });
@@ -323,7 +323,7 @@ async function start() {
   } catch (_) {
     clear(root);
     append(root, h("main", { class: "os-app os-session-app" }, surface("div", { class: "os-card" },
-      h("div", { class: "os-alert warn", text: "تعذر تحميل غرفة التفاوض — تحقق من الاتصال ثم أعد المحاولة." }),
+      feedback({ class: "os-alert warn", text: "تعذر تحميل غرفة التفاوض — تحقق من الاتصال ثم أعد المحاولة." }),
       h("button", { type: "button", class: "os-btn secondary block", style: { marginTop: "10px" }, onClick: start }, ic("refresh"), "إعادة المحاولة"))));
     return;
   }

@@ -8,7 +8,7 @@
  * Manager-only; everything saves through core/office-profile.js.
  */
 
-import { h, ic, clear, append, navigationTile, pageHeader, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, navigationTile, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
@@ -31,7 +31,7 @@ function pageHead(title, backTo = "settings") {
 function managerOnly(container, title) {
   append(container, pageHead(title, "tasks"));
   if (session.isManager) return false;
-  append(container, h("div", { class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." }));
+  append(container, feedback({ class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." }));
   return true;
 }
 
@@ -260,7 +260,7 @@ export function renderLinkSettings(container) {
 
 export function renderCooperationSettings(container) {
   if (managerOnly(container, "التعاون بين الوسطاء")) return null;
-  const body = h("div", {}, h("div", { class: "os-skeleton" }));
+  const body = h("div", {}, loadingState({ class: "os-skeleton" }));
   append(container, body);
   let selected = "";
   loadCooperationMode().then((mode) => {
@@ -287,7 +287,7 @@ export function renderCooperationSettings(container) {
         h("p", { class: "os-sub", text: "بيانات التواصل لا تظهر تلقائيًا في أي وضع." }),
         group),
       save);
-  }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل إعداد التعاون." })); });
+  }).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل إعداد التعاون." })); });
   return null;
 }
 
@@ -341,7 +341,7 @@ function whatsappCard(view, reload) {
       fact("استقبال الرسائل (Webhook)", view.webhookLabel, { "data-webhook-status": view.webhookReady ? "ready" : "off" }),
       view.state === "CONNECTED" ? fact("رسائل اليوم", String(view.inboundToday)) : null,
       fact("طريقة الربط", coexistence ? "Cloud API مع بقاء الرقم على تطبيق واتساب للأعمال" : "Cloud API", { "data-onboarding": view.onboardingMode })),
-    view.detail ? h("div", { class: "os-alert bad", "data-channel-error": "", text: view.detail }) : null,
+    view.detail ? feedback({ class: "os-alert bad", "data-channel-error": "", text: view.detail }) : null,
     view.note ? h("p", { class: "os-sub", "data-channel-note": "", text: view.note }) : null,
     actions.length ? controlGroup("div", { class: "os-btn-row" }, ...actions) : null);
 }
@@ -391,7 +391,7 @@ function telegramCard(view, reload, pending) {
 
 export function renderChannelSettings(container) {
   if (managerOnly(container, "قنوات المكتب")) return null;
-  const body = h("div", { "data-channels": "" }, h("div", { class: "os-skeleton" }));
+  const body = h("div", { "data-channels": "" }, loadingState({ class: "os-skeleton" }));
   append(container, body);
   // The one-time Telegram link lives only in this screen's memory; the server keeps its hash.
   const pending = { link: "", expiresAt: "" };
@@ -426,6 +426,6 @@ export function renderChannelSettings(container) {
     const payload = await loadChannels(session.officeId);
     if (!closed && body.isConnected) draw(payload);
   }
-  reload().catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل حالة القنوات." })); });
+  reload().catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل حالة القنوات." })); });
   return () => { closed = true; clearTimeout(timer); };
 }

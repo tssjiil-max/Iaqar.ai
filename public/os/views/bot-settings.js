@@ -4,7 +4,7 @@
  * (review page). Sending itself happens only in the Worker.
  */
 
-import { h, ic, clear, append, surface, controlGroup } from "../core/dom.js";
+import { h, ic, clear, append, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
 import { loadChannels } from "../core/channels.js";
@@ -53,7 +53,7 @@ export function botCard(view = {}, reload) {
 
 /** «تنبيهاتي على تيليجرام» — each broker links his own chat; loads and refreshes itself. */
 export function brokerAlertsCard() {
-  const body = h("div", { class: "os-skeleton" });
+  const body = loadingState({ class: "os-skeleton" });
   const card = surface("article", { class: "os-card os-chan", "data-bot-alerts": "" }, body);
   const pending = { link: "", until: 0 };
   let timer = 0;
@@ -111,7 +111,7 @@ const PARTY_STATE = Object.freeze({
  * Sending the link is the broker's own act (copy, or his own WhatsApp).
  */
 export function partyBotRow(record = {}, { who = "العميل" } = {}) {
-  const row = h("div", { class: "os-bot-party", "data-bot-party": "" }, h("div", { class: "os-skeleton", style: { height: "40px" } }));
+  const row = h("div", { class: "os-bot-party", "data-bot-party": "" }, loadingState({ class: "os-skeleton", style: { height: "40px" } }));
   const draw = (status, link = null) => {
     clear(row);
     if (!status.available) { row.hidden = true; return; }
@@ -139,5 +139,5 @@ export function partyBotRow(record = {}, { who = "العميل" } = {}) {
 export function botAskLine(match = {}) {
   const label = ASK_STATE_LABEL[String(match.botAskState || "")];
   if (!label) return null;
-  return h("div", { class: "os-alert info os-bot-ask", "data-bot-ask": String(match.botAskState) }, ic("telegram"), h("span", { text: `${label}. يمكنك اتخاذ القرار بنفسك في أي وقت، فيتوقف سؤال البوت.` }));
+  return feedback({ class: "os-alert info os-bot-ask", "data-bot-ask": String(match.botAskState) }, ic("telegram"), h("span", { text: `${label}. يمكنك اتخاذ القرار بنفسك في أي وقت، فيتوقف سؤال البوت.` }));
 }
