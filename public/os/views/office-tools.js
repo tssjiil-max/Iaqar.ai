@@ -92,7 +92,7 @@ function renderGuide(container) {
 function renderServices(container) {
   append(container, pageHead("الخدمات"),
     h("p", { class: "os-sub os-tool-intro", text: "روابط المنصات الرسمية. تُفتح خارج التطبيق، ولا يتبادل المكتب معها أي بيانات." }),
-    surface("section", { class: "os-card os-set-list", "data-tool-services": "" }, OFFICIAL_SERVICES.map((service) =>
+    surface("section", { class: "os-card os-set-list os-settings-grid", "data-tool-services": "", "aria-label": "المنصات والخدمات الرسمية" }, OFFICIAL_SERVICES.map((service) =>
       navigationTile({ title: service.name, hint: service.hint, iconName: "link", href: service.url,
         attrs: { class: "os-service-row", target: "_blank", rel: "noopener noreferrer", "data-service": service.id } }))));
   return null;
