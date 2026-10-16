@@ -22,6 +22,9 @@ const h = await startOfficeOsHarness();
 // the office's switch stays off and Telegram is never called.
 Object.assign(h.env, { TELEGRAM_BOT_TOKEN: "123456789:WIDTHS-TOKEN-never-used-to-send-00000000", TELEGRAM_WEBHOOK_SECRET: "widths-secret", TELEGRAM_BOT_USERNAME: "iaqar_widths_bot", TELEGRAM_OUTBOUND: "enabled" }); // pragma: allowlist secret
 const s = await seedStates(h);
+// One explicitly published offer, so the guest journey («أبحث عن عقار») shows a real result.
+h.store.seed(`offices/${OFFICE_A}/opportunities/widths-public`, { officeId: OFFICE_A, opportunityKind: "OFFER", purpose: "SALE", transactionType: "sale", propertyType: "شقة", city: "الرياض", district: "الملقا", priceOrBudget: 500000, salePrice: 500000, advertiserRole: "OWNER", contactPhone: "0553331234", lifecycleStatus: "ACTIVE", publicSearchVisible: true, rooms: 4, version: 1 });
+const GUEST_TEXT = "مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف";
 const { callWorker } = await import(path.join(ROOT, "scripts/qa/office-os/seed.mjs"));
 const linkToken = (url) => String(url).split("#")[1];
 const negLinks = (await callWorker(h, "/os/session/links", { officeId: OFFICE_A, journeyId: s.negotiation.journeyId })).links;
@@ -56,8 +59,11 @@ const SCREENS = [
   // cooperating-broker fields, the validation messages. Test data only; nothing is sent.
   { name: "public-form-smart", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').waitFor(); } },
   { name: "public-form-smart-review", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').fill(SMART_OFFER); await p.locator("[data-smart-analyze]").click(); await p.locator("[data-smart-review]").waitFor(); } },
-  { name: "public-request-form", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
-  { name: "public-request-smart-review", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('[name="smartText"]').fill(SMART_REQUEST); await p.locator("[data-smart-analyze]").click(); await p.locator("[data-smart-review]").waitFor(); } },
+  // «أبحث عن عقار» is the guest search (owner decision 2026-10-16): request → matches → choice → consent → WhatsApp.
+  { name: "public-request-form", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('[data-guest-search-form] textarea[name="description"]').waitFor(); } },
+  { name: "public-request-smart-review", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('textarea[name="description"]').fill(GUEST_TEXT); await p.locator("[data-guest-analyze]").click(); await p.locator("details[data-search-criteria][open]").waitFor(); await p.waitForFunction(() => document.querySelector('[name=price]')?.value === "550000"); } },
+  { name: "public-request-results", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('textarea[name="description"]').fill(GUEST_TEXT); await p.locator("[data-guest-analyze]").click(); await p.waitForFunction(() => document.querySelector('[name=price]')?.value === "550000"); await p.locator("[data-guest-search]").click(); await p.locator("[data-search-result]").first().waitFor(); } },
+  { name: "public-request-choose", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => { await p.locator('[data-path="client"]').click(); await p.locator('textarea[name="description"]').fill(GUEST_TEXT); await p.locator("[data-guest-analyze]").click(); await p.waitForFunction(() => document.querySelector('[name=price]')?.value === "550000"); await p.locator("[data-guest-search]").click(); await p.locator("[data-choose-result]").first().click(); await p.locator("[data-guest-select-form]").waitFor(); } },
   { name: "public-form-coop-broker", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('[data-testid="submitter-capacity"]').selectOption("LICENSED_BROKER"); await p.locator('input[name="externalBrokerLicense"]').waitFor(); } },
   { name: "public-form-errors", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.locator(".os-field.invalid").first().waitFor(); } },
   { name: "login", url: "/", wait: 'input[name="phone"]', auth: false },
@@ -134,11 +140,12 @@ const SCREENS = [
   { name: "record-bot-link", url: `/#/record/${s.review.requestId}`, wait: "[data-bot-party-link]", act: async (p) => { await p.locator("[data-bot-party-link]").click(); await p.locator("[data-bot-party-url]").waitFor(); } },
   // Last: «المراجعة والإرسال» to the end. It stores one isolated test intake in the in-memory office (a district no seed uses).
   { name: "public-form-sent", url: "/m/sultan", wait: "text=أبحث عن عقار", auth: false, act: async (p) => {
-    await p.locator('[data-path="client"]').click(); await p.locator('[data-fill-mode="manual"]').click();
-    await p.getByRole("button", { name: "استئجار", exact: true }).click();
-    await p.locator('[name="propertyType"]').fill("استراحة"); await p.locator('[name="district"]').fill("حي اختبار العرض"); await p.locator('[name="price"]').fill("45000");
+    await p.locator('[data-path="client"]').click(); await p.locator('textarea[name="description"]').fill(GUEST_TEXT); await p.locator("[data-guest-analyze]").click();
+    await p.waitForFunction(() => document.querySelector('[name=price]')?.value === "550000"); await p.locator("[data-guest-search]").click();
+    await p.locator("[data-choose-result]").first().click(); await p.locator("[data-guest-select-form]").waitFor();
     await p.locator('[name="contactName"]').fill("زائر اختباري"); await p.locator('[name="contactPhone"]').fill(`05599${String(p.viewportSize().width).padStart(5, "0")}`);
-    await p.locator("[data-consent-processing]").check(); await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.getByRole("heading", { name: "تم استلام بياناتك" }).waitFor();
+    await p.locator('[name="consentProcessing"]').check(); await p.locator('[name="consentContact"]').check(); await p.locator("[data-guest-select]").click();
+    await p.locator("[data-whatsapp-handoff]").waitFor();
   } }
 ];
 

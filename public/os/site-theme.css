@@ -356,6 +356,5 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-guest-result-price{color:var(--brand-dark,#082f3a);white-space:nowrap}
 .os-guest-result-tags{display:flex;gap:6px;flex-wrap:wrap}
 .os-guest-result .os-badge{margin:0}
-@media(min-width:768px){.os-public-page [data-guest-results]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.os-public-page [data-guest-results]>:is(.os-page-head,header,p){grid-column:1/-1}.os-guest-result{margin:0}}
 .os-record-reservation{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#e3ecee)}
 .os-record-reservation .os-btn{flex:0 1 auto}
