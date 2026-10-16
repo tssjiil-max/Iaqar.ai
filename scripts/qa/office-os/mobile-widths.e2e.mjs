@@ -310,7 +310,10 @@ for (const width of WIDTHS) {
       issues = [...await page.evaluate(layoutIssues), ...await page.evaluate(typeIssues)];
       await page.screenshot({ path: path.join(OUT, `${width}-${screen.name}.png`), fullPage: true });
     } catch (error) {
-      issues = [`failed to render: ${String(error.message).split("\n")[0]}`];
+      // Say WHY: the waited-for selector and any message the page was showing at that moment.
+      const waiting = (String(error.message).match(/waiting for (locator\([^\n]*?\))/) || [])[1] || "";
+      const shown = await page.evaluate(() => [...document.querySelectorAll(".os-alert.bad:not([hidden]), .os-toast, [role=alert]")].map((n) => n.textContent.trim()).filter(Boolean).join(" / ").slice(0, 200)).catch(() => "");
+      issues = [`failed to render: ${String(error.message).split("\n")[0]}${waiting ? ` — ${waiting.slice(0, 120)}` : ""}${shown ? ` — page said: ${shown}` : ""}`];
     }
     results.push({ width, screen: screen.name, issues });
     console.log(`${issues.length ? "✘" : "✔"} ${width}px ${screen.name}${issues.length ? ` — ${issues.slice(0, 4).join(" | ")}` : ""}`);
