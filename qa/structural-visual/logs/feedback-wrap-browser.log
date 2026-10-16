@@ -1,0 +1,11 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+Running 1 test using 1 worker
+
+(node:146) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:146) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 scripts/qa/office-os/shared-composition.visual.spec.mjs:53:1 › duplicate record warning keeps every action visible at 320px (902ms)
+
+  1 passed (2.4s)

@@ -1,0 +1,31 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+Running 21 tests using 1 worker
+
+(node:31) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:31) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › scout/new shared composition 320 (563ms)
+  ✓   2 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings shared composition 320 (566ms)
+  ✓   3 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings/profile shared composition 320 (384ms)
+  ✓   4 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings/notifications shared composition 320 (521ms)
+  ✓   5 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › tools/calculator shared composition 320 (453ms)
+  ✓   6 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › record/new?kind=OFFER shared composition 320 (391ms)
+  ✓   7 scripts/qa/office-os/shared-composition.visual.spec.mjs:33:3 › shared sheet heading 320 (582ms)
+  ✓   8 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › scout/new shared composition 390 (526ms)
+  ✓   9 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings shared composition 390 (583ms)
+  ✓  10 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings/profile shared composition 390 (497ms)
+  ✓  11 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings/notifications shared composition 390 (603ms)
+  ✓  12 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › tools/calculator shared composition 390 (718ms)
+  ✓  13 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › record/new?kind=OFFER shared composition 390 (419ms)
+  ✓  14 scripts/qa/office-os/shared-composition.visual.spec.mjs:33:3 › shared sheet heading 390 (519ms)
+  ✓  15 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › scout/new shared composition 1280 (745ms)
+  ✓  16 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings shared composition 1280 (631ms)
+  ✓  17 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings/profile shared composition 1280 (501ms)
+  ✓  18 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › settings/notifications shared composition 1280 (485ms)
+  ✓  19 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › tools/calculator shared composition 1280 (424ms)
+  ✓  20 scripts/qa/office-os/shared-composition.visual.spec.mjs:12:5 › record/new?kind=OFFER shared composition 1280 (451ms)
+  ✓  21 scripts/qa/office-os/shared-composition.visual.spec.mjs:33:3 › shared sheet heading 1280 (462ms)
+
+  21 passed (17.7s)

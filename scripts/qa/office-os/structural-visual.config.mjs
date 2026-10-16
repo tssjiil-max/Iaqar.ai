@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'.',outputDir:'qa-run-artifacts/shared-visual',testMatch:'shared-composition.visual.spec.mjs',workers:1,retries:0,timeout:30000,reporter:'list',snapshotPathTemplate:'{testDir}/snapshots/{arg}{ext}',use:{locale:'ar-SA',reducedMotion:'reduce',viewport:{width:390,height:900}},expect:{toHaveScreenshot:{animations:'disabled',maxDiffPixelRatio:0.001}}});

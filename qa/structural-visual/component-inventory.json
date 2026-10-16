@@ -1,0 +1,412 @@
+{
+  "views": [
+    {
+      "file": "public/os/views/agent.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 6,
+        "controlGroup": 5,
+        "loadingState": 1,
+        "feedback": 4,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/auth-flows.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 0,
+        "loadingState": 0,
+        "feedback": 2,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/auth-shell.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 1,
+        "controlGroup": 0,
+        "loadingState": 0,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/bot-settings.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 2,
+        "controlGroup": 6,
+        "loadingState": 2,
+        "feedback": 1,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/community-details.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 3,
+        "controlGroup": 0,
+        "loadingState": 1,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/community.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 2,
+        "controlGroup": 1,
+        "loadingState": 1,
+        "feedback": 1,
+        "emptyState": 1,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/composer.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 4,
+        "loadingState": 0,
+        "feedback": 2,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/deal-follow-bar.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 0,
+        "loadingState": 0,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/deal-hub.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 5,
+        "controlGroup": 0,
+        "loadingState": 2,
+        "feedback": 1,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/external-cooperation.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 1,
+        "controlGroup": 0,
+        "loadingState": 0,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/library.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 3,
+        "controlGroup": 1,
+        "loadingState": 1,
+        "feedback": 2,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/login.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 0,
+        "loadingState": 0,
+        "feedback": 1,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/notification-settings.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 1,
+        "controlGroup": 0,
+        "loadingState": 1,
+        "feedback": 2,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/office-center.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 1,
+        "controlGroup": 2,
+        "loadingState": 3,
+        "feedback": 3,
+        "emptyState": 3,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/office-settings.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 9,
+        "controlGroup": 6,
+        "loadingState": 2,
+        "feedback": 4,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/office-tools.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 9,
+        "controlGroup": 3,
+        "loadingState": 2,
+        "feedback": 0,
+        "emptyState": 1,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/public-office.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 3,
+        "controlGroup": 1,
+        "loadingState": 1,
+        "feedback": 2,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/quick-add.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 2,
+        "controlGroup": 1,
+        "loadingState": 0,
+        "feedback": 2,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/record-actions.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 0,
+        "loadingState": 0,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/record-detail.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 4,
+        "controlGroup": 2,
+        "loadingState": 2,
+        "feedback": 2,
+        "emptyState": 1,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/record-form.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 1,
+        "controlGroup": 4,
+        "loadingState": 1,
+        "feedback": 1,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/record-images.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 0,
+        "loadingState": 0,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/reference-layout.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 7,
+        "controlGroup": 1,
+        "loadingState": 0,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/repository.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 3,
+        "controlGroup": 2,
+        "loadingState": 2,
+        "feedback": 0,
+        "emptyState": 2,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/review.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 5,
+        "controlGroup": 2,
+        "loadingState": 2,
+        "feedback": 4,
+        "emptyState": 0,
+        "comparisonTable": 1
+      }
+    },
+    {
+      "file": "public/os/views/scout.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 19,
+        "controlGroup": 10,
+        "loadingState": 5,
+        "feedback": 17,
+        "emptyState": 1,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/session-parts.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 7,
+        "controlGroup": 1,
+        "loadingState": 0,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/session-view.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 5,
+        "controlGroup": 4,
+        "loadingState": 1,
+        "feedback": 2,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/settings.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 3,
+        "controlGroup": 0,
+        "loadingState": 1,
+        "feedback": 2,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/shell.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 0,
+        "loadingState": 1,
+        "feedback": 1,
+        "emptyState": 1,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/smart-fill.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 1,
+        "loadingState": 0,
+        "feedback": 4,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/task-fallback.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 0,
+        "controlGroup": 0,
+        "loadingState": 0,
+        "feedback": 0,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/tasks.js",
+      "sharedComponents": {
+        "pageHeader": 0,
+        "surface": 7,
+        "controlGroup": 1,
+        "loadingState": 4,
+        "feedback": 1,
+        "emptyState": 4,
+        "comparisonTable": 0
+      }
+    },
+    {
+      "file": "public/os/views/workspace.js",
+      "sharedComponents": {
+        "pageHeader": 1,
+        "surface": 9,
+        "controlGroup": 7,
+        "loadingState": 3,
+        "feedback": 3,
+        "emptyState": 0,
+        "comparisonTable": 0
+      }
+    }
+  ]
+}
