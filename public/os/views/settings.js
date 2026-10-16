@@ -48,7 +48,7 @@ export function renderSettings(container) {
           officeSection({ title: "الوسطاء", iconName: "users" },
             h("ul", { class: "os-list" }, active.map((m) => h("li", {}, ic("user"), `${memberName(m)} — ${ROLE_LABEL[m.role] || "وسيط"}`))),
             h("p", { class: "os-sub", text: "إضافة وسيط جديد تتم من إدارة المنصة." }))),
-        h("div", { class: "os-office-settings-actions" }, save)
+        h("div", { class: "os-office-settings-actions" }, save))
       );
     })
     .catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل الإعدادات." })); });
