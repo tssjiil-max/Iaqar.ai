@@ -1,0 +1,15 @@
+PASS both party pages open without login and show only role labels
+PASS client −5% appears on the owner page live (no reload)
+PASS owner compromise shows the computed average and updates the client
+PASS typed price takes digits only
+PASS the room has three parts and the terms of this kind of property (a villa sale)
+PASS a term: the owner proposes, the client sees it live and accepts → «ما تم الاتفاق عليه»
+PASS «طلب تدخل الوسيط»: the note reaches the broker only; he passes it on as passed on by the broker
+PASS the broker rewrites a request for the other side, in his own name
+PASS broker message to the owner only
+PASS task and deep link open the same session
+PASS price accepted → both pages show the slot picker; picking a free slot books it
+PASS screens of the room (sides and broker) without horizontal scroll
+PASS deal stays one card in Daily Tasks while the deal is open
+
+13/13 session checks passed; page errors: 0

@@ -1,0 +1,217 @@
+✔ pause takes a record out of matching without deleting anything; resume brings it back (101.665105ms)
+✔ archive keeps the record and its history; restore returns it; delete still works afterwards (32.62622ms)
+✔ a record inside an open deal cannot be paused or archived (17.795671ms)
+✔ record management is office-scoped and needs a signed-in member (10.829698ms)
+✔ every management action leaves an audit entry in the office's own trail (1.044653ms)
+✔ unified list: status filter tells paused from archived; deleted is never listed (3.422585ms)
+✔ the repository screen has no section tabs; kind and «بلا مطابقة» are filters; the record page offers every action (1.83274ms)
+✔ an ad's link is one identity: tracking parameters, fragments and the www. prefix do not make a second ad (3.433472ms)
+✔ an item is prepared from what it says; sites whose terms forbid collecting are refused unless licensed (3.417067ms)
+✔ «المخطط» is part of a search: parsed from a sentence, shown in the summary, and a filter on the ad's words (13.493896ms)
+✔ the inbox page reads a batch, a list or plain paragraphs, and splits long lists into accepted batches (2.96743ms)
+✔ automatic sending: the page reads «#c=…&ingest=…» (the batch may hold «&»), pairing lives in this browser only (1.45412ms)
+✔ the shortcut text carries the office's criteria (type, sale/rent, city, districts, plans), the run code and the refused sites — never a key (0.498771ms)
+[office-os] failed /os/scout/ingest ingest_unavailable الاستقبال التلقائي غير مفعّل على هذه البيئة
+✔ the door is closed unless the Worker opens it (SCOUT_INGEST) — Production does not set it (37.798586ms)
+✔ only the manager creates and revokes keys; the key is shown once and stored as a hash (24.846236ms)
+✔ no key, a wrong key, or a key bent to another office is refused the same way (8.359838ms)
+✔ with the office's scout off nothing is stored (2.992037ms)
+✔ ten results arrive with one request: saved, understood, matched, shown with their links — no CSV (108.553452ms)
+✔ the same batch again (a retry) answers its first report and writes nothing (2.891606ms)
+✔ the same ads in a new batch are duplicates; a changed price is an update of the same find, never a second one (28.545698ms)
+✔ a revoked key stops at once; limits are enforced (6.867865ms)
+✔ a key of office B never writes into office A (26.120546ms)
+✔ the three modes are different in priority, pace, depth, lifetime, alerts and model use — in one config (4.44851ms)
+✔ an urgent search past its three days keeps watching at the general pace; a deep one past its day completes (0.646694ms)
+✔ the search sentence: mode, what is looked for, operation, type, districts, ceiling and the direct-owner preference (21.691605ms)
+✔ a record is its own search: an offer looks for buyers, a request for properties — nothing is asked again (1.572529ms)
+✔ districts: the same one, a documented neighbour, or the rest of the city — and a search widens only step by step (0.668768ms)
+✔ fit comes from the matching engine: same district strong, neighbouring less, another district weakest; a budget is a ceiling (5.173093ms)
+✔ the level is explainable: reachable, fresh and complete raise it; old, bare or noisy lowers it; a broker's ad never passes as an owner's (2.928731ms)
+✔ one property or request seen twice is one find; two properties of one advertiser stay two (10.922853ms)
+✔ sources: only what the office may read. عقار، حراج، بيوت and وصلت need a permission (with the reason), and have no access path (1.371926ms)
+✔ the queue: an urgent search always before a deep one, a deep one before a general one; an office being worked on is skipped (1.331155ms)
+✔ off by default; only the manager switches it on; switching on reads the office once and queues its searches (65.818439ms)
+✔ scenario 1 and 2: an offer with no buyer, a request with no property → the scout opens a search for each by itself (62.097268ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ scenario 3 and 4: «ابحث عن مشتري» / «ابحث عن عقار» from the record — one press, no data asked (39.323564ms)
+[scout] beat {"offices":1,"waiting":0,"strong":2,"notified":2,"fetched":2,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ scenario 5: the general search runs in the background from the Worker's scheduler, with nobody on the site (34.239115ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ opening a find: what, why, for which record, source, freshness, confidence — and the broker's three decisions (35.072991ms)
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":0,"fetched":4,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ scenario 8: the same ad from two sources is one find — «وُجدت في مصدرين» (14.077666ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":5,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ scenario 9 and 10: a strong find nobody can be reached for is kept inside, silently — until a source shows it with a number (20.607422ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":1,"fetched":1,"failed":0}
+✔ a known ad is not new; a reduced price is recorded, the find is judged again and the broker is told (23.376607ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":14,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ scenario 11 and 12: nothing suitable → nothing is invented; many weak ads → none is shown to look busy (21.689076ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+✔ an ad that is already one of the office's own records is not a find (4.272636ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":24,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":0,"fetched":24,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ scenario 13: nothing in the district itself → the search widens to the documented neighbours, never straight to the city (71.996901ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":25,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":3,"notified":0,"fetched":27,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ scenario 6: a deep search really goes deeper than a general one — close types, wider price, older ads, and it ends with a summary (59.252563ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ scenario 7: an urgent search — first round inside the request, highest priority, every beat, neighbours at once, an alert for every strong find (29.683898ms)
+✔ a search can be made urgent later: it restarts its clock at the urgent pace and looks at once (26.90717ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":7,"failed":0}
+✔ scenario 15: stopping one search does not touch the others (24.897173ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":29,"failed":0}
+✔ no orphan searches: sold, archived, paused or deleted records end or hold their search at once (90.171363ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ «زوّد الباحث»: a pasted digest is read at once against every running search — a few finds, no records, no messages (23.81993ms)
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":27,"failed":0}
+✔ the office's official inbox is a source: a forwarded digest is read ad by ad; a message already turned into a record is not a find (25.48933ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":27,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] source failed partner_feed feed_http_503
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":31,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":26,"failed":0}
+✔ a licensed feed is one more adapter: asked per query form with its key, its finds merge with the rest, and a failure backs off (92.180428ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":27,"failed":0}
+✔ the office's minimum level is the office's: «قوية جدًا فقط» hides the merely strong (36.334071ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":28,"failed":0}
+✔ scenario 14: the master switch off — nothing runs, nothing is lost; on again — the searches continue (42.94857ms)
+✔ «البحث العام» off: the automatic searches wait, the ones the broker started himself keep running (42.752078ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":2,"waiting":0,"strong":0,"notified":0,"fetched":33,"failed":0}
+✔ office isolation: another office has its own scout, sees nothing of this one, and its data feeds nobody else (84.682459ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":28,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":28,"failed":0}
+[iaqar-whatsapp] request failed {
+  requestId: '44fb1106-e43a-473d-9db5-b4fc4f4c254d',
+  code: 'auth_required',
+  message: 'يلزم تسجيل الدخول'
+}
+✔ resources: an idle beat reads one document; a known ad is not analysed twice; the model is not used by a general search (42.363253ms)
+[iaqar-whatsapp] request failed {
+  requestId: '3dd84d2d-d1af-4f86-82ca-d35d06ff3c39',
+  code: 'admin_required',
+  message: 'هذه العملية خاصة بإدارة المنصة'
+}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ observability for the platform admin only: scheduler beat, queue sizes, sources and why — no office data, no secrets (2.959258ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":30,"failed":0}
+✔ keeping time: a find nobody acted on for a month and a half leaves, a saved one stays; old pasted text leaves; the round log stays short (31.166467ms)
+[office-os] failed /os/scout/settings scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[office-os] failed /os/scout/search scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[office-os] failed /os/scout/feed scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[office-os] failed /os/scout/parse scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[office-os] failed /os/scout/find scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ the environment switch: without it every scout route answers «غير متاح» and no round runs; it is set for Staging and, by the owner's approval, for iaqar.ai — with no paid door (17.653091ms)
+✔ the scout never reached a listings site, and never sent a message (1.132736ms)
+✔ shared office sections preserve RTL structure, group identity and existing controls (122.441811ms)
+ℹ tests 61
+ℹ suites 0
+ℹ pass 61
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1857.832003

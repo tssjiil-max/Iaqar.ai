@@ -30,6 +30,11 @@ const screens=[
  ['public-owner-manual','/m/sultan',false],['public-request-manual','/m/sultan',false]
 ];
 if(scoutDetails)screens.push(['scout-find',`scout/opp/${scoutDetails.find}`],['scout-task',`scout/task/${scoutDetails.task}`]);
+if(process.env.PARTY_PAGES){
+ const links=(await callWorker(harness,'/os/session/links',{officeId:OFFICE_A,journeyId:seed.negotiation.journeyId})).links;
+ const token=url=>String(url).split('#')[1];
+ screens.push(['party-owner',`/s#${token(links.owner.url)}`,false],['party-client',`/s#${token(links.client.url)}`,false],['party-reply',`/r#${seed.negotiation.ownerReplyToken}`,false]);
+}
 const originals=new Map();
 const browser=await chromium.launch();const results=[],errors=[];
 try{
@@ -52,6 +57,7 @@ try{
    if(name==='search-empty')await page.locator('.os-empty',{hasText:'لا توجد نتائج'}).waitFor();
    if(name==='scout-find')await page.locator('[data-find-why]').waitFor();
    if(name==='scout-task')await page.locator('[data-task-status]').waitFor();
+   if(name==='party-owner'||name==='party-client')await page.locator('[data-room-part="property"]').waitFor();
    const metrics=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,headers:document.querySelectorAll('[data-ui="page-header"]').length,headings:document.querySelectorAll('.os-page-head').length,surfaces:document.querySelectorAll('[data-ui="surface"]').length,cards:document.querySelectorAll('.os-card').length,tiles:document.querySelectorAll('[data-ui="navigation-tile"]').length,rtl:document.documentElement.dir}));
    results.push({name,route,width,...metrics});
    await page.screenshot({path:`${out}/${name}-${width}.png`,fullPage:true});
