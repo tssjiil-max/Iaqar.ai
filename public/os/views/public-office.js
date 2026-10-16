@@ -1,3 +1,4 @@
+import { publicSearchForm, renderPlatformSearch } from "./public-search.js";
 /**
  * Public office page (/o/<slug>, ?office=<id>&view=public). No account needed.
  * The target office is the one resolved from the link (publicOffices), never a
@@ -16,6 +17,9 @@ import { normalizeAnalysis, notesWithDistricts, splitDistrictInput } from "../do
 import { applyListing, fillModes } from "./smart-fill.js";
 
 export function publicOfficeTarget() {
+  // Guest platform search lives at /?view=search only. «#/search» is the signed-in office search
+  // (bottom navigation «البحث»); matching it here showed brokers the guest form instead.
+  if (new URLSearchParams(location.search).get("view") === "search") return { platform: true };
   const path = location.pathname;
   const slugMatch = path.match(/^\/(o|m)\/([^/?#]+)/i);
   if (slugMatch) return { slug: decodeURIComponent(slugMatch[2]).toLowerCase() };
@@ -286,6 +290,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
 }
 
 export async function renderPublicOffice(root, target) {
+  if (target?.platform) return renderPlatformSearch(root);
   clear(root);
   const main = h("main", { class: "os-app os-public-shell" }, loadingState({ class: "os-skeleton", style: { height: "220px" } }));
   append(root, main);
@@ -306,7 +311,7 @@ export async function renderPublicOffice(root, target) {
     append(main, 
       pageHeader(h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"), action: h("span") }),
       h("p", { class: "os-public-office-name", text: office.officeName || "" }),
-      intakeForm(root, office, kind, { switchKind: choose, carry }));
+      kind === "client" ? publicSearchForm(office) : intakeForm(root, office, kind, { switchKind: choose, carry }));
     window.scrollTo({ top: 0 });
     if (carry?.text) main.querySelector("[data-smart-analyze]")?.click();
   };
@@ -319,6 +324,7 @@ export async function renderPublicOffice(root, target) {
   append(main,
     officeHeader(office),
     h("p", { class: "os-public-tagline", text: "عقارك وطلبك في المكان الصحيح. تواصل مباشرة مع المكتب العقاري." }),
+    publicSearchForm(office),
     h("div", { class: "os-paths" },
       path("owner", "home", "لدي عقار", "للبيع أو الإيجار"),
       path("client", "search", "أبحث عن عقار", "للشراء أو الاستئجار")),

@@ -41,7 +41,7 @@ try {
     await inspect("offer-form");
     await page.getByRole("button", { name: "رجوع", exact: true }).click();
     await page.locator('[data-path="client"]').click();
-    await page.locator('[data-fill-mode="manual"]').click();
+    await page.locator('[data-guest-search-form]').waitFor();
     await page.locator('input[name="contactPhone"]').waitFor();
     await inspect("request-form");
     await context.close();

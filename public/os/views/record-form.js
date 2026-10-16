@@ -102,7 +102,8 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
         field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "الملقا، النرجس" })),
         field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric", value: values.area || "" }), { optional: true }),
         field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric", value: values.rooms || "" }), { optional: true }))),
-    officeSection({ title: "السعر والشروط", iconName: "reference-calculator" }, formGrid(priceLabel, priceStatusBox)),
+    officeSection({ title: "السعر والشروط", iconName: "reference-calculator" }, formGrid(priceLabel, priceStatusBox),
+      session.isManager ? h("label", { class: "os-pref-row" }, h("span", { text: "إظهار هذا العرض في بحث العملاء العام (دون بيانات المالك)" }), h("input", { type: "checkbox", name: "publicSearchVisible", checked: values.publicSearchVisible === true })) : null),
     officeSection({ title: "بيانات التواصل", iconName: "user" },
       formGrid(field(kind === RECORD_KIND.REQUEST ? "اسم العميل" : "اسم المالك", h("input", { class: "os-input", name: "contactName", value: values.contactName || "", autocomplete: "name" }), { optional: true }),
         field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", value: values.contactPhone || "", placeholder: "05XXXXXXXX", autocomplete: "tel" })))),
@@ -136,6 +137,7 @@ export function readRecordForm(root, kind) {
     contactPhone: value("contactPhone"),
     notes: notesWithDistricts(value("notes"), districts.others),
     priceStatus: value("priceStatus"),
+    ...(session.isManager ? { publicSearchVisible: root.querySelector("[name=publicSearchVisible]")?.checked === true } : {}),
     // Sent only for a new record or when the broker touched the duration (an edit keeps the current one).
     validity: value("validityTouched") ? { urgent: value("validityUrgent") === "yes", duration: value("validityDuration"), customDate: value("validityCustomDate") } : undefined
   };

@@ -4,10 +4,12 @@
  * Public routes (reply page): token-scoped, rate-limited, no account.
  */
 
+import { searchThroughCentral } from "./central-search-service.js";
+import { analyzeGuestSearch, guestSearch } from "./public-search-service.js";
 import { createStore } from "./store.js";
 import { reviewExternalCooperation } from "./external-broker-service.js";
 import { resolveActor } from "./permissions.js";
-import { findCandidates, holdRecord, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
+import { holdRecord, pairRecords, removeRecord, restoreRecord, saveRecord } from "./records-service.js";
 import {
   acknowledgeReply, addBrokerNote, closeJourney, completeFollowUp, confirmViewing, decideMatchReview,
   moveStage, pauseJourney, reconcileOffice, recordViewingResult, resumeJourney, updateDealDocument
@@ -30,6 +32,8 @@ import { startScoutChatLink, unlinkScoutChat } from "./scout-telegram.js";
 import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
+  "/os/public/search/analyze": (ctx,b,meta) => analyzeGuestSearch(ctx,{officeId:b.officeId,text:typeof b.text === "string"?b.text:"",ip:meta.ip}),
+  "/os/public/search": (ctx,b,meta) => guestSearch(ctx,{input:b,ip:meta.ip}),
   // «تعبئة ذكية» on the office's public page: the text is analysed, nothing is saved.
   "/os/public/smart-fill": (ctx, body, meta) => analyzePublicText(ctx, { officeId: body.officeId, text: typeof body.text === "string" ? body.text : "", ip: meta.ip }),
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),
@@ -56,7 +60,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/records/availability": (ctx, b, actor) => applyAvailabilityAnswer(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), answer: text(b.answer).toUpperCase() }),
   "/os/records/reactivate": (ctx, b, actor) => reactivateRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), duration: text(b.duration), customDate: text(b.customDate) }),
   "/os/validity/sweep": (ctx, b, actor) => sweepValidityNow(ctx, { actor, officeId: ctx.officeId }),
-  "/os/records/candidates": (ctx, b) => findCandidates(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), limit: b.limit }),
+  "/os/records/candidates": (ctx, b, actor) => searchThroughCentral(ctx, { actor, recordId: text(b.recordId), limit: b.limit }),
   "/os/records/pair": (ctx, b) => pairRecords(ctx, { officeId: ctx.officeId, recordId: text(b.recordId), counterpartId: text(b.counterpartId) }),
   "/os/review/decide": async (ctx, b, actor) => {
     const decided = await decideMatchReview(ctx, { actor, officeId: ctx.officeId, matchId: text(b.matchId), decision: text(b.decision), postponeDays: b.postponeDays, reason: b.reason });

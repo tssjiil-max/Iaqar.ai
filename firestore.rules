@@ -676,6 +676,10 @@ service cloud.firestore {
     match /partySessionTokens/{tokenHash} {
       allow read, write: if false;
     }
+    // Guest searches contain phone numbers and expiring channel links: Worker access only.
+    match /publicSearchSessions/{sessionId} {
+      allow read, write: if false;
+    }
     match /_system/{document=**} {
       allow read, write: if false;
     }
