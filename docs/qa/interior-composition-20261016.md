@@ -77,3 +77,16 @@ Actual evidence: `qa/structural-visual/admin-interior-review.html`, before/after
 Reproduce: `node scripts/qa/office-os/admin-interiors.e2e.mjs`; baseline `SOURCE_REF=730d299 node scripts/qa/office-os/admin-interiors.e2e.mjs`. Raw captures are reproducible intermediates; selected actual screenshots are embedded in the committed report.
 
 Next: authenticated legacy interiors and remaining individual visual reviews. This batch does not satisfy the whole-site release gate. PR235 remains draft; no Staging merge/deployment of this round.
+
+## Continuation — shared navigation and official services (2026-10-16)
+
+New commits on the PR branch:
+- `c632fe44`: settings grid tile sizing, Arabic text wrapping, narrow-screen spacing.
+- `0beeed21`: shared `navigationTile` supports native links without changing existing button callers.
+- `50dab176`: official service entries use that shared semantic component; external target/rel attributes retained.
+- `124008c8`: services surface adopts the same responsive settings grid.
+- `21bf18c0`: scoped service-link card geometry and visible keyboard focus.
+
+Scope: DOM composition and CSS only; no Firestore, API, authentication, permissions, or production configuration changes. These are source changes, not proof of visual acceptance. Browser regression and individual before/after review for the service links and settings cards remain **PENDING**. Do not mark the PR ready, merge, or deploy on this evidence alone.
+
+Immediate next action: run affected office-tools and settings functional tests; exercise `#/tools/services` at 320, 360, 390, 430, 768, 1024, 1440, verify link target/rel and no horizontal overflow, then review the resulting captures. Continue authenticated legacy interiors and remaining visual matrix thereafter.
