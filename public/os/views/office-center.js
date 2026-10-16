@@ -6,7 +6,7 @@
  * All read the office's own data (member-read by the rules); changes go through the Worker.
  */
 
-import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, officeSection, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe } from "../core/state.js";
@@ -100,8 +100,7 @@ export function renderSearch(container, { query = "" } = {}) {
     if (!found.total) return append(results, emptyState("search", "لا توجد نتائج", `لم نجد ما يطابق «${found.query}». جرّب كلمة أقل أو تهجئة أخرى.`));
     append(results, h("p", { class: "os-sub", "data-search-total": String(found.total), text: `النتائج: ${found.total}` }));
     for (const group of found.groups) {
-      append(results, h("section", { class: "os-center-group", "data-search-group": group.id },
-        h("h2", { class: "os-h2" }, group.label, h("span", { class: "os-center-count", text: String(group.count) })),
+      append(results, officeSection({ title: group.label, iconName: "search", className: "os-center-group", count: group.count, attrs: { "data-search-group": group.id } },
         h("div", { class: "os-center-list" }, ...group.items.map((item) => h("button", { type: "button", class: "os-card os-center-row", "data-search-item": item.id, onClick: () => go(item.route) },
           h("span", { class: "os-set-text" }, h("b", { text: item.title, dir: "auto" }), item.sub ? h("small", { text: item.sub, dir: "auto" }) : null),
           h("span", { class: "os-center-tag", text: item.tag }), ic("chev-left")))),
