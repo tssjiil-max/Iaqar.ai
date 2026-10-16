@@ -4,7 +4,7 @@
  * profile and records; nothing is sent anywhere by these screens.
  */
 
-import { h, ic, clear, append, emptyState, pageHeader, surface, officeSection, field, formGrid, comparisonTable, controlGroup, loadingState } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, navigationTile, officeSection, field, formGrid, comparisonTable, controlGroup, loadingState } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe } from "../core/state.js";
@@ -93,10 +93,8 @@ function renderServices(container) {
   append(container, pageHead("الخدمات"),
     h("p", { class: "os-sub os-tool-intro", text: "روابط المنصات الرسمية. تُفتح خارج التطبيق، ولا يتبادل المكتب معها أي بيانات." }),
     surface("section", { class: "os-card os-set-list", "data-tool-services": "" }, OFFICIAL_SERVICES.map((service) =>
-      h("a", { class: "os-set-row os-service-row", href: service.url, target: "_blank", rel: "noopener noreferrer", "data-service": service.id },
-        h("span", { class: "os-set-icon" }, ic("link")),
-        h("span", { class: "os-set-text" }, h("b", { text: service.name }), h("small", { text: service.hint })),
-        ic("chev-left")))));
+      navigationTile({ title: service.name, hint: service.hint, iconName: "link", href: service.url,
+        attrs: { class: "os-service-row", target: "_blank", rel: "noopener noreferrer", "data-service": service.id } }))));
   return null;
 }
 
