@@ -346,3 +346,15 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 @media(min-width:768px){
   .os-app .os-settings-grid>[data-ui="navigation-tile"]{min-height:180px}
 }
+/* Guest search results (public «ابحث عن عقار»): same card language as the office. */
+.os-guest-search{display:grid;gap:14px}
+.os-guest-criteria{margin-top:16px}
+.os-guest-result{display:grid;gap:8px;margin-bottom:12px}
+.os-guest-result-photo{width:100%;height:180px;object-fit:cover;border-radius:12px;background:var(--brand-tint)}
+.os-guest-result-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.os-guest-result-head .os-h2{margin:0;min-width:0;overflow-wrap:anywhere}
+.os-guest-result-price{color:var(--brand-dark,#082f3a);white-space:nowrap}
+.os-guest-result-tags{display:flex;gap:6px;flex-wrap:wrap}
+.os-guest-result .os-badge{margin:0}
+.os-record-reservation{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#e3ecee)}
+.os-record-reservation .os-btn{flex:0 1 auto}

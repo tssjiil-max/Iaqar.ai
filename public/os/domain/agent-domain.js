@@ -170,6 +170,7 @@ export const AGENT_TOOLS = Object.freeze({
   accept_price: { category: "FORBIDDEN", description: "قبول سعر نيابة عن طرف" },
   set_final_price: { category: "FORBIDDEN", description: "تحديد السعر النهائي" },
   close_deal: { category: "FORBIDDEN", description: "إغلاق الصفقة نهائيًا" },
+  reserve_listing: { category: "FORBIDDEN", description: "حجز عقار حجزًا رسميًا أو إلغاء حجزه" },
   commission: { category: "FORBIDDEN", description: "الاتفاق على العمولة" },
   deposit_or_payment: { category: "FORBIDDEN", description: "عربون أو دفعات" },
   sign_contract: { category: "FORBIDDEN", description: "توقيع عقد أو إقرار ملزم" },

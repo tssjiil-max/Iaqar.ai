@@ -5,7 +5,8 @@
  */
 
 import { searchThroughCentral } from "./central-search-service.js";
-import { analyzeGuestSearch, guestSearch } from "./public-search-service.js";
+import { analyzeGuestSearch, guestSearch, selectGuestResult } from "./public-search-service.js";
+import { reserveRecord, releaseReservation } from "./reservation-service.js";
 import { createStore } from "./store.js";
 import { reviewExternalCooperation } from "./external-broker-service.js";
 import { resolveActor } from "./permissions.js";
@@ -34,6 +35,7 @@ import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveInterv
 const PUBLIC_ROUTES = Object.freeze({
   "/os/public/search/analyze": (ctx,b,meta) => analyzeGuestSearch(ctx,{officeId:b.officeId,text:typeof b.text === "string"?b.text:"",ip:meta.ip}),
   "/os/public/search": (ctx,b,meta) => guestSearch(ctx,{input:b,ip:meta.ip}),
+  "/os/public/search/select": (ctx,b,meta) => selectGuestResult(ctx,{input:b,ip:meta.ip}),
   // «تعبئة ذكية» on the office's public page: the text is analysed, nothing is saved.
   "/os/public/smart-fill": (ctx, body, meta) => analyzePublicText(ctx, { officeId: body.officeId, text: typeof body.text === "string" ? body.text : "", ip: meta.ip }),
   "/os/reply/view": (ctx, body, meta) => viewReply(ctx, { token: body.token, ip: meta.ip }),
@@ -52,6 +54,9 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/records/save": (ctx, b, actor) => saveRecord(ctx, { actor, officeId: ctx.officeId, recordId: b.recordId, input: b.record || {}, requestKey: b.requestKey }),
   "/os/records/remove": (ctx, b, actor) => removeRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), reason: b.reason }),
   "/os/records/restore": (ctx, b, actor) => restoreRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),
+  // Official reservation: a manager's own decision (the AI and the bot cannot call these).
+  "/os/records/reserve": (ctx, b, actor) => reserveRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), journeyId: text(b.journeyId), note: typeof b.note === "string" ? b.note : "" }),
+  "/os/records/release": (ctx, b, actor) => releaseReservation(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId) }),
   "/os/records/pause": (ctx, b, actor) => holdRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), kind: "PAUSED", reason: b.reason }),
   "/os/records/archive": (ctx, b, actor) => holdRecord(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), kind: "ARCHIVED", reason: b.reason }),
   "/os/records/media": (ctx, b, actor) => arrangeRecordImages(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), order: Array.isArray(b.order) ? b.order.slice(0, 40).map(text) : null, remove: Array.isArray(b.remove) ? b.remove.slice(0, 40).map(text) : null }),
@@ -176,7 +181,7 @@ export function isOfficeOsPath(pathname) {
   return pathname === "/os" || String(pathname || "").startsWith("/os/");
 }
 
-export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}) {
+export async function handleOfficeOs(request, env, deps, { requestId = "", waitUntil = null } = {}) {
   const url = new URL(request.url);
   if (request.method !== "POST") {
     return deps.jsonResponse({ ok: false, error: "method_not_allowed", requestId }, 405);
@@ -197,6 +202,8 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
       // Server-side configuration only (which integrations are set up); never returned to a client as is.
       env,
       appOrigin: deps.resolveAppOrigin(env),
+      // Work that may finish after the response (office push/Telegram alerts). Absent → callers await.
+      waitUntil: typeof waitUntil === "function" ? waitUntil : null,
       now: () => new Date()
     };
   };
