@@ -1,3 +1,5 @@
+import { readWebhookBody } from "./office-os/whatsapp-agent-transport.js";
+import { whatsappAgentAvailable, ingestWhatsAppEvents, drainWhatsAppQueue } from "./office-os/whatsapp-agent-service.js";
 import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
 import { externalBrokerClaim, isExternalBroker } from "../../public/os/domain/external-broker-domain.js";
 import { notifyOffice as notifyExternalIntakeOffice } from "./office-os/bot-notify.js";
@@ -575,7 +577,11 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/meta/webhook") {
-        return receiveMetaWebhook(request, env, requestId);
+        const response = await receiveMetaWebhook(request, env, requestId);
+        if (response.ok && whatsappAgentAvailable(env) && executionContext?.waitUntil) {
+          executionContext.waitUntil(runWhatsAppAgentQueue(env).catch(() => console.warn("[whatsapp-agent] queue_drain_failed")));
+        }
+        return response;
       }
 
       // Central platform bot: one address for every office; the linked chat decides the office.
@@ -593,7 +599,7 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/meta/signup/complete") {
-        return completeEmbeddedSignup(request, env, requestId);
+        return await completeEmbeddedSignup(request, env, requestId);
       }
 
       if (request.method === "POST" && url.pathname === "/pipeline/preview") {
@@ -1102,6 +1108,7 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
+    if (whatsappAgentAvailable(env)) ctx.waitUntil(runWhatsAppAgentQueue(env).catch(() => console.warn("[whatsapp-agent] queue_drain_failed")));
     const isStaging = String(env.DEPLOYMENT_ENV || "").toLowerCase() === "staging";
     const scheduledTime = event && event.scheduledTime;
     if (!isStaging) {
@@ -1868,6 +1875,10 @@ async function officeOsSystemContext(env) {
   const accessToken = await getGoogleAccessToken(env);
   const bound = officeOsDeps().bind({ env, projectId, accessToken });
   return { deps: bound, store: createOfficeOsStore(bound, { projectId, accessToken }), env, officeId: "", appOrigin: resolveAppOrigin(env), now: () => new Date() };
+}
+
+async function runWhatsAppAgentQueue(env) {
+  return drainWhatsAppQueue(await officeOsSystemContext(env));
 }
 
 async function runScoutBeat(env) {
@@ -2677,7 +2688,9 @@ async function receiveMetaWebhook(request, env, requestId) {
   assertMetaWebhookSecrets(env);
   assertFirebaseSecrets(env);
 
-  const rawBody = await request.text();
+  if (Number(request.headers.get("content-length") || 0) > 1024 * 1024) throw appError("webhook_too_large", 413, "حجم الحدث كبير");
+  const rawBody = await readWebhookBody(request);
+  if (new TextEncoder().encode(rawBody).length > 1024 * 1024) throw appError("webhook_too_large", 413, "حجم الحدث كبير");
   const signature = request.headers.get("x-hub-signature-256") || "";
   const valid = await verifyHmacSignature(rawBody, signature, env.META_APP_SECRET);
   if (!valid) throw appError("invalid_signature", 401, "توقيع Meta غير صحيح");
@@ -2698,10 +2711,11 @@ async function receiveMetaWebhook(request, env, requestId) {
   for (const entry of Array.isArray(payload.entry) ? payload.entry : []) {
     const wabaId = cleanText(entry && entry.id, 100);
     for (const change of Array.isArray(entry && entry.changes) ? entry.changes : []) {
+      if (change.field !== "messages") continue;
       const value = change && change.value || {};
       const phoneNumberId = cleanText(value.metadata && value.metadata.phone_number_id, 100);
       const messages = Array.isArray(value.messages) ? value.messages : [];
-      if (!phoneNumberId || messages.length === 0) continue;
+      if (!phoneNumberId || (messages.length === 0 && !Array.isArray(value.statuses))) continue;
 
       const mappingDoc = await getFirestoreDocument({
         projectId,
@@ -2715,6 +2729,14 @@ async function receiveMetaWebhook(request, env, requestId) {
       if (!officeId || mapping.status !== "connected") {
         unlinked += messages.length;
         console.warn("[iaqar-whatsapp] unlinked phone number", { phoneNumberId, wabaId });
+        continue;
+      }
+
+      if (whatsappAgentAvailable(env) && String(env.WHATSAPP_AGENT_OFFICE_IDS || "").split(",").map(value => value.trim()).includes(officeId)) {
+        const result = await ingestWhatsAppEvents(await officeOsSystemContext(env), {
+          object: payload.object, entry: [{ id: wabaId, changes: [change] }]
+        });
+        received += result.received || 0;
         continue;
       }
 
@@ -2970,20 +2992,10 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
     rawPayload: firestoreString(safeJsonStringify(rawPayload).slice(0, MAX_RAW_LENGTH))
   });
 
-  const parent = firestoreDocumentUrl(projectId, ["offices", officeId, "inbox"]);
-  const endpoint = `${parent}?documentId=${encodeURIComponent(documentId)}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ fields })
+  const created = await createFirestoreDocumentIfAbsent({
+    projectId, segments: ["offices", officeId, "inbox", documentId], accessToken, fields
   });
-
-  if (response.status === 409) return { duplicate: true, documentId };
-  if (!response.ok) {
-    const detail = await response.text();
-    console.error("[iaqar-whatsapp] Firestore write failed", response.status, detail);
-    throw appError("firestore_write_failed", 502, "تعذر حفظ رسالة واتساب");
-  }
+  if (!created) return { duplicate: true, documentId };
 
   // Meta media messages may arrive without a text/caption. Until the official
   // media downloader is wired, retain them for review instead of feeding an empty
@@ -7423,7 +7435,7 @@ async function createFirestoreDocumentIfAbsent({ projectId, segments, accessToke
     body: JSON.stringify({ fields: compacted })
   });
   if (response.ok) return true;
-  if ([400, 404, 409, 412].includes(response.status)) return false;
+  if ([409, 412].includes(response.status)) return false;
   const detail = await response.text().catch(() => "");
   console.error("[iaqar-events] create-if-absent failed", response.status, detail.slice(0, 200));
   throw appError("firestore_write_failed", 502, "تعذر حفظ الحدث");

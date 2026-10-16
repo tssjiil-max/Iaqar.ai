@@ -225,10 +225,10 @@ test("request cannot choose a Firebase project and production env is rejected", 
   assert.equal(isStagingFirebaseEnv({ DEPLOYMENT_ENV: "staging", FIREBASE_PROJECT_ID: "aqar-b5d76" }), false);
 });
 
-test("/meta/webhook routes and handlers are unchanged", () => {
+test("/meta/webhook remains isolated and awaits signature validation", () => {
   const source = readFileSync(path.join(root, "src", "index.js"), "utf8");
   assert.match(source, /if \(request\.method === "GET" && url\.pathname === "\/meta\/webhook"\) \{\s*return verifyWebhook\(url, env\);/);
-  assert.match(source, /if \(request\.method === "POST" && url\.pathname === "\/meta\/webhook"\) \{\s*return receiveMetaWebhook\(request, env, requestId\);/);
+  assert.match(source, /if \(request\.method === "POST" && url\.pathname === "\/meta\/webhook"\) \{\s*const response = await receiveMetaWebhook\(request, env, requestId\);/);
   assert.match(source, /async function receiveMetaWebhook\(request, env, requestId\) \{\s*assertMetaWebhookSecrets\(env\);/);
   const webhookStart = source.indexOf("async function receiveMetaWebhook");
   const webhookEnd = source.indexOf("async function completeEmbeddedSignup");
