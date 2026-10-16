@@ -3,7 +3,7 @@
  * view — one look for both, from the Office OS design system.
  */
 
-import { h, ic } from "../core/dom.js";
+import { h, ic, surface, controlGroup } from "../core/dom.js";
 import { propertyTypeIcon } from "../core/icons.js";
 import { formatPrice, relativeAgo } from "../domain/format-domain.js";
 
@@ -16,7 +16,7 @@ export function sessionSummary({ propertyType, district, currentPrice, agreedPri
   const cell = (icon, label, value, strong = false) => h("div", { class: "os-session-cell" },
     h("span", { class: "ic" }, ic(icon)),
     h("div", {}, h("small", { text: label }), h(strong ? "b" : "span", { text: value || "—" })));
-  return h("section", { class: "os-card os-session-summary", "aria-label": "ملخص الصفقة" },
+  return surface("section", { class: "os-card os-session-summary", "aria-label": "ملخص الصفقة" },
     h("div", { class: "os-session-grid" },
       cell(propertyTypeIcon(propertyType), "نوع العقار", propertyType),
       cell("pin", "الحي", district),
@@ -48,7 +48,7 @@ export function propertyCard({ propertyType, district, price, description, price
   const cell = (icon, label, value, strong = false) => h("div", { class: "os-session-cell" },
     h("span", { class: "ic" }, ic(icon)),
     h("div", {}, h("small", { text: label }), h(strong ? "b" : "span", { text: value || "—" })));
-  return h("section", { class: "os-card os-session-summary os-deal-property", "aria-label": "بيانات العقار" },
+  return surface("section", { class: "os-card os-session-summary os-deal-property", "aria-label": "بيانات العقار" },
     h("h2", { class: "os-h2 os-part-title" }, ic(propertyTypeIcon(propertyType)), "بيانات العقار"),
     h("div", { class: "os-session-grid" },
       cell(propertyTypeIcon(propertyType), "نوع العقار", propertyType),
@@ -63,7 +63,7 @@ export function propertyCard({ propertyType, district, price, description, price
 
 /** Part 2 — «تم الاتفاق عليه»: only what was actually agreed. */
 export function agreedCard(items = []) {
-  return h("section", { class: "os-card os-deal-agreed", "aria-label": "تم الاتفاق عليه" },
+  return surface("section", { class: "os-card os-deal-agreed", "aria-label": "تم الاتفاق عليه" },
     h("h2", { class: "os-h2 os-part-title" }, ic("check-circle"), "تم الاتفاق عليه"),
     items.length
       ? h("ul", { class: "os-agreed-list" }, items.map((item) => h("li", { "data-agreed": item.id },
@@ -80,13 +80,13 @@ export function sidesCard(sides = {}, { viewer = "broker" } = {}) {
       h("strong", { class: "os-deal-side-price", text: formatPrice(side.price) || "—" }),
       h("small", { text: side.lastText || "" }));
   };
-  return h("section", { class: "os-card os-deal-sides", "aria-label": "المالك والعميل" },
+  return surface("section", { class: "os-card os-deal-sides", "aria-label": "المالك والعميل" },
     h("div", { class: "os-deal-sides-grid" }, col("owner", "المالك"), col("client", "العميل")));
 }
 
 /** «السجل» — secondary, collapsed: every move is kept automatically. */
 export function historyDetails(cards = [], { emptyText = "لا توجد حركات بعد.", note = "" } = {}) {
-  return h("details", { class: "os-card os-session-history os-deal-history" },
+  return surface("details", { class: "os-card os-session-history os-deal-history" },
     h("summary", {}, ic("clock"), h("span", { text: "السجل" }), cards.length ? h("span", { class: "os-count", text: String(cards.length) }) : null),
     sessionEventList(cards, { emptyText }),
     note ? h("p", { class: "os-sub os-session-privacy", text: note }) : null);
@@ -99,7 +99,7 @@ export function roomPropertyCard({ facts = [], image = "", propertyType = "", pr
   const cell = (fact) => h("div", { class: "os-session-cell", "data-fact": fact.id },
     h("span", { class: "ic" }, ic(fact.id === "type" ? propertyTypeIcon(propertyType) : fact.icon)),
     h("div", {}, h("small", { text: fact.label }), h(fact.strong ? "b" : "span", { text: fact.value })));
-  return h("section", { class: "os-card os-session-summary os-room-part os-room-property", "aria-label": "بيانات العقار", "data-room-part": "property" },
+  return surface("section", { class: "os-card os-session-summary os-room-part os-room-property", "aria-label": "بيانات العقار", "data-room-part": "property" },
     h("h2", { class: "os-h2 os-part-title" }, ic(propertyTypeIcon(propertyType)), "بيانات العقار",
       stageLabel ? h("span", { class: "os-room-stage", "data-room-stage": "", text: stageLabel }) : null),
     image ? h("div", { class: "os-room-photo" }, h("img", { src: image, alt: `صورة ${propertyType || "العقار"}`, loading: "lazy", "data-room-image": "" })) : null,
@@ -112,7 +112,7 @@ export function roomPropertyCard({ facts = [], image = "", propertyType = "", pr
 
 /** Part 2 — «ما تم الاتفاق عليه»: only what both sides agreed, with who accepted and when. */
 export function roomAgreedCard(items = []) {
-  return h("section", { class: "os-card os-room-part os-deal-agreed", "aria-label": "ما تم الاتفاق عليه", "data-room-part": "agreed" },
+  return surface("section", { class: "os-card os-room-part os-deal-agreed", "aria-label": "ما تم الاتفاق عليه", "data-room-part": "agreed" },
     h("h2", { class: "os-h2 os-part-title" }, ic("check-circle"), "ما تم الاتفاق عليه"),
     items.length
       ? h("ul", { class: "os-agreed-list" }, items.map((item) => h("li", { "data-agreed": item.id },
@@ -186,7 +186,7 @@ export function roomTermsList(rows = [], { viewer = "broker", openTerm = "", onT
       h("div", { class: "os-term-head" }, h("b", { text: row.label }), h("span", { class: "os-term-chip", "data-term-chip": "", text: chip })),
       line ? h("p", { class: "os-term-line", "data-term-line": "", text: line }) : null,
       pending && row.agreed ? h("small", { class: "os-term-keep", text: `الساري حتى الآن: ${row.agreed.label}` }) : null,
-      buttons.length ? h("div", { class: "os-btn-row os-term-actions" }, buttons) : null,
+      buttons.length ? controlGroup("div", { class: "os-btn-row os-term-actions" }, buttons) : null,
       options);
   }));
 }

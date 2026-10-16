@@ -3,7 +3,7 @@
  * Stage (where it is) and current action (what is needed now) are shown separately.
  */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { propertyTypeIcon } from "../core/icons.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
@@ -41,7 +41,7 @@ function defaultKindFor(journey) {
 }
 
 function stagePath(journey) {
-  return h("details", { class: "os-card os-stage-panel", "data-panel": "stages", open: !isJourneyOpen(journey) },
+  return surface("details", { class: "os-card os-stage-panel", "data-panel": "stages", open: !isJourneyOpen(journey) },
     h("summary", { class: "os-card-head" },
       h("h2", { class: "os-h2" }, ic("flag"), "مسار الفرصة"),
       h("span", { class: "os-ref" }, "المرحلة الحالية: ", h("b", { text: isJourneyOpen(journey) ? STAGE_LABEL[journey.stage] || "" : JOURNEY_STATUS_LABEL[journey.status] }))),
@@ -107,7 +107,7 @@ function viewingResultAction(journey, draft) {
 }
 
 function nowAction(journey, proposals, offer, request, draft) {
-  const card = h("div", { class: "os-card os-now-card", id: "now" });
+  const card = surface("div", { class: "os-card os-now-card", id: "now" });
   const action = journey.currentAction;
   const jid = journey.journeyId || journey.id;
   const composer = (kind, recips) => openComposer(journey, { offer, request, defaultKind: kind || defaultKindFor(journey), defaultRecipients: recips });
@@ -145,7 +145,7 @@ function nowAction(journey, proposals, offer, request, draft) {
     confirm.addEventListener("click", () => runAction(confirm, () => api("/os/journeys/viewing/confirm", { officeId: session.officeId, journeyId: jid }), { success: "تم تأكيد موعد المعاينة" }));
     append(card, title("تأكيد موعد المعاينة"),
       h("p", { class: "os-sub", text: `قبل ${accepted || "الطرف"} موعد ${formatDateTime(journey.viewing?.at)}. القبول لا يعني تنفيذ المعاينة — أكّد الموعد بعد التأكد من جاهزية الطرفين.` }),
-      h("div", { class: "os-btn-row", style: { marginTop: "10px" } }, confirm,
+      controlGroup("div", { class: "os-btn-row", style: { marginTop: "10px" } }, confirm,
         h("button", { type: "button", class: "os-btn secondary", onClick: () => composer("VIEWING") }, ic("calendar"), "تعديل الموعد")));
     return card;
   }
@@ -158,7 +158,7 @@ function nowAction(journey, proposals, offer, request, draft) {
       proposal ? h("div", { class: "os-alert info" },
         h("b", { text: `${RECIPIENT_LABEL[proposal.recipientRole]} على ${proposal.label}: ` }), replyLabel(proposal.kind, proposal.reply || {}),
         h("small", { style: { display: "block" }, text: `${relativeAgo(proposal.reply?.at)} · عبر رابط الرد — رد مبدئي` })) : h("p", { class: "os-sub", text: action.reason }),
-      h("div", { class: "os-btn-row", style: { marginTop: "10px" } },
+      controlGroup("div", { class: "os-btn-row", style: { marginTop: "10px" } },
         h("button", { type: "button", class: "os-btn primary", onClick: () => composer(proposal?.kind === "VIEWING" ? "VIEWING" : undefined, proposal ? [proposal.recipientRole === RECIPIENT.CLIENT ? RECIPIENT.OWNER : RECIPIENT.CLIENT] : null) }, ic("send"), "إرسال مقترح جديد"), ack));
     return card;
   }
@@ -175,7 +175,7 @@ function nowAction(journey, proposals, offer, request, draft) {
     append(card, title("متابعة إجراءات الاتفاق"), h("p", { class: "os-sub", text: action.reason }),
       h("button", { type: "button", class: "os-meta-row os-docs-link", "data-docs-link": "", onClick: () => { const panel = document.getElementById("documents"); if (panel) { panel.open = true; panel.scrollIntoView({ block: "start", behavior: "smooth" }); } } },
         ic("contract"), h("span", { text: docs.complete ? "المستندات المطلوبة مكتملة" : `المستندات: ${documentSummaryText(docs)}` })),
-      h("div", { class: "os-btn-row", style: { marginTop: "10px" } },
+      controlGroup("div", { class: "os-btn-row", style: { marginTop: "10px" } },
         h("button", { type: "button", class: "os-btn primary", onClick: () => composer("AGREEMENT_STEPS") }, ic("send"), "متابعة خطوات الاتفاق"),
         h("button", { type: "button", class: "os-btn secondary", onClick: () => openCloseWon(journey) }, ic("handshake"), "إتمام الصفقة")));
     return card;
@@ -184,7 +184,7 @@ function nowAction(journey, proposals, offer, request, draft) {
     const done = h("button", { type: "button", class: "os-btn secondary" }, ic("check"), "تمت المتابعة");
     done.addEventListener("click", () => runAction(done, () => api("/os/tasks/done", { officeId: session.officeId, journeyId: jid, taskId: action.taskId }), { success: "تم" }));
     append(card, title(action.label || "متابعة الفرصة"), h("p", { class: "os-sub", text: action.reason }),
-      h("div", { class: "os-btn-row", style: { marginTop: "10px" } },
+      controlGroup("div", { class: "os-btn-row", style: { marginTop: "10px" } },
         h("button", { type: "button", class: "os-btn primary", onClick: () => composer("INTEREST_FOLLOWUP") }, ic("send"), "تجهيز مقترح متابعة"), done));
     return card;
   }
@@ -264,7 +264,7 @@ function documentsCard(journey) {
       view.addEventListener("click", () => openLinkedFile(view, row.file));
       const unlink = open ? h("button", { type: "button", class: "os-btn ghost", "data-doc-file-unlink": row.id }, ic("x"), "إزالة الربط") : null;
       unlink?.addEventListener("click", () => update(unlink, { documentId: row.id, unlinkFile: true }, "أُزيل ربط الملف — الملف باقٍ في المكتبة"));
-      fileLine = h("div", { class: "os-doc-file", "data-doc-file": row.file.libraryId }, h("span", { class: "os-doc-file-name" }, ic("archive"), h("span", { text: row.file.title })), h("div", { class: "os-btn-row" }, view, unlink));
+      fileLine = h("div", { class: "os-doc-file", "data-doc-file": row.file.libraryId }, h("span", { class: "os-doc-file-name" }, ic("archive"), h("span", { text: row.file.title })), controlGroup("div", { class: "os-btn-row" }, view, unlink));
     } else if (open) {
       const attach = h("button", { type: "button", class: "os-btn ghost os-doc-attach", "data-doc-attach": row.id }, ic("archive"), "إرفاق من المكتبة");
       attach.addEventListener("click", () => openLibraryPicker(row, (item) => update(attach, { documentId: row.id, libraryItemId: item.id }, `أُرفق «${libraryDocumentTitle(item)}» بمستند ${row.label}`)));
@@ -286,7 +286,7 @@ function documentsCard(journey) {
     });
     adder = h("div", { class: "os-doc-add" }, input, add);
   }
-  return h("details", { class: "os-card os-documents", "data-panel": "documents", id: "documents", open: journey.stage === STAGE.AGREEMENT || !open },
+  return surface("details", { class: "os-card os-documents", "data-panel": "documents", id: "documents", open: journey.stage === STAGE.AGREEMENT || !open },
     h("summary", { class: "os-h2" }, ic("contract"), "مستندات الصفقة",
       h("span", { class: `os-badge${summary.complete ? " ok" : " muted"}`, "data-docs-badge": "", text: summary.complete ? "مكتملة" : `الناقص ${summary.missing}` }), ic("chev-down")),
     h("p", { class: "os-sub os-docs-summary", "data-docs-summary": "", text: documentSummaryText(summary) }),
@@ -299,7 +299,7 @@ function proposalsCard(journey, proposals) {
   const active = Object.values(journey.activeProposals || {});
   const current = proposals.filter((p) => active.includes(p.id)).sort((a, b) => Number(a.recipientRole !== RECIPIENT.OWNER) - Number(b.recipientRole !== RECIPIENT.OWNER));
   if (!current.length) return null;
-  return h("div", { class: "os-card" },
+  return surface("div", { class: "os-card" },
     h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("clipboard"), "المقترح الحالي"),
     h("div", { class: "os-current-proposals" }, current.map((p) => {
       const lines = [p.fields?.price ? `السعر المقترح ${formatPrice(p.fields.price)}` : "", p.fields?.viewingAt ? `المعاينة ${formatDateTime(p.fields.viewingAt)}` : "", p.fields?.question || p.fields?.actionText || p.fields?.stepText || ""].filter(Boolean);
@@ -312,7 +312,7 @@ function proposalsCard(journey, proposals) {
 }
 
 function timelineCard(events) {
-  return h("details", { class: "os-card os-history", "data-panel": "history" },
+  return surface("details", { class: "os-card os-history", "data-panel": "history" },
     h("summary", { class: "os-h2" }, ic("clock"), "سجل الإجراءات", h("span", { class: "os-count", text: String(events.length) }), ic("chev-down")),
     events.length ? h("ol", { class: "os-timeline" }, events.map((e) => h("li", {},
       h("span", { class: `ic${e.type === "WHATSAPP_OPENED" ? " wa" : ""}` }, ic(EVENT_ICON[e.type] || "info")),
@@ -401,9 +401,7 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
     container.querySelectorAll("details[data-panel]").forEach((panel) => disclosureState.set(panel.dataset.panel, panel.open));
     clear(container);
     const refChip = journey ? h("span", { class: "os-ref", text: `فرصة #${String(journeyId).slice(3, 9).toUpperCase()}` }) : h("span");
-    append(container, h("div", { class: "os-page-head" },
-      h("button", { type: "button", class: "os-back", onClick: () => { rememberDeal(journeyId); back("tasks"); } }, ic("chev-right"), "المهام اليومية"),
-      h("h1", { class: "os-page-title", text: "متابعة الفرصة" }), refChip));
+    append(container, pageHeader(h("h1", { class: "os-page-title", text: "متابعة الفرصة" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => { rememberDeal(journeyId); back("tasks"); } }, ic("chev-right"), "المهام اليومية"), action: refChip }));
     if (journey) append(container, dealFollowBar({ ...journey, journeyId }, { page: "journey", focus }));
     if (journey === undefined) { append(container, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
     if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الفرصة غير موجودة." })); return; }
@@ -418,7 +416,7 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
     const cover = h("div", { class: "os-property-cover" }, ic(propertyTypeIcon(offerView.propertyType || offer.propertyType)), image,
       h("span", { text: image ? offerView.propertyType : "لا توجد صورة" }));
     image?.addEventListener("error", () => { image.remove(); cover.lastChild.textContent = "الصورة غير متاحة"; });
-    const summary = h("div", { class: "os-card os-property-summary" },
+    const summary = surface("div", { class: "os-card os-property-summary" },
       h("div", { class: "os-card-head" },
         h("h2", { class: "os-h2" }, ic("home"), "معلومات العقار"),
         isJourneyOpen(journey) ? h("button", { type: "button", class: "os-icon-btn", "aria-label": "إجراءات الفرصة", onClick: () => openStageMenu(journey) }, ic("more")) : null),
@@ -434,7 +432,7 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
         h("div", { class: "os-facts", style: { marginTop: "8px" } },
           fact("search", "احتياج العميل", [requestLabel, requestView.propertyType, requestView.location, requestView.areaLabel].filter(Boolean).join(" · ")),
           fact("coins", "ميزانية العميل", formatPrice(requestView.price))),
-        h("div", { class: "os-btn-row" },
+        controlGroup("div", { class: "os-btn-row" },
           h("button", { type: "button", class: "os-btn ghost", onClick: () => go(`record/${journey.offerId}`) }, "سجل العرض"),
           h("button", { type: "button", class: "os-btn ghost", onClick: () => go(`record/${journey.requestId}`) }, "سجل الطلب")))
     );
@@ -445,14 +443,14 @@ export function renderWorkspace(container, { journeyId, focus = "" }) {
       summary,
       sessionEntry,
       proposalsCard(journey, proposals),
-      h("div", { class: "os-card os-parties-card" },
+      surface("div", { class: "os-card os-parties-card" },
         h("div", { class: "os-parties" }, partyCard(RECIPIENT.OWNER, recordById(journey.offerId), journey), partyCard(RECIPIENT.CLIENT, recordById(journey.requestId), journey))),
       nowAction(journey, proposals, offer, request, draft),
       documentsCard(journey),
       stagePath(journey),
       communication,
       timelineCard(events),
-      isJourneyOpen(journey) ? h("details", { class: "os-card os-assistant-panel", "data-panel": "assistant" },
+      isJourneyOpen(journey) ? surface("details", { class: "os-card os-assistant-panel", "data-panel": "assistant" },
         h("summary", { class: "os-h2" }, ic("sparkles"), "اقتراح المساعد", ic("chev-down")), assistBox(journey)) : null
     );
     container.querySelectorAll("details[data-panel]").forEach((panel) => {
@@ -499,10 +497,10 @@ function communicationCard(journey, offer, request, draft) {
     draft.note = "";
     counter.textContent = "0/500";
   }, { success: "تم حفظ الملاحظة" }));
-  return h("details", { class: "os-card os-communication", "data-panel": "communication" },
+  return surface("details", { class: "os-card os-communication", "data-panel": "communication" },
     h("summary", { class: "os-h2" }, ic("send"), "التواصل والملاحظات", ic("chev-down")),
     h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: "أرسل المقترح عبر واتساب أو تطبيق آخر. رد الطرف يعود تلقائيًا إلى هذه المهمة." }),
     h("button", { type: "button", class: "os-btn primary block", onClick: () => openComposer(journey, { offer, request, defaultKind: defaultKindFor(journey) }) }, ic("whatsapp"), "إرسال مقترح"),
     h("div", { style: { marginTop: "10px" } }, note, counter),
-    h("div", { class: "os-btn-row" }, saveNote));
+    controlGroup("div", { class: "os-btn-row" }, saveNote));
 }

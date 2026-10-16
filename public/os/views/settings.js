@@ -1,6 +1,6 @@
 /** Manager settings: assignment rule, deal-completion permission, brokers list. */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { listMembers, officeSetting, saveOfficeSetting } from "../core/live.js";
@@ -14,9 +14,7 @@ function memberName(member) {
 }
 
 export function renderSettings(container) {
-  append(container, h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => go("settings") }, ic("chev-right"), "رجوع"),
-    h("h1", { class: "os-page-title", text: "الوسطاء والإسناد والصلاحيات" }), h("span")));
+  append(container, pageHeader(h("h1", { class: "os-page-title", text: "الوسطاء والإسناد والصلاحيات" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => go("settings") }, ic("chev-right"), "رجوع"), action: h("span") }));
   if (!session.isManager) {
     append(container, h("div", { class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." }));
     return null;
@@ -40,15 +38,15 @@ export function renderSettings(container) {
         await saveOfficeSetting(session.officeId, "deals", { brokerMayClose: mayClose.checked, updatedBy: session.user.uid });
       }, { success: "تم حفظ الإعدادات" }));
       append(body, 
-        h("div", { class: "os-card" },
+        surface("div", { class: "os-card" },
           h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("inbox"), "إسناد ما يصل من رابط المكتب"),
           h("p", { class: "os-sub", style: { marginBottom: "8px" }, text: "العروض والطلبات المسجلة عبر رابط المكتب تُسند تلقائيًا لهذا الوسيط، وتصله مهامها وتنبيهاتها." }),
           select),
-        h("div", { class: "os-card" },
+        surface("div", { class: "os-card" },
           h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("shield"), "إتمام الصفقات"),
           h("label", { style: { display: "flex", gap: "10px", alignItems: "center" } }, mayClose,
             h("span", { text: "السماح للوسيط المسؤول عن الفرصة بإتمام الصفقة (وإلا يتطلب مدير المكتب)" }))),
-        h("div", { class: "os-card" },
+        surface("div", { class: "os-card" },
           h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("users"), "الوسطاء"),
           h("ul", { class: "os-list" }, active.map((m) => h("li", {}, ic("user"), `${memberName(m)} — ${ROLE_LABEL[m.role] || "وسيط"}`))),
           h("p", { class: "os-sub", style: { marginTop: "8px", fontSize: ".86rem" }, text: "إضافة وسيط جديد تتم من إدارة المنصة." })),

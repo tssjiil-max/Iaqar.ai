@@ -4,7 +4,7 @@
  * see, nothing about the other party), and saves the chosen reply server-side.
  */
 
-import { h, ic, clear, append } from "./core/dom.js";
+import { h, ic, clear, append, surface } from "./core/dom.js";
 import { workerBase } from "./core/runtime.js";
 import { formatDateTime, formatNumber } from "./domain/format-domain.js";
 
@@ -38,14 +38,14 @@ function page(...children) {
 function stateView(data) {
   const tone = data.state === "SUPERSEDED" ? "info" : data.state === "LOCKED" ? "ok" : "warn";
   page(officeCard(data.office),
-    h("div", { class: "os-card" },
+    surface("div", { class: "os-card" },
       h("div", { class: `os-alert ${tone}`, text: data.message || "هذا الرابط غير متاح." }),
       data.reply ? h("p", { class: "os-sub", style: { marginTop: "10px" }, text: `ردك المسجّل: ${data.reply.label}` }) : null));
 }
 
 function savedView(data, view) {
   page(officeCard(view.office),
-    h("div", { class: "os-card", style: { textAlign: "center" } },
+    surface("div", { class: "os-card", style: { textAlign: "center" } },
       h("div", { class: "os-task-icon", style: { margin: "0 auto 8px", background: "var(--ok-tint)", color: "var(--ok)" } }, ic("check-circle")),
       h("h2", { class: "os-h2", style: { justifyContent: "center" }, text: "تم حفظ ردك" }),
       h("p", { style: { margin: "6px 0" } }, h("b", { text: data.reply?.label || "" })),
@@ -102,11 +102,11 @@ function formView(view) {
     }
   });
   page(officeCard(view.office),
-    h("div", { class: "os-card" },
+    surface("div", { class: "os-card" },
       h("span", { class: "os-badge", text: proposal.label }),
       h("h2", { class: "os-task-title", text: proposal.propertyLine }),
       h("div", { class: "os-form", style: { marginTop: "8px" } }, proposal.lines.map((line) => h("div", { class: "os-meta-row" }, ic(line.label.includes("موعد") ? "calendar" : line.label.includes("السعر") ? "coins" : "note"), h("span", {}, `${line.label}: `, h("b", { text: line.value })))))),
-    h("div", { class: "os-card" },
+    surface("div", { class: "os-card" },
       h("h3", { class: "os-h2", style: { marginBottom: "10px" }, text: view.reply ? "عدّل ردك" : "اختر ردك" }),
       view.reply ? h("p", { class: "os-sub", style: { marginBottom: "8px" }, text: `ردك الحالي: ${view.reply.label}` }) : null,
       options, h("div", { style: { marginTop: "10px" } }, extra), status, h("div", { style: { marginTop: "12px" } }, submit),
@@ -123,7 +123,7 @@ async function start() {
     if (!payload.ok || payload.state !== "ACTIVE") { stateView(payload); return; }
     formView(payload);
   } catch (_) {
-    page(h("div", { class: "os-card" }, h("div", { class: "os-alert warn", text: "تعذر تحميل المقترح — تحقق من الاتصال ثم أعد المحاولة." }),
+    page(surface("div", { class: "os-card" }, h("div", { class: "os-alert warn", text: "تعذر تحميل المقترح — تحقق من الاتصال ثم أعد المحاولة." }),
       h("button", { type: "button", class: "os-btn secondary block", style: { marginTop: "10px" }, onClick: start }, ic("refresh"), "إعادة المحاولة")));
   }
 }

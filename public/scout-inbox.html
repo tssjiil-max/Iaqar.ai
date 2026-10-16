@@ -18,11 +18,12 @@
   </style>
   <link rel="stylesheet" href="/os/site-theme.css">
 </head>
-<body>
+<body class="office-standalone">
   <main class="os-app inbox-page" data-scout-inbox>
     <div class="os-card os-form">
-      <h1 class="os-h2">استقبال نتائج الباحث عن الفرص</h1>
+      <div data-office-heading data-office-icon="search"><h1 class="os-page-title">استقبال نتائج الباحث عن الفرص</h1>
       <p class="os-sub">يفتح Claude في المتصفح هذه الصفحة تلقائيًا بعد انتهاء بحثه، فتُرسَل النتائج إلى «الباحث عن الفرص» بمفتاح المكتب المربوط بهذا المتصفح، دون لصق أو ضغط أو ملف CSV. تُحفظ كفرص خارجية قيد المراجعة، ويُمنع التكرار.</p>
+      </div>
       <p class="os-sub" id="inbox-paired" data-inbox-paired></p>
       <div class="os-alert" id="inbox-status" role="status" hidden data-inbox-status></div>
       <div id="inbox-report" class="inbox-report" data-inbox-report></div>
@@ -47,5 +48,6 @@
   </main>
   <script src="/js/runtime-config.js"></script>
   <script type="module" src="/js/scout-inbox.js"></script>
+  <script type="module" src="/os/standalone-shell.js"></script>
 </body>
 </html>

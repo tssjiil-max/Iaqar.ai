@@ -5,7 +5,7 @@
  * Requests never show a property photo: they show the need, specs and budget.
  */
 
-import { h, ic, clear, emptyState, append } from "../core/dom.js";
+import { h, ic, clear, emptyState, append, surface, controlGroup } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { state, subscribe } from "../core/state.js";
 import { openSheet, closeAllSheets } from "../core/ui.js";
@@ -40,7 +40,7 @@ function recordCard(record) {
   const accessibleLabel = [view.kindLabel, view.propertyType || view.title, view.location, view.priceLabel,
     externalBroker ? "وسيط متعاون" : "", view.state !== "ACTIVE" ? view.lifecycleLabel : "",
     dateLabel, roomsSpan?.textContent, areaSpan?.textContent].filter(Boolean).join("، ");
-  return h("article", { class: "os-card ref-record-card", "data-record": view.id, "data-record-kind": view.kind },
+  return surface("article", { class: "os-card ref-record-card", "data-record": view.id, "data-record-kind": view.kind },
     h("button", { type: "button", class: "ref-record-open", "aria-label": accessibleLabel, onClick: () => go(`record/${view.id}`) },
       photo(record),
       h("div", { class: "ref-record-copy" },
@@ -80,7 +80,7 @@ export function renderRepository(container, { query } = {}) {
     priceMax: "",
     status: "ACTIVE"
   };
-  const kindChips = h("div", { class: "os-chips", role: "group", "aria-label": "نوع السجل" });
+  const kindChips = controlGroup("div", { class: "os-chips", role: "group", "aria-label": "نوع السجل" });
   const unmatchedChip = h("button", { type: "button", class: "os-chip", "data-tab": "UNMATCHED", "aria-pressed": "false", text: "بلا مطابقة فقط" });
   const list = h("div", { class: "os-record-list", "aria-live": "polite" });
   const summary = h("span", { class: "os-count" });
@@ -142,7 +142,7 @@ export function renderRepository(container, { query } = {}) {
     activeHint.hidden = !(filters.kind || filters.unmatched || filters.purpose || filters.propertyType || filters.location || filters.priceMin || filters.priceMax || filters.status !== "ACTIVE");
     if (!rows.length) {
       const hasAny = state.records.some((r) => recordView(r).lifecycle !== "DELETED");
-      append(list, h("div", { class: "os-card" }, hasAny
+      append(list, surface("div", { class: "os-card" }, hasAny
         ? emptyState("search", "لا توجد نتائج مطابقة", "جرّب كلمات أخرى أو امسح الفلاتر.")
         : emptyState("database", "المستودع فارغ", "أضف أول عرض أو طلب، أو شارك رابط المكتب ليسجّل العملاء والملاك بياناتهم.")));
       return;
@@ -156,7 +156,7 @@ export function renderRepository(container, { query } = {}) {
   const options = h("details", { class: "ref-filters", "data-repo-filters": "" }, h("summary", {}, ic("search"), "خيارات البحث", activeHint, summary), filterPanel);
   // A deep link that already narrows the list opens the options so the choice is visible.
   if (filters.kind || filters.unmatched) options.open = true;
-  append(container,h("div",{class:"ref-repo-tools"},h("div",{class:"os-card tight ref-search-card"},h("div",{class:"os-search"},search,ic("search"))),options),list,h("button",{type:"button",class:"os-btn primary block ref-add-record",onClick:()=>openSheet("إضافة سجل جديد",h("div",{class:"os-btn-row"},h("button",{type:"button",class:"os-btn primary","data-quick-add":"",onClick:()=>{closeAllSheets();go("quick-add");}},ic("sparkles"),"إضافة سريعة"),h("button",{type:"button",class:"os-btn secondary",onClick:()=>{closeAllSheets();go("record/new?kind=OFFER");}},"إضافة عرض"),h("button",{type:"button",class:"os-btn secondary",onClick:()=>{closeAllSheets();go("record/new?kind=REQUEST");}},"إضافة طلب")))},ic("plus-circle"),"إضافة سجل جديد"));
+  append(container,h("div",{class:"ref-repo-tools"},surface("div", {class:"os-card tight ref-search-card"},h("div",{class:"os-search"},search,ic("search"))),options),list,h("button",{type:"button",class:"os-btn primary block ref-add-record",onClick:()=>openSheet("إضافة سجل جديد",controlGroup("div", {class:"os-btn-row"},h("button",{type:"button",class:"os-btn primary","data-quick-add":"",onClick:()=>{closeAllSheets();go("quick-add");}},ic("sparkles"),"إضافة سريعة"),h("button",{type:"button",class:"os-btn secondary",onClick:()=>{closeAllSheets();go("record/new?kind=OFFER");}},"إضافة عرض"),h("button",{type:"button",class:"os-btn secondary",onClick:()=>{closeAllSheets();go("record/new?kind=REQUEST");}},"إضافة طلب")))},ic("plus-circle"),"إضافة سجل جديد"));
   draw();
   const off = subscribe((kind) => { if (kind === "records" || kind === "tasks") draw(); });
   return () => off();

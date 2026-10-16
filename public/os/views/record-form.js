@@ -1,6 +1,6 @@
 /** Add / edit a repository record. Server re-validates with the same domain rules. */
 
-import { h, ic, clear, field, setFieldError, clearFieldErrors, append } from "../core/dom.js";
+import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -18,7 +18,7 @@ import { DEFAULT_DURATION, DURATION, DURATION_OPTIONS, VALIDITY_HINT, customExpi
 /** «حالة السعر» for offers: the owner's decision, asked once here (default: قابل للتفاوض). */
 export function priceStatusField(value = "NEGOTIABLE") {
   const hidden = h("input", { type: "hidden", name: "priceStatus", value: String(value || "").toUpperCase() === "FIXED" ? "FIXED" : "NEGOTIABLE" });
-  const seg = h("div", { class: "os-seg", role: "radiogroup", "aria-label": "حالة السعر" });
+  const seg = controlGroup("div", { class: "os-seg", role: "radiogroup", "aria-label": "حالة السعر" });
   for (const [id, label] of [["NEGOTIABLE", "قابل للتفاوض"], ["FIXED", "السعر ثابت"]]) {
     const b = h("button", { type: "button", role: "radio", "aria-checked": String(hidden.value === id), "aria-pressed": String(hidden.value === id), "data-price-status": id, text: label });
     b.addEventListener("click", () => {
@@ -42,7 +42,7 @@ export function validityField(values = {}, { isNew = true } = {}) {
   const custom = h("input", { class: "os-input", type: "date", name: "validityCustomDate", dir: "ltr", hidden: true, "aria-label": "تاريخ الانتهاء" });
   const current = values.validityDuration || DEFAULT_DURATION;
   const seg = (options, input, selected, onPick) => {
-    const box = h("div", { class: "os-seg os-validity-seg", role: "group" });
+    const box = controlGroup("div", { class: "os-seg os-validity-seg", role: "group" });
     for (const option of options) {
       const b = h("button", { type: "button", "aria-pressed": String(option.id === selected), "data-validity-option": option.id, text: option.label });
       b.addEventListener("click", () => { input.value = option.id; box.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); touched.value = "1"; onPick?.(option.id); });
@@ -66,7 +66,7 @@ export function validityField(values = {}, { isNew = true } = {}) {
 
 export function recordFormFields({ kind, values = {}, lockKind = false, onKindChange }) {
   const form = h("div", { class: "os-form" });
-  const purposeWrap = h("div", { class: "os-seg", role: "group", "aria-label": "الغرض" });
+  const purposeWrap = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "الغرض" });
   const hiddenPurpose = h("input", { type: "hidden", name: "purpose", value: values.purpose || "" });
   const drawPurposes = () => {
     clear(purposeWrap);
@@ -77,7 +77,7 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
       }, p.label));
     }
   };
-  const kindSeg = h("div", { class: "os-seg", role: "group", "aria-label": "نوع السجل" },
+  const kindSeg = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "نوع السجل" },
     [RECORD_KIND.OFFER, RECORD_KIND.REQUEST].map((k) => h("button", {
       type: "button", "aria-pressed": String(kind === k), disabled: lockKind && kind !== k,
       onClick: () => { if (lockKind || kind === k) return; kind = k; hiddenPurpose.value = ""; priceStatusBox.hidden = k !== RECORD_KIND.OFFER; onKindChange?.(k); kindSeg.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String([RECORD_KIND.OFFER, RECORD_KIND.REQUEST][i] === k))); drawPurposes(); priceLabel.firstChild.textContent = k === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)"; }
@@ -206,7 +206,7 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
     });
     if (fill) form.prepend(originBox);
     const saveBtn = h("button", { type: "submit", class: "os-btn primary block" }, ic("check"), existing ? "حفظ التعديلات" : "حفظ وفحص المطابقات");
-    const formEl = h("form", { class: "os-card", novalidate: true }, fill ? fill.el : null, form, h("div", { class: "os-form-actions" }, saveBtn));
+    const formEl = surface("form", { class: "os-card", novalidate: true }, fill ? fill.el : null, form, h("div", { class: "os-form-actions" }, saveBtn));
     const syncSave = () => { saveBtn.closest(".os-form-actions").hidden = form.hidden; };
     if (fill) new MutationObserver(syncSave).observe(form, { attributes: true, attributeFilter: ["hidden"] });
     formEl.addEventListener("submit", async (event) => {
@@ -243,10 +243,7 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
     });
     clear(container);
     append(container, 
-      h("div", { class: "os-page-head" },
-        h("button", { type: "button", class: "os-back", onClick: () => back(existing ? `record/${recordId}` : draft ? draft.returnTo || "quick-add" : "repo") }, ic("chev-right"), "رجوع"),
-        titleEl, h("span")
-      ),
+      pageHeader(titleEl, { backControl: h("button", { type: "button", class: "os-back", onClick: () => back(existing ? `record/${recordId}` : draft ? draft.returnTo || "quick-add" : "repo") }, ic("chev-right"), "رجوع"), action: h("span") }),
       formEl
     );
   };

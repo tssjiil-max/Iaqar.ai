@@ -4,7 +4,7 @@
  * reports success/failure, and never clears the user's input on failure.
  */
 
-import { h, ic, btn } from "./dom.js";
+import { h, ic, btn, dialogHeading } from "./dom.js";
 
 let toastTimer = null;
 
@@ -59,10 +59,7 @@ export function openSheet(title, body, { onClose, wide = false } = {}) {
   const onKey = (event) => { if (event.key === "Escape" && openSheets.at(-1) === close) close(); };
   const sheet = h("div", { class: "os-sheet", role: "dialog", "aria-modal": "true", "aria-label": title, style: wide ? { maxWidth: "900px" } : null },
     h("div", { class: "os-sheet-grip" }),
-    h("div", { class: "os-sheet-head" },
-      h("h2", { class: "os-h2", text: title }),
-      h("button", { type: "button", class: "os-icon-btn", "aria-label": "إغلاق", onClick: close }, ic("x"))
-    ),
+    dialogHeading(title, close),
     body
   );
   const overlay = h("div", { class: "os-overlay", onClick: (event) => { if (event.target === overlay) close(); } }, sheet);

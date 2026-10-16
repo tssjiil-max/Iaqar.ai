@@ -6,7 +6,7 @@
  * Switching keeps everything (one form, one text box).
  */
 
-import { h, ic } from "../core/dom.js";
+import { h, ic, controlGroup } from "../core/dom.js";
 import { runAction } from "../core/ui.js";
 import { formatNumber } from "../domain/format-domain.js";
 import { PURPOSES } from "../domain/records-domain.js";
@@ -87,7 +87,7 @@ export function reviewCard(listing, { roleLabel = "", cityFromOffice = false } =
 export function fillModes({ formBox, analyze, onListing, initialText = "", start = FILL_MODE.SMART, several = "", intro = "", label = "الصق إعلانك أو اكتب التفاصيل", placeholder = SMART_EXAMPLE }) {
   let mode = start;
   let analyzed = false;
-  const tabs = h("div", { class: "os-seg os-fill-modes", role: "tablist", "aria-label": "طريقة التعبئة" });
+  const tabs = controlGroup("div", { class: "os-seg os-fill-modes", role: "tablist", "aria-label": "طريقة التعبئة" });
   const textarea = h("textarea", { class: "os-textarea os-smart-text", name: "smartText", maxlength: String(SMART_FILL_LIMITS.maxChars), rows: "5", placeholder, "aria-label": label, "data-smart-input": "", text: initialText });
   const analyzeBtn = h("button", { type: "button", class: "os-btn primary block", "data-smart-analyze": "" }, ic("sparkles"), "تحليل وترتيب البيانات");
   const result = h("div", { "data-smart-result": "" });

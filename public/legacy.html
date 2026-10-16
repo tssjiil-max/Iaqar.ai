@@ -5750,7 +5750,7 @@
   <link rel="stylesheet" href="css/journey-reference-theme.css">
   <link rel="stylesheet" href="/os/site-theme.css">
 </head>
-<body>
+<body class="office-standalone">
   <script>
     if (document.documentElement.dataset.partyMode === "1" && typeof window.__IAQAR_PARTY_DIAG__ === "function") {
       window.__IAQAR_PARTY_DIAG__("PARTY_BOOTSTRAP_STARTED");
@@ -5910,7 +5910,7 @@
         <img src="/icons/iaqar-logo-transparent.png" alt="شعار مكاتب عقارية ذكية">
       </div>
 
-      <div class="brand">
+      <div class="brand" data-office-heading data-office-icon="office">
         <h1>مكاتب عقارية ذكية</h1>
         <p>منصة الفرص العقارية</p>
       </div>
@@ -6829,5 +6829,6 @@
   <script type="module" src="js/operations-center-ui.js"></script>
   <script type="module" src="js/opportunity-domain-bridge.js"></script>
   <script type="module" src="js/release-version-ui.js"></script>
+  <script type="module" src="/os/standalone-shell.js"></script>
 </body>
 </html>

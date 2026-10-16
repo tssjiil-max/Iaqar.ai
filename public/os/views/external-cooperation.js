@@ -1,4 +1,4 @@
-import { h, field } from "../core/dom.js";
+import { h, field, surface } from "../core/dom.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
 import { runAction } from "../core/ui.js";
@@ -34,5 +34,5 @@ export function externalCooperationPanel(record) {
     const input = Object.fromEntries(new FormData(form));
     runAction(submit, () => api("/os/records/cooperation", { officeId: session.officeId, recordId: record.id, ...input }), { success: "حُفظت مراجعة التعاون" });
   });
-  return h("details", { class: "os-card", "data-external-cooperation": "" }, h("summary", { class: "os-h2", text: "وسيط متعاون — تفاصيل التعاون والمراجعة" }), form);
+  return surface("details", { class: "os-card", "data-external-cooperation": "" }, h("summary", { class: "os-h2", text: "وسيط متعاون — تفاصيل التعاون والمراجعة" }), form);
 }

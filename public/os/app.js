@@ -7,7 +7,7 @@
  *   #/deal/<journeyId> (متابعة الصفقة) · #/inbox · #/search · #/audit · #/scout[/new|/opp/<id>|/task/<id>] (الباحث عن الفرص) · #/tools/<forms|guide|services|calculator|market> · #/settings[/profile|link|cooperation|channels|notifications|brokers]
  */
 
-import { h, clear, append } from "./core/dom.js";
+import { h, clear, append, pageHeader } from "./core/dom.js";
 import { api, firebaseReady } from "./core/runtime.js";
 import { ACCESS_MESSAGES, loadOfficeAccess, preferredOfficeId, session, signOutOffice, waitForAuth } from "./core/session.js";
 import { startOfficeData, state, subscribe } from "./core/state.js";
@@ -96,7 +96,7 @@ function render() {
   if (session.officeId) append(page, renderShellHeader({ active: current.name }));
   const body = h("section", { class: "os-view" });
   append(page, body);
-  if (current.name === "tasks" || current.name === "repo") append(body, h("h1", { class: "os-page-title", text: current.name === "tasks" ? "المهام اليومية" : "العروض والطلبات" }));
+  if (current.name === "tasks" || current.name === "repo") append(body, pageHeader(current.name === "tasks" ? "المهام اليومية" : "العروض والطلبات"));
   cleanup = current.run(body) || null;
   if (session.officeId) append(page, renderBottomNav(current.name));
   window.scrollTo({ top: 0 });

@@ -4,7 +4,7 @@
  * profile and records; nothing is sent anywhere by these screens.
  */
 
-import { h, ic, clear, append, emptyState } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe } from "../core/state.js";
@@ -17,9 +17,7 @@ import {
 import { officePublicLink } from "./shell.js";
 
 function pageHead(title) {
-  return h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => back("office") }, ic("chev-right"), "رجوع"),
-    h("h1", { class: "os-page-title", text: title }), h("span"));
+  return pageHeader(h("h1", { class: "os-page-title", text: title }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("office") }, ic("chev-right"), "رجوع"), action: h("span") });
 }
 
 function sectionTitle(text, sub = "") {
@@ -54,7 +52,7 @@ function renderForms(container) {
     officeLink: officePublicLink()
   };
   let group = TEMPLATE_GROUPS[0].id;
-  const tabs = h("div", { class: "os-seg", role: "group", "aria-label": "نوع النموذج" });
+  const tabs = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "نوع النموذج" });
   const list = h("div", { class: "os-tool-list", "data-tool-templates": "" });
   const draw = () => {
     clear(tabs);
@@ -65,10 +63,10 @@ function renderForms(container) {
     for (const template of templatesFor(context).filter((t) => t.group === group)) {
       const text = h("textarea", { class: "os-textarea os-template-text", rows: "6", "aria-label": template.title, "data-template-text": template.id });
       text.value = template.text;
-      list.append(h("article", { class: "os-card os-template", "data-template": template.id },
+      list.append(surface("article", { class: "os-card os-template", "data-template": template.id },
         h("h3", { class: "os-h2", text: template.title }),
         text,
-        h("div", { class: "os-btn-row" },
+        controlGroup("div", { class: "os-btn-row" },
           h("button", { type: "button", class: "os-btn primary", "data-template-share": "", onClick: () => shareText(text.value.trim()) }, ic("whatsapp"), "مشاركة"),
           h("button", { type: "button", class: "os-btn secondary", "data-template-copy": "", onClick: () => copyText(text.value.trim()) }, ic("clipboard"), "نسخ"))));
     }
@@ -99,7 +97,7 @@ function renderGuide(container) {
 function renderServices(container) {
   append(container, pageHead("الخدمات"),
     h("p", { class: "os-sub os-tool-intro", text: "روابط المنصات الرسمية. تُفتح خارج التطبيق، ولا يتبادل المكتب معها أي بيانات." }),
-    h("section", { class: "os-card os-set-list", "data-tool-services": "" }, OFFICIAL_SERVICES.map((service) =>
+    surface("section", { class: "os-card os-set-list", "data-tool-services": "" }, OFFICIAL_SERVICES.map((service) =>
       h("a", { class: "os-set-row os-service-row", href: service.url, target: "_blank", rel: "noopener noreferrer", "data-service": service.id },
         h("span", { class: "os-set-icon" }, ic("link")),
         h("span", { class: "os-set-text" }, h("b", { text: service.name }), h("small", { text: service.hint })),
@@ -111,7 +109,7 @@ function renderServices(container) {
 
 function renderCalculator(container) {
   let kind = CALC_KINDS[0].id;
-  const tabs = h("div", { class: "os-seg", role: "group", "aria-label": "نوع الصفقة" });
+  const tabs = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "نوع الصفقة" });
   const amount = h("input", { class: "os-input", name: "amount", inputmode: "numeric", dir: "ltr", placeholder: "0", "aria-label": "المبلغ" });
   const rate = (name, value) => { const el = h("input", { class: "os-input", name, inputmode: "decimal", dir: "ltr" }); el.value = String(value); return el; };
   const commission = rate("commissionPercent", CALC_DEFAULTS.commissionPercent);
@@ -120,7 +118,7 @@ function renderCalculator(container) {
   const amountLabel = h("span");
   const transferField = h("label", { class: "os-field" }, h("span", { text: "ضريبة التصرفات العقارية %" }), transfer);
   const error = h("small", { class: "os-field-error", role: "alert", "data-calc-error": "" });
-  const result = h("section", { class: "os-card os-calc-result", "data-calc-result": "", "aria-live": "polite" });
+  const result = surface("section", { class: "os-card os-calc-result", "data-calc-result": "", "aria-live": "polite" });
 
   const draw = () => {
     clear(tabs);
@@ -145,7 +143,7 @@ function renderCalculator(container) {
   append(container, pageHead("الحاسبة"),
     h("p", { class: "os-sub os-tool-intro", text: "حساب تقديري للسعي والضريبة. النِّسب قابلة للتعديل، والأرقام النهائية تُعتمد من الجهات الرسمية." }),
     tabs,
-    h("section", { class: "os-card os-form" },
+    surface("section", { class: "os-card os-form" },
       h("label", { class: "os-field" }, amountLabel, amount, error),
       h("div", { class: "os-row2" },
         h("label", { class: "os-field" }, h("span", { text: "نسبة السعي %" }), commission),
@@ -166,26 +164,26 @@ function renderMarket(container) {
     if (!state.recordsReady) { append(body, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
     const snap = marketSnapshot(state.records);
     if (!snap.total) {
-      append(body, h("div", { class: "os-card" }, emptyState("chart-up", "لا توجد بيانات بعد", "أضف عروضًا وطلبات لتظهر مؤشرات مكتبك هنا.",
+      append(body, surface("div", { class: "os-card" }, emptyState("chart-up", "لا توجد بيانات بعد", "أضف عروضًا وطلبات لتظهر مؤشرات مكتبك هنا.",
         h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus-circle"), "إضافة عرض أو طلب"))));
       return;
     }
     append(body,
-      h("section", { class: "os-card os-market-stats" }, stat("سجل نشط", snap.total, "total"), stat("عرض", snap.offers, "offers"), stat("طلب", snap.requests, "requests")),
-      h("section", { class: "os-card" }, sectionTitle("متوسط الأسعار حسب النوع", "متوسط سعر العروض ومتوسط ميزانية الطلبات"),
+      surface("section", { class: "os-card os-market-stats" }, stat("سجل نشط", snap.total, "total"), stat("عرض", snap.offers, "offers"), stat("طلب", snap.requests, "requests")),
+      surface("section", { class: "os-card" }, sectionTitle("متوسط الأسعار حسب النوع", "متوسط سعر العروض ومتوسط ميزانية الطلبات"),
         h("div", { class: "os-market-table", role: "table" },
           h("div", { class: "os-market-row head", role: "row" }, h("span", { text: "النوع" }), h("span", { text: "العروض" }), h("span", { text: "الطلبات" })),
           snap.byType.map((row) => h("div", { class: "os-market-row", role: "row", "data-market-type": row.key },
             h("span", {}, h("b", { text: row.propertyType }), h("small", { text: row.txLabel })),
             h("span", {}, h("b", { text: row.avgOffer ? formatPrice(row.avgOffer) : "—" }), h("small", { text: `${row.offers} عرض` })),
             h("span", {}, h("b", { text: row.avgBudget ? formatPrice(row.avgBudget) : "—" }), h("small", { text: `${row.requests} طلب` })))))),
-      h("section", { class: "os-card" }, sectionTitle("طلبات بلا عرض مطابق", "أحياء فيها طلب لدى مكتبك ولا يوجد عرض نشط من النوع نفسه"),
+      surface("section", { class: "os-card" }, sectionTitle("طلبات بلا عرض مطابق", "أحياء فيها طلب لدى مكتبك ولا يوجد عرض نشط من النوع نفسه"),
         snap.gaps.length
           ? h("ul", { class: "os-list os-market-gaps" }, snap.gaps.slice(0, 12).map((gap) => h("li", { "data-market-gap": gap.key }, ic("pin"),
             h("span", {}, h("b", { text: `${gap.propertyType} · حي ${gap.district}` }),
               h("small", { text: [`${gap.txLabel}`, `${gap.requests} طلب`, gap.avgBudget ? `متوسط الميزانية ${formatPrice(gap.avgBudget)}` : ""].filter(Boolean).join(" · ") })))))
           : h("p", { class: "os-sub", text: "كل الطلبات النشطة لها عرض من النوع نفسه في الحي نفسه." })),
-      h("section", { class: "os-card" }, sectionTitle("الأحياء الأكثر نشاطًا"),
+      surface("section", { class: "os-card" }, sectionTitle("الأحياء الأكثر نشاطًا"),
         h("ul", { class: "os-list os-market-districts" }, snap.byDistrict.slice(0, 10).map((d) => h("li", {}, ic("pin"),
           h("span", {}, h("b", { text: [d.city, `حي ${d.district}`].filter(Boolean).join(" - ") }), h("small", { text: `${d.offers} عرض · ${d.requests} طلب` })))))));
   };

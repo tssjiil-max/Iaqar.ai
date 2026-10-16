@@ -3,7 +3,7 @@
 import { partyBotRow } from "./bot-settings.js";
 import { externalCooperationPanel } from "./external-cooperation.js";
 import { isExternalBroker } from "../domain/external-broker-domain.js";
-import { h, ic, clear, emptyState, append } from "../core/dom.js";
+import { h, ic, clear, emptyState, append, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -25,7 +25,7 @@ function fact(iconName, label, value) {
 
 function candidatesPanel(record) {
   const view = recordView(record);
-  const panel = h("div", { class: "os-card" });
+  const panel = surface("div", { class: "os-card" });
   const listEl = h("div", { class: "os-form" });
   const searchBtn = h("button", { type: "button", class: "os-btn secondary block" }, ic("search"), "بحث عن خيارات مناسبة");
   searchBtn.addEventListener("click", () => runAction(searchBtn, async () => {
@@ -79,10 +79,7 @@ export function renderRecordDetail(container, { recordId }) {
   const draw = () => {
     const record = recordById(recordId);
     clear(container);
-    const head = h("div", { class: "os-page-head" },
-      h("button", { type: "button", class: "os-back", onClick: () => back("repo") }, ic("chev-right"), "العروض والطلبات"),
-      h("h1", { class: "os-page-title", text: "تفاصيل السجل" }),
-      record ? h("span", { class: "os-ref", text: `#${recordView(record).reference}` }) : h("span"));
+    const head = pageHeader(h("h1", { class: "os-page-title", text: "تفاصيل السجل" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("repo") }, ic("chev-right"), "العروض والطلبات"), action: record ? h("span", { class: "os-ref", text: `#${recordView(record).reference}` }) : h("span") });
     append(container, head);
     if (!record) {
       append(container, state.recordsReady ? h("div", { class: "os-alert bad", text: "السجل غير موجود أو حُذف." }) : h("div", { class: "os-skeleton" }));
@@ -101,7 +98,7 @@ export function renderRecordDetail(container, { recordId }) {
       view.state === "ARCHIVED" ? act("إعادة للنشطة", "restore", "soft", "restore", (e) => restoreRecordFlow(record, { button: e.currentTarget })) : null,
       view.state !== "DELETED" ? act("حذف", "trash", "danger", "delete", (e) => removeRecordFlow(record, { button: e.currentTarget, onDone: () => go("repo") })) : null
     );
-    append(container, h("div", { class: "os-card" },
+    append(container, surface("div", { class: "os-card" },
       h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "6px" } },
         h("span", { class: `os-badge${isRequest ? "" : " ok"}`, text: `${view.kindLabel} · ${view.purposeLabel}` }),
         isExternalBroker(record) ? h("span", { class: "os-badge", text: "وسيط متعاون" }) : null,
@@ -120,7 +117,7 @@ export function renderRecordDetail(container, { recordId }) {
       h("hr", { class: "os-divider" }),
       h("div", { class: "os-party-head" }, h("div", { class: "av" }, ic("user")),
         h("div", {}, h("b", { text: view.contactName || (isRequest ? "العميل" : "المالك") }), h("span", { dir: "ltr", text: view.contactPhone || "بدون رقم" }))),
-      view.contactPhone ? h("div", { class: "os-btn-row", style: { marginTop: "10px" } },
+      view.contactPhone ? controlGroup("div", { class: "os-btn-row", style: { marginTop: "10px" } },
         h("a", { class: "os-btn secondary", href: `tel:${view.contactPhone}` }, ic("phone"), "اتصال"),
         wa ? h("a", { class: "os-btn whatsapp", href: wa, target: "_blank", rel: "noopener" }, ic("whatsapp"), "واتساب") : null) : null,
       // «بوت المكتب»: is this person on the bot, and the link to give him (hidden where the bot is not available).
@@ -144,17 +141,17 @@ export function renderRecordDetail(container, { recordId }) {
       };
       const options = answerOptions(view.kind, record.purpose).filter((o) => o.id !== ANSWER.EDIT && o.id !== ANSWER.PAUSE);
       const reopen = [STATE.EXPIRED, STATE.UNAVAILABLE, STATE.NEEDS_CONFIRMATION].includes(v.state);
-      append(container, h("div", { class: "os-card", "data-validity-card": v.state },
+      append(container, surface("div", { class: "os-card", "data-validity-card": v.state },
         h("div", { class: "os-card-head" }, h("h2", { class: "os-h2" }, ic("clock"), "الصلاحية والتوفر"), h("span", { class: `os-badge${tone}`, "data-validity-state": v.state, text: v.label })),
         h("p", { class: "os-sub", text: [v.duration, v.urgent ? "مستعجل" : "", v.remaining, v.periodic, v.lastConfirmed].filter(Boolean).join(" · ") || "لم تُحدد مدة لهذا السجل بعد — يبقى في المطابقة كما كان." }),
         v.reason && v.state !== STATE.ACTIVE ? h("p", { class: "os-sub", "data-validity-reason": "", text: `السبب: ${v.reason}` }) : null,
-        h("div", { class: "os-btn-row" },
+        controlGroup("div", { class: "os-btn-row" },
           ...([STATE.PAUSED, STATE.ARCHIVED].includes(v.state) ? [] : reopen && v.state !== STATE.NEEDS_CONFIRMATION ? [answer("REACTIVATE", "إعادة تفعيل بمدة جديدة", "soft")] : options.map((o, i) => answer(o.id, o.label, i === 0 ? "soft" : "secondary"))))));
     }
 
     // Linked opportunities + pending reviews
     const reviews = state.tasks.filter((t) => String(t.type).toUpperCase() === "MATCH_REVIEW" && (t.offerId === recordId || t.requestId === recordId || t.opportunityId === recordId));
-    const linkCard = h("div", { class: "os-card" }, h("div", { class: "os-card-head" }, h("h2", { class: "os-h2" }, ic("handshake"), "الفرص المرتبطة")));
+    const linkCard = surface("div", { class: "os-card" }, h("div", { class: "os-card-head" }, h("h2", { class: "os-h2" }, ic("handshake"), "الفرص المرتبطة")));
     if (linked === null) append(linkCard, h("div", { class: "os-skeleton", style: { height: "60px" } }));
     else if (!linked.length && !reviews.length) append(linkCard, h("p", { class: "os-sub", text: "لا توجد فرص مرتبطة بعد. السجل محفوظ ويُعاد فحصه عند وصول بيانات مناسبة." }));
     for (const task of reviews) {

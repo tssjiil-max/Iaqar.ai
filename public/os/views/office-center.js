@@ -6,7 +6,7 @@
  * All read the office's own data (member-read by the rules); changes go through the Worker.
  */
 
-import { h, ic, clear, append, emptyState } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe } from "../core/state.js";
@@ -22,13 +22,11 @@ import { MIN_QUERY, searchOffice } from "../domain/search-domain.js";
 import { AUDIT_FILTERS, auditViews, filterAudit } from "../domain/audit-domain.js";
 
 function pageHead(title) {
-  return h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => back("office") }, ic("chev-right"), "رجوع"),
-    h("h1", { class: "os-page-title", text: title }), h("span"));
+  return pageHeader(h("h1", { class: "os-page-title", text: title }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("office") }, ic("chev-right"), "رجوع"), action: h("span") });
 }
 
 function chips(options, selected, onPick, attr) {
-  const row = h("div", { class: "os-chips os-center-chips", role: "group" });
+  const row = controlGroup("div", { class: "os-chips os-center-chips", role: "group" });
   for (const option of options) {
     const chip = h("button", { type: "button", class: "os-chip", "aria-pressed": String(option.id === selected), [attr]: option.id },
       option.label, option.count === undefined ? null : h("span", { class: "n", text: String(option.count) }));
@@ -54,7 +52,7 @@ export function renderInbox(container) {
       if (result.recordId) go(`record/${result.recordId}`);
     }, { success: "بدأت معالجة الرسالة — سيظهر السجل في العروض والطلبات" }));
     const open = view.recordId ? h("button", { type: "button", class: "os-btn secondary", "data-inbox-record": view.recordId, onClick: () => go(`record/${view.recordId}`) }, ic("eye"), "فتح السجل") : null;
-    return h("article", { class: "os-card os-inbox-card", "data-inbox-item": view.id, "data-message-class": view.messageClass, "data-inbox-state": view.state },
+    return surface("article", { class: "os-card os-inbox-card", "data-inbox-item": view.id, "data-message-class": view.messageClass, "data-inbox-state": view.state },
       h("header", { class: "os-inbox-head" },
         h("span", { class: `os-inbox-class is-${view.messageClass.toLowerCase()}`, text: view.classLabel }),
         h("span", { class: "os-inbox-meta" }, ic(view.channel === "telegram" ? "telegram" : view.channel === "whatsapp" ? "whatsapp" : "mail"), view.channelLabel),
@@ -63,7 +61,7 @@ export function renderInbox(container) {
       h("footer", { class: "os-inbox-foot" },
         h("small", { class: "os-sub", text: `${view.sender} · ${view.stateLabel}` }),
         view.reason && view.kept ? h("small", { class: "os-sub", "data-inbox-reason": "", text: `لماذا لم تتحول تلقائيًا: ${view.reason}` }) : null),
-      convert || open ? h("div", { class: "os-btn-row" }, convert, open) : null);
+      convert || open ? controlGroup("div", { class: "os-btn-row" }, convert, open) : null);
   };
 
   const draw = () => {

@@ -15,11 +15,11 @@
   </style>
   <link rel="stylesheet" href="/os/site-theme.css">
 </head>
-<body>
+<body class="office-standalone">
   <main class="wrap">
     <section class="card" aria-live="polite">
-      <h1>استكمال البيانات</h1>
-      <p class="muted">أكمل البيانات المطلوبة فقط ليتمكن المكتب من متابعة الطلب بشكل صحيح.</p>
+      <div data-office-heading data-office-icon="clipboard"><h1>استكمال البيانات</h1>
+      <p class="muted">أكمل البيانات المطلوبة فقط ليتمكن المكتب من متابعة الطلب بشكل صحيح.</p></div>
       <div id="officeLine" class="office"></div>
       <div id="status" class="status hidden"></div>
       <form id="form" class="hidden" autocomplete="on">
@@ -30,5 +30,6 @@
     </section>
   </main>
   <script type="module" src="/js/data-completion-page.js"></script>
+  <script type="module" src="/os/standalone-shell.js"></script>
 </body>
 </html>

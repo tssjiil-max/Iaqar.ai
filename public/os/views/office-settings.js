@@ -8,7 +8,7 @@
  * Manager-only; everything saves through core/office-profile.js.
  */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, navigationTile, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
@@ -25,9 +25,7 @@ import { workerBase } from "../core/runtime.js";
 import { loadScout } from "../core/scout.js";
 
 function pageHead(title, backTo = "settings") {
-  return h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => (backTo === "settings" ? go("settings") : back("tasks")) }, ic("chev-right"), "رجوع"),
-    h("h1", { class: "os-page-title", text: title }), h("span"));
+  return pageHeader(h("h1", { class: "os-page-title", text: title }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => (backTo === "settings" ? go("settings") : back("tasks")) }, ic("chev-right"), "رجوع"), action: h("span") });
 }
 
 function managerOnly(container, title) {
@@ -38,16 +36,16 @@ function managerOnly(container, title) {
 }
 
 function row(icon, title, hint, route) {
-  return h("button", { type: "button", class: "os-set-row", "data-settings": route, onClick: () => go(route === "library" ? "library" : `settings/${route}`) },
-    h("span", { class: "os-set-icon" }, ic(icon)),
-    h("span", { class: "os-set-text" }, h("b", { text: title }), h("small", { text: hint })),
-    ic("chev-left"));
+  return navigationTile({ title, hint, iconName: icon,
+    tone: ({ profile: "blue", link: "purple", cooperation: "green", channels: "blue", agent: "green", library: "purple", notifications: "gold", brokers: "gold", scout: "purple" })[route] || "blue",
+    attrs: { "data-settings": route },
+    onClick: () => go(route === "library" ? "library" : `settings/${route}`) });
 }
 
 export function renderSettingsHub(container) {
   if (managerOnly(container, "إعدادات المكتب")) return null;
   const office = session.office || {};
-  const list = h("section", { class: "os-card os-set-list", "aria-label": "إعدادات المكتب" },
+  const list = surface("section", { class: "os-card os-set-list os-settings-grid", "aria-label": "إعدادات المكتب" },
       row("office", "بيانات المكتب", [office.officeName, office.city].filter(Boolean).join(" · ") || "الاسم والرخصة والجوال والتخصص", "profile"),
       row("link", "رابط المكتب", office.publicSlug ? `/m/${office.publicSlug}` : "الرابط القصير لعملائك ومالكي العقارات", "link"),
       row("handshake", "التعاون بين الوسطاء", "هل تستقبل طلبات تعاون من مكاتب أخرى؟", "cooperation"),
@@ -103,12 +101,12 @@ function photoCard() {
   save.addEventListener("click", () => runAction(save, async () => { await saveBrokerPhoto(pending); pending = null; draw(); ensureShareCard(); }, { success: "تم حفظ الصورة" }));
   remove.addEventListener("click", () => runAction(remove, async () => { await saveBrokerPhoto(""); draw(); ensureShareCard(); }, { success: "تم حذف الصورة" }));
   draw();
-  return h("section", { class: "os-card os-photo-card", "data-photo-card": "" },
+  return surface("section", { class: "os-card os-photo-card", "data-photo-card": "" },
     preview,
     h("div", { class: "os-photo-copy" },
       h("b", { text: "شعار المكتب أو صورة الوسيط" }),
       h("small", { text: "تظهر كاملة في بطاقة المكتب دون قص. بدونها يبقى الشعار الافتراضي." }),
-      h("div", { class: "os-btn-row" }, choose, save, remove),
+      controlGroup("div", { class: "os-btn-row" }, choose, save, remove),
       message, file));
 }
 
@@ -125,7 +123,7 @@ export function renderOfficeProfile(container) {
   const errors = Object.fromEntries(["officeName", "brokerName", "licenseNumber", "city", "phone"].map((k) => [k, err(k)]));
   const availability = h("small", { class: "os-field-note", "data-name-availability": "", role: "status" });
   const chosen = new Set(Array.isArray(office.specialties) ? office.specialties : []);
-  const specialties = h("div", { class: "os-seg os-specialties", role: "group", "aria-label": "تخصص المكتب" }, SPECIALTIES.map((s) => {
+  const specialties = controlGroup("div", { class: "os-seg os-specialties", role: "group", "aria-label": "تخصص المكتب" }, SPECIALTIES.map((s) => {
     const b = h("button", { type: "button", "aria-pressed": String(chosen.has(s.value)), "data-specialty": s.value, text: s.label });
     b.addEventListener("click", () => { if (chosen.has(s.value)) chosen.delete(s.value); else chosen.add(s.value); b.setAttribute("aria-pressed", String(chosen.has(s.value))); });
     return b;
@@ -247,13 +245,13 @@ export function renderLinkSettings(container) {
   }, { success: "تم حفظ معرّف الرابط" }));
 
   append(container,
-    h("section", { class: "os-card" },
+    surface("section", { class: "os-card" },
       h("h2", { class: "os-h2" }, ic("link"), "رابط المكتب"),
       h("p", { class: "os-sub", text: "الرابط الظاهر أدناه هو رابط المكتب الدائم. أزرار النسخ وواتساب تستخدم نسخة مشاركة محدثة تلقائيًا لمنع عرض صورة قديمة." }),
-      linkBox, h("div", { class: "os-btn-row" }, copy, share)),
-    h("section", { class: "os-card os-form" },
+      linkBox, controlGroup("div", { class: "os-btn-row" }, copy, share)),
+    surface("section", { class: "os-card os-form" },
       field("معرّف الرابط القصير", slug, hint), save),
-    h("section", { class: "os-card os-share-card" },
+    surface("section", { class: "os-card os-share-card" },
       h("h2", { class: "os-h2" }, ic("shield"), "صورة معاينة الرابط"),
       h("p", { class: "os-sub", text: "كل تحديث ينشئ صفحة مشاركة وصورة جديدة؛ رابط المكتب الدائم لا يتغير." }),
       cardImg, cardStatus, refreshCard));
@@ -284,7 +282,7 @@ export function renderCooperationSettings(container) {
     const save = h("button", { type: "button", class: "os-btn primary block" }, ic("check"), "حفظ إعداد التعاون");
     save.addEventListener("click", () => runAction(save, () => saveCooperationMode(selected), { success: "تم حفظ إعداد التعاون" }));
     append(body,
-      h("section", { class: "os-card" },
+      surface("section", { class: "os-card" },
         h("h2", { class: "os-h2" }, ic("handshake"), "التعاون بين الوسطاء"),
         h("p", { class: "os-sub", text: "بيانات التواصل لا تظهر تلقائيًا في أي وضع." }),
         group),
@@ -336,7 +334,7 @@ function whatsappCard(view, reload) {
   const actions = view.actions.map((action) => action === "disconnect"
     ? channelAction("disconnect", "فصل", { kind: "danger", icon: "x", run: unlink })
     : channelAction(action, action === "connect" ? "ربط واتساب للأعمال" : "إعادة الربط", { kind: action === "connect" ? "primary" : "secondary", icon: "link", run: link }));
-  return h("article", { class: "os-card os-chan", "data-channel": "whatsapp" },
+  return surface("article", { class: "os-card os-chan", "data-channel": "whatsapp" },
     channelHead(meta, view),
     h("dl", { class: "os-chan-facts" },
       fact("الرقم", view.number || "—", { "data-channel-number": "" }),
@@ -345,7 +343,7 @@ function whatsappCard(view, reload) {
       fact("طريقة الربط", coexistence ? "Cloud API مع بقاء الرقم على تطبيق واتساب للأعمال" : "Cloud API", { "data-onboarding": view.onboardingMode })),
     view.detail ? h("div", { class: "os-alert bad", "data-channel-error": "", text: view.detail }) : null,
     view.note ? h("p", { class: "os-sub", "data-channel-note": "", text: view.note }) : null,
-    actions.length ? h("div", { class: "os-btn-row" }, ...actions) : null);
+    actions.length ? controlGroup("div", { class: "os-btn-row" }, ...actions) : null);
 }
 
 function telegramCard(view, reload, pending) {
@@ -376,19 +374,19 @@ function telegramCard(view, reload, pending) {
   copy.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(pending.link); toast("تم نسخ رابط الربط"); } catch (_) { toast("تعذر النسخ — افتح الرابط مباشرة", "bad"); }
   });
-  return h("article", { class: "os-card os-chan", "data-channel": "telegram" },
+  return surface("article", { class: "os-card os-chan", "data-channel": "telegram" },
     channelHead(meta, view),
     h("dl", { class: "os-chan-facts" },
       fact("البوت", view.botUsername ? `@${view.botUsername}` : "—"),
       view.detail ? fact(view.state === "CONNECTED" ? "المحادثة المرتبطة" : "ملاحظة", view.detail, { "data-channel-detail": "" }) : null),
     showLink ? h("div", { class: "os-chan-link", "data-telegram-pending": "" },
       h("p", { class: "os-sub", text: "افتح الرابط من حساب تيليجرام الذي تستقبل عليه رسائل المكتب ثم اضغط «ابدأ». الرابط صالح 15 دقيقة ولمرة واحدة." }),
-      h("div", { class: "os-btn-row" },
+      controlGroup("div", { class: "os-btn-row" },
         h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-telegram-open": "" }, ic("telegram"), "فتح تيليجرام"),
         copy)) : null,
     view.linkWaiting && !pending.link ? h("p", { class: "os-sub", "data-telegram-pending": "", text: "رابط ربط سابق ما زال بانتظار الإتمام. أنشئ رابطًا جديدًا إن لم يعد لديك." }) : null,
     view.note ? h("p", { class: "os-sub", "data-channel-note": "", text: view.note }) : null,
-    actions.length ? h("div", { class: "os-btn-row" }, ...actions) : null);
+    actions.length ? controlGroup("div", { class: "os-btn-row" }, ...actions) : null);
 }
 
 export function renderChannelSettings(container) {
@@ -415,7 +413,7 @@ export function renderChannelSettings(container) {
         h("span", { class: "os-set-icon" }, ic("inbox-in")),
         h("span", { class: "os-set-text" }, h("b", { text: "مركز التواصل" }), h("small", { text: "كل ما وصل من القنوات، مصنّفًا: اجتماعية، استفسار، عرض، طلب، متعلقة بصفقة" })),
         ic("chev-left")),
-      h("section", { class: "os-card os-set-legacy" },
+      surface("section", { class: "os-card os-set-legacy" },
         h("h2", { class: "os-h2" }, ic("shield"), "الأتمتة"),
         h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: payload.bot?.enabled
           ? `الوضع الحالي: ${automationLabel(payload)}. لا يُرسل شيء عبر واتساب تلقائيًا.`

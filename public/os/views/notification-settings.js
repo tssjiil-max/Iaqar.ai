@@ -1,7 +1,7 @@
 /** «الإشعارات» — which kinds of notifications this office / this account receives. */
 
 import { brokerAlertsCard } from "./bot-settings.js";
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction } from "../core/ui.js";
@@ -9,9 +9,7 @@ import { loadNotificationPrefs, saveNotificationPrefs } from "../core/notificati
 import { NOTIFICATION_CATEGORIES } from "../../js/office-domain.js";
 
 export function renderNotificationSettings(container) {
-  append(container, h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => (session.isManager ? go("settings") : back("tasks")) }, ic("chev-right"), "رجوع"),
-    h("h1", { class: "os-page-title", text: "الإشعارات" }), h("span")));
+  append(container, pageHeader(h("h1", { class: "os-page-title", text: "الإشعارات" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => (session.isManager ? go("settings") : back("tasks")) }, ic("chev-right"), "رجوع"), action: h("span") }));
   const body = h("div", {}, h("div", { class: "os-skeleton" }));
   append(container, body);
   loadNotificationPrefs().then((prefs) => {
@@ -32,7 +30,7 @@ export function renderNotificationSettings(container) {
       status.hidden = false;
     }, { success: "تم الحفظ", onError: () => { status.className = "os-alert bad"; status.textContent = "تعذر حفظ تفضيلات الإشعارات"; status.hidden = false; } }));
     append(body,
-      h("div", { class: "os-card" },
+      surface("div", { class: "os-card" },
         h("p", { class: "os-sub", text: "تُحفظ لهذا المكتب ولحسابك، ولا تصل إشعارات هذا المكتب إلى أي مكتب آخر. إيقاف نوع هنا يمنع إرساله من الخادم أيضًا." }),
         h("div", { class: "os-pref-list" }, rows)),
       status, save,

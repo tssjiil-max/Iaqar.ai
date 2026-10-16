@@ -5,7 +5,7 @@
  * Similar records are looked for in THIS office's records only (already on the device; nothing is asked of other offices).
  */
 
-import { h, ic, clear, append, field } from "../core/dom.js";
+import { h, ic, clear, append, field, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -37,7 +37,7 @@ function cardView(card, redraw) {
     h("details", { class: "os-quick-original" }, h("summary", { text: "النص الأصلي" }), h("p", { text: l.original })),
     card.saved
       ? h("p", { class: "os-quick-saved", "data-card-saved": "" }, ic("check-circle"), card.duplicate ? " موجود مسبقًا — فتحنا السجل الحالي" : " تم الحفظ", h("button", { type: "button", class: "os-link-btn", onClick: () => go(`record/${card.recordId}`), text: "فتح السجل" }))
-      : h("div", { class: "os-btn-row" },
+      : controlGroup("div", { class: "os-btn-row" },
         h("button", { type: "button", class: "os-btn primary", "data-card-review": "", onClick: () => {
           openDraftInForm({
             listing: l,
@@ -76,10 +76,8 @@ export function renderQuickAdd(container) {
     });
     const pending = memory.cards.filter((c) => !c.saved).length;
     append(container,
-      h("div", { class: "os-page-head" },
-        h("button", { type: "button", class: "os-back", onClick: () => go("office") }, ic("chev-right"), "رجوع"),
-        h("h1", { class: "os-page-title", text: "إضافة سريعة" }), h("span")),
-      h("section", { class: "os-card os-form" },
+      pageHeader(h("h1", { class: "os-page-title", text: "إضافة سريعة" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => go("office") }, ic("chev-right"), "رجوع"), action: h("span") }),
+      surface("section", { class: "os-card os-form" },
         h("p", { class: "os-sub", text: "الصق إعلانًا وصلك من مالك أو عميل أو وسيط متعاون — أو عدة إعلانات — ثم راجع كل واحد قبل حفظه." }),
         h("label", { class: "os-field" }, h("span", { text: "الصق إعلانك أو اكتب التفاصيل" }), textarea),
         h("div", { class: "os-row2" }, field("مصدر البيانات", channel, { optional: true }), field("صفة صاحب الإعلان", role)),

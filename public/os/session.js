@@ -9,7 +9,7 @@
  * The page refreshes itself while open, so moves from the other side appear directly.
  */
 
-import { h, ic, clear, append } from "./core/dom.js";
+import { h, ic, clear, append, surface } from "./core/dom.js";
 import { workerBase } from "./core/runtime.js";
 import { formatDateTime, formatNumber, formatPrice } from "./domain/format-domain.js";
 import { historyDetails, roomAgreedCard, roomPropertyCard, roomSidesCard, roomTermsList } from "./views/session-parts.js";
@@ -62,7 +62,7 @@ function stateView(message, tone = "warn") {
   clear(root);
   append(root, h("main", { class: "os-app os-session-app" },
     h("header", { class: "os-session-head" }, h("h1", { class: "os-page-title", text: "غرفة التفاوض" })),
-    h("div", { class: "os-card" }, h("div", { class: `os-alert ${tone}`, text: message }))));
+    surface("div", { class: "os-card" }, h("div", { class: `os-alert ${tone}`, text: message }))));
 }
 
 function head(office = {}, session = {}) {
@@ -173,7 +173,7 @@ function actionsBar(session) {
 function versusCard(session, live) {
   const room = session.room || {};
   const status = h("div", { class: "os-alert bad", role: "alert", hidden: true, "data-room-error": "" });
-  const card = h("section", { class: "os-card os-room-part os-deal-sides", "aria-label": "المالك مقابل العميل", "data-room-part": "versus" },
+  const card = surface("section", { class: "os-card os-room-part os-deal-sides", "aria-label": "المالك مقابل العميل", "data-room-part": "versus" },
     h("h2", { class: "os-h2 os-part-title" }, ic("swap"), "المالك مقابل العميل"),
     roomSidesCard({
       sides: session.sides || {}, status: room.status || {}, viewer: session.role, priceLabel: room.priceLabel || "السعر",
@@ -291,7 +291,7 @@ function render() {
     roomAgreedCard(room.agreed || []),
     versusCard(session, live),
     historyDetails(session.events, { emptyText: "لا توجد حركات بعد.", note: "لا تظهر بيانات التواصل أو الأسماء بين الطرفين. كل خطوة تُحفظ في السجل." }),
-    live ? actionsBar(session) : h("div", { class: "os-card" }, h("div", { class: "os-alert info", text: current.message || "انتهت غرفة التفاوض لهذه الصفقة." })));
+    live ? actionsBar(session) : surface("div", { class: "os-card" }, h("div", { class: "os-alert info", text: current.message || "انتهت غرفة التفاوض لهذه الصفقة." })));
   append(root, main);
   window.scrollTo({ top: y });
   if (open.extra === "broker") root.querySelector("textarea[name=brokerNote]")?.focus({ preventScroll: true });
@@ -322,7 +322,7 @@ async function start() {
     if (!(await refresh(true))) return;
   } catch (_) {
     clear(root);
-    append(root, h("main", { class: "os-app os-session-app" }, h("div", { class: "os-card" },
+    append(root, h("main", { class: "os-app os-session-app" }, surface("div", { class: "os-card" },
       h("div", { class: "os-alert warn", text: "تعذر تحميل غرفة التفاوض — تحقق من الاتصال ثم أعد المحاولة." }),
       h("button", { type: "button", class: "os-btn secondary block", style: { marginTop: "10px" }, onClick: start }, ic("refresh"), "إعادة المحاولة"))));
     return;

@@ -1,6 +1,6 @@
 /** «مكتبة المكتب» — contract folders and office files. Any member reads/adds/edits; only managers delete (rules enforce it). */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { back } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, openSheet, runAction, toast } from "../core/ui.js";
@@ -27,10 +27,8 @@ export function renderLibrary(container) {
   const info = h("p", { class: "os-sub", role: "status", "data-lib-status": "" });
   const content = h("div", { "data-lib-content": "" }, h("div", { class: "os-skeleton" }));
   append(container,
-    h("div", { class: "os-page-head" },
-      h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "رجوع"),
-      h("h1", { class: "os-page-title", text: "مكتبة المكتب" }), h("span")),
-    h("div", { class: "os-card" }, h("div", { class: "os-lib-filters" }, search, status, validity), info),
+    pageHeader(h("h1", { class: "os-page-title", text: "مكتبة المكتب" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "رجوع"), action: h("span") }),
+    surface("div", { class: "os-card" }, h("div", { class: "os-lib-filters" }, search, status, validity), info),
     add, content);
 
   const visible = () => filterLibraryItems(items, { officeId: session.officeId, ...filters });
@@ -99,13 +97,13 @@ export function renderLibrary(container) {
         await runAction(null, async () => { await deleteLibraryItem(item.id); await load(); }, { success: "تم حذف الملف" });
       } }, ic("trash"), "حذف") : null
     ];
-    return h("article", { class: "os-card os-lib-file", "data-lib-id": item.id },
+    return surface("article", { class: "os-card os-lib-file", "data-lib-id": item.id },
       h("strong", { text: libraryDocumentTitle(item) }),
       meta(`${libraryDocumentStatusLabel(item)} · ${fileKindLabel(item)} · ${formatLibraryFileSize(item.fileSizeBytes)}`),
       item.referenceNumber ? meta(`المرجع: ${item.referenceNumber}`) : null,
       meta(`أُضيف: ${dateLabel(item.createdAt)}`),
       item.expiryDate ? meta(`ينتهي: ${dateLabel(item.expiryDate)}`) : null,
-      h("div", { class: "os-btn-row" }, actions));
+      controlGroup("div", { class: "os-btn-row" }, actions));
   }
 
   function draw() {
@@ -123,7 +121,7 @@ export function renderLibrary(container) {
     const bySection = countLibraryItemsByMainSection(rows);
     append(content, LIBRARY_MAIN_SECTIONS.map((section) => {
       const expanded = open === section.id;
-      return h("section", { class: "os-card os-lib-section", "data-lib-section": section.id },
+      return surface("section", { class: "os-card os-lib-section", "data-lib-section": section.id },
         h("button", { type: "button", class: "os-lib-toggle", "aria-expanded": String(expanded), "data-lib-toggle": section.id, onClick: () => { open = expanded ? "" : section.id; draw(); } },
           h("span", { text: section.label }), h("span", { class: "os-badge", text: String(bySection[section.id] || 0) })),
         expanded ? h("div", { class: "os-lib-folders" }, section.categories.map((key) =>

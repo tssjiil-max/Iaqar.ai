@@ -4,7 +4,7 @@
  */
 
 import { botAskLine } from "./bot-settings.js";
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -32,7 +32,7 @@ function compareTable(offer, request) {
 function openInfoRequest(match) {
   let role = RECIPIENT.CLIENT;
   const body = h("div", { class: "os-form" });
-  const seg = h("div", { class: "os-seg", role: "group", "aria-label": "المستلم" });
+  const seg = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "المستلم" });
   const drawSeg = () => {
     clear(seg);
     for (const [id, label] of [[RECIPIENT.CLIENT, "العميل"], [RECIPIENT.OWNER, "المالك"]]) {
@@ -89,9 +89,7 @@ export function renderReview(container, { matchId }) {
   let match;
   const draw = () => {
     clear(container);
-    append(container, h("div", { class: "os-page-head" },
-      h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "المهام اليومية"),
-      h("h1", { class: "os-page-title", text: "مراجعة المطابقة" }), h("span")));
+    append(container, pageHeader(h("h1", { class: "os-page-title", text: "مراجعة المطابقة" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "المهام اليومية"), action: h("span") }));
     if (match === undefined) { append(container, h("div", { class: "os-skeleton" })); return; }
     if (!match) { append(container, h("div", { class: "os-alert bad", text: "المطابقة غير موجودة أو لم تعد متاحة." })); return; }
     const offer = recordById(match.offerId || match.ownerOfferId);
@@ -113,14 +111,14 @@ export function renderReview(container, { matchId }) {
       toast("تم اعتماد المطابقة — جهّز أول مقترح", "ok");
       go(`journey/${res.journeyId}`);
     }));
-    const moreRow = h("div", { class: "os-btn-row", style: { marginTop: "8px" } },
+    const moreRow = controlGroup("div", { class: "os-btn-row", style: { marginTop: "8px" } },
       h("button", { type: "button", class: "os-btn secondary", onClick: () => openInfoRequest(match) }, ic("question"), "طلب معلومات"),
       h("button", { type: "button", class: "os-btn secondary", onClick: () => openPostpone(match) }, ic("clock"), "تأجيل"),
       h("button", { type: "button", class: "os-btn danger", onClick: (e) => reject(match, e.currentTarget) }, ic("x-circle"), "رفض"));
 
     append(container,
       botAskLine(match),
-      h("div", { class: "os-card os-review-card" },
+      surface("div", { class: "os-card os-review-card" },
         h("div", { class: "os-review-heading" },
           h("div", {},
         h("div", { style: { display: "flex", justifyContent: "space-between", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
@@ -132,15 +130,15 @@ export function renderReview(container, { matchId }) {
         h("div", { style: { marginTop: "10px" } }, compareTable(offer, request))
       ),
       h("div", { class: "os-grid-2" },
-        reasons.length ? h("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("check-circle"), "أسباب التوافق"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, reasons.map((r) => h("li", { class: "good" }, ic("check"), r)))) : null,
-        warnings.length ? h("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("alert"), "نقاط الاختلاف"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, warnings.map((w) => h("li", { class: "warn" }, ic("alert"), w)))) : null
+        reasons.length ? surface("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("check-circle"), "أسباب التوافق"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, reasons.map((r) => h("li", { class: "good" }, ic("check"), r)))) : null,
+        warnings.length ? surface("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("alert"), "نقاط الاختلاف"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, warnings.map((w) => h("li", { class: "warn" }, ic("alert"), w)))) : null
       ),
       infoReplies,
       decided || superseded
-        ? h("div", { class: "os-card" },
+        ? surface("div", { class: "os-card" },
           h("div", { class: `os-alert ${match.brokerDecision === "APPROVED" ? "ok" : "info"}`, text: superseded && !decided ? "حُدّثت بيانات أحد السجلين فأصبحت هذه النسخة قديمة." : match.brokerDecision === "APPROVED" ? "تم اعتماد هذه المطابقة." : "تم رفض هذه المطابقة." }),
           match.journeyId ? h("button", { type: "button", class: "os-btn primary block", style: { marginTop: "10px" }, onClick: () => go(`journey/${match.journeyId}`) }, "فتح مساحة الفرصة") : null)
-        : h("div", { class: "os-card" }, approveBtn, moreRow,
+        : surface("div", { class: "os-card" }, approveBtn, moreRow,
           h("p", { class: "os-sub", style: { marginTop: "8px", fontSize: ".86rem" }, text: "لن يُرسل أي شيء للعميل أو المالك قبل قرارك." }))
     );
   };
