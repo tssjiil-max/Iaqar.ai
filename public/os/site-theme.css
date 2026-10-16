@@ -175,3 +175,26 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 #accessGate :is(h2,.access-choice-title,.access-step-label){line-height:1.5}
 #accessGate :is(.access-choice-sub,.access-step-index,.access-step-label){font-size:13px;line-height:1.5}
 #accessGate .access-choice-action{background-color:var(--brand-primary)}
+
+
+/* Structural office section: reusable heading + body layout, not a page-level color override. */
+.os-office-sections{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:stretch}
+.os-office-section{min-width:0;display:flex;flex-direction:column;gap:14px}
+.os-office-section-head{display:flex;direction:rtl;align-items:flex-start;gap:12px;min-width:0}
+.os-office-section-head .os-page-icon{flex:none}
+.os-office-section-copy{flex:1;min-width:0}
+.os-office-section-copy .os-h2{margin:0;overflow-wrap:anywhere}
+.os-office-section-copy .os-sub{margin:6px 0 0;line-height:1.65}
+.os-office-section-body{display:flex;flex-direction:column;gap:12px;min-width:0;flex:1}
+.os-office-section-body .os-field{min-width:0}
+.os-office-section-body .os-select{width:100%;max-width:100%}
+.os-office-check{display:flex;align-items:flex-start;gap:12px;line-height:1.7;cursor:pointer}
+.os-office-check input{flex:none;margin-block-start:6px;accent-color:var(--brand-primary)}
+.os-office-settings-actions{min-width:0}
+.os-office-settings-actions .os-btn{width:100%}
+@media(min-width:1024px){
+ .os-app:has(.os-office-sections){max-width:1120px}
+ .os-office-sections{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+ .os-office-sections>.os-office-section:last-child:nth-child(odd){grid-column:1/-1}
+ .os-office-settings-actions{max-width:340px;margin-inline-start:auto}
+}
