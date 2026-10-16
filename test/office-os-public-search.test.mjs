@@ -16,10 +16,14 @@ test('guest searches without login and gets only ten explicitly public offers wi
  const r=await call('/os/public/search',input);assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.results.length,10);
  assert.ok(r.body.results.every(x=>x.officeId===OFFICE_A));assert.equal(r.body.orchestration.event,'SEARCH_REQUESTED');
  assert.ok(!JSON.stringify(r.body).includes('0551234567'));assert.ok(!JSON.stringify(r.body).includes('مالك سري'));assert.ok(!JSON.stringify(r.body).includes('كود الباب'));
- assert.ok(!r.body.results.some(x=>/private|sold/.test(x.reference)));assert.equal(r.body.contact.sent,false);
+ assert.ok(!r.body.results.some(x=>/private|sold/.test(x.reference)));assert.equal(r.body.contact,undefined,'search asks for no contact');
+ const picked=await call('/os/public/search/select',{searchToken:r.body.searchToken,reference:r.body.results[0].reference,name:input.name,phone:input.phone,channel:input.channel,consentProcessing:true,consentContact:true});assert.equal(picked.status,200,JSON.stringify(picked.body));assert.equal(picked.body.contact.sent,false);
 });
 test('name, phone, communication channel and explicit consents are required on the server',async()=>{
- for(const patch of [{name:''},{phone:'123'},{channel:'email'},{consentProcessing:false},{consentContact:false}]) assert.equal((await call('/os/public/search',{...input,...patch})).status,400);
+ // Contact is collected when the client chooses a property (search itself needs none).
+ const s=await call('/os/public/search',{...input,requestKey:'consent-rules-0001'});assert.equal(s.status,200,JSON.stringify(s.body));
+ const base={searchToken:s.body.searchToken,reference:s.body.results[0].reference,name:input.name,phone:input.phone,channel:input.channel,consentProcessing:true,consentContact:true};
+ for(const patch of [{name:''},{phone:'123'},{channel:'email'},{consentProcessing:false},{consentContact:false}]) assert.equal((await call('/os/public/search/select',{...base,...patch})).status,400,JSON.stringify(patch));
 });
 test('all offices search still only returns explicitly public data',async()=>{
  const r=await call('/os/public/search',{...input,scope:'all',requestKey:'all-search-test-0001'});assert.equal(r.status,200,JSON.stringify(r.body));
@@ -43,9 +47,12 @@ test('Telegram starts from an expiring guest link, sends through the real adapte
  const sent=[],original=globalThis.fetch;
  globalThis.fetch=async (url,init)=>String(url).startsWith('https://api.telegram.org/')?(sent.push(JSON.parse(init.body)),new Response(JSON.stringify({ok:true,result:{message_id:700}}),{status:200})):original(url,init);
  try {
-  const r=await call('/os/public/search',{...input,requestKey:'telegram-guest-test-0001'});
+  const s=await call('/os/public/search',{...input,requestKey:'telegram-guest-test-0001'});
+  const replaySearch=await call('/os/public/search',{...input,requestKey:'telegram-guest-test-0001'});assert.equal(replaySearch.body.searchToken,s.body.searchToken,'retries reuse the same session');
+  // The Telegram link is handed out only after the client chose a property and consented.
+  const r=await call('/os/public/search/select',{searchToken:s.body.searchToken,reference:s.body.results[0].reference,name:input.name,phone:input.phone,channel:'telegram',consentProcessing:true,consentContact:true});assert.equal(r.status,200,JSON.stringify(r.body));
   const token=new URL(r.body.contact.telegramLink).searchParams.get('start');assert.ok(token.startsWith('ps_'));
-  const replay=await call('/os/public/search',{...input,requestKey:'telegram-guest-test-0001'});assert.equal(replay.body.contact.telegramLink,r.body.contact.telegramLink,'retries reuse the same session');
+  const replay=await call('/os/public/search/select',{searchToken:s.body.searchToken,reference:s.body.results[0].reference,name:input.name,phone:input.phone,channel:'telegram',consentProcessing:true,consentContact:true});assert.equal(replay.body.contact.telegramLink,r.body.contact.telegramLink,'a repeated choice keeps the same link');
   const webhook=async (chat,secret='public-search-test-secret')=>{
    const response=await h.worker.fetch(new Request('https://worker.test/telegram/webhook',{method:'POST',headers:{'content-type':'application/json','x-telegram-bot-api-secret-token':secret},body:JSON.stringify({update_id:1234,message:{chat:{id:chat,type:'private'},from:{id:chat},text:`/start ${token}`}})}),h.env,{waitUntil(){}});return response;
   };

@@ -1,4 +1,4 @@
-import { deliverGuestSearchTelegram } from "./public-search-service.js";
+import { deliverGuestSearchTelegram, replyGuestSearchTelegram } from "./public-search-service.js";
 /**
  * «قنوات المكتب» — each office links its own channels; the link is stored on the server
  * against the office id and decides which office an inbound message belongs to.
@@ -235,6 +235,10 @@ export async function handleCentralTelegramWebhook({ request, env, store, deps, 
   // «مدير المكتب الذكي»: an office's own bot link (t.me/<bot>?start=of_<officeId>).
   const publicSearchToken = update.message && /^\/start(?:@\w+)?\s+ps_([a-f0-9]{48})\s*$/.exec(String(message.text || ""));
   if (publicSearchToken && bot) return deliverGuestSearchTelegram(bot, { token: publicSearchToken[1], chat });
+  // A guest's reply in the chat that received their results («العرض الثاني»). Other chats continue below.
+  if (bot && update.message && chat.type === "private" && typeof message.text === "string" && !message.text.startsWith("/")) {
+    try { const guest = await replyGuestSearchTelegram(bot, { chat, text: message.text }); if (guest) return guest; } catch (error) { console.error("[office-os] guest search reply failed", error?.code || error?.message); }
+  }
   const visitorOffice = update.message ? parseOfficeStart(message.text) : "";
   if (visitorOffice) {
     if (!bot) return { ok: true, status: 200, ignored: true, reason: "bot_off" };
