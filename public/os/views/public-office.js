@@ -4,7 +4,7 @@
  * value the visitor sends; the Worker re-checks the intake belongs to that office.
  */
 
-import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, officeSection, formGrid, actionBar, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { db, workerBase } from "../core/runtime.js";
 import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
@@ -150,25 +150,26 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
     h("label", { class: "os-pref-row" }, h("span", { text: "أوافق على استلام إشعارات الخيارات المناسبة عبر واتساب (اختياري)" }), consentWa),
     h("span", { class: "os-error", role: "alert", "data-error-for": "consentProcessing" }));
   let sourceUrl = "";
-  const fields = h("div", { class: "os-form" },
-      field("صفة مقدم المشاركة", h("div", {}, capacity, role), { hint: "اختيار الصفة لا يوثقها، ورابط الإعلان لا يثبت ملكية العقار." }), brokerFields,
+  const fields = h("div", { class: "os-form os-record-sections" },
+    officeSection({ title: "صفة المشاركة", iconName: "user" },
+      field("صفة مقدم المشاركة", h("div", {}, capacity, role), { hint: "اختيار الصفة لا يوثقها، ورابط الإعلان لا يثبت ملكية العقار." }), brokerFields),
+    officeSection({ title: "العقار والموقع", iconName: "pin" },
       h("div", { class: "os-field" }, h("span", { text: kind === "owner" ? "ماذا تريد لعقارك؟" : "ماذا تبحث عنه؟" }), purposeSeg, hidden, h("span", { class: "os-error", role: "alert" })),
-      field("نوع العقار", h("div", {}, h("input", { class: "os-input", name: "propertyType", list: "pub-types", autocomplete: "off", placeholder: "شقة، فيلا، أرض…" }), h("datalist", { id: "pub-types" }, PROPERTY_TYPES.map((t) => h("option", { value: t }))))),
-      h("div", { class: "os-row2" },
+      formGrid(field("نوع العقار", h("div", {}, h("input", { class: "os-input", name: "propertyType", list: "pub-types", autocomplete: "off", placeholder: "شقة، فيلا، أرض…" }), h("datalist", { id: "pub-types" }, PROPERTY_TYPES.map((t) => h("option", { value: t }))))),
         field("المدينة", h("input", { class: "os-input", name: "city", value: office.city || "" })),
-        field("الحي", h("input", { class: "os-input", name: "district", placeholder: "الملقا، النرجس" }))),
-      field(kind === "owner" ? "السعر المطلوب (ريال)" : "الميزانية (ريال)", price),
-      kind === "owner" ? priceStatusField() : null,
-      h("div", { class: "os-row2" },
+        field("الحي", h("input", { class: "os-input", name: "district", placeholder: "الملقا، النرجس" })),
         field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric" }), { optional: true }),
-        field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric" }), { optional: true })),
+        field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric" }), { optional: true }))),
+    officeSection({ title: "السعر والمواصفات", iconName: "reference-calculator" },
+      formGrid(field(kind === "owner" ? "السعر المطلوب (ريال)" : "الميزانية (ريال)", price),
+        kind === "owner" ? priceStatusField() : null),
       field(kind === "owner" ? "وصف العقار ومميزاته" : "المواصفات المطلوبة", h("textarea", { class: "os-textarea", name: "notes", maxlength: "900" }), { optional: true }),
-      picker ? picker.el : null,
-      validityField({}, { isNew: true }),
-      field("الاسم الكامل", h("input", { class: "os-input", name: "contactName", autocomplete: "name", placeholder: "الاسم الأول واسم العائلة" })),
-      field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" })),
-      consentBox, status, waiting, submit,
-      h("p", { class: "os-sub os-public-privacy", text: "لا تحتاج إنشاء حساب. تصل بياناتك إلى هذا المكتب فقط، وتراجعها قبل الإرسال." }));
+      picker ? picker.el : null, validityField({}, { isNew: true })),
+    officeSection({ title: "التواصل والموافقة", iconName: "shield" },
+      formGrid(field("الاسم الكامل", h("input", { class: "os-input", name: "contactName", autocomplete: "name", placeholder: "الاسم الأول واسم العائلة" })),
+        field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" }))),
+      consentBox, status, waiting, actionBar(submit),
+      h("p", { class: "os-sub os-public-privacy", text: "لا تحتاج إنشاء حساب. تصل بياناتك إلى هذا المكتب فقط، وتراجعها قبل الإرسال." })));
   let smartUsed = false;
   // «تعبئة ذكية | تعبئة يدوية» above the same form (smart by default; switching keeps everything).
   const fill = fillModes({
@@ -195,7 +196,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       };
     }
   });
-  const form = surface("form", { class: "os-card", novalidate: true }, fill.el, fields);
+  const form = h("form", { class: "os-record-form", novalidate: true }, fill.el, fields);
   let submissionRef = null;
   let intakeStored = false;
   form.addEventListener("submit", async (event) => {
@@ -278,7 +279,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       const answer = response && response.ok ? await response.json().catch(() => ({})) : {};
       matchCount = Math.max(0, Math.min(3, Number(answer.matches || 0)));
       return true;
-    }, { onError: (error) => { waiting.hidden = true; status.textContent = error.message; status.hidden = false; } });
+    }, { onError: (error) => { waiting.hidden = true; status.querySelector(".os-feedback-copy").textContent = error.message; status.hidden = false; } });
     if (ok) successView(root, office, kind, { matches: matchCount });
   });
   return form;
@@ -286,7 +287,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
 
 export async function renderPublicOffice(root, target) {
   clear(root);
-  const main = h("main", { class: "os-app", style: { maxWidth: "560px" } }, loadingState({ class: "os-skeleton", style: { height: "220px" } }));
+  const main = h("main", { class: "os-app os-public-shell" }, loadingState({ class: "os-skeleton", style: { height: "220px" } }));
   append(root, main);
   let office = null;
   try {

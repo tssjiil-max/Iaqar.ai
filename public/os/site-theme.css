@@ -264,3 +264,10 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 }
 .os-field .os-field-error{color:var(--bad)}
 .os-field:has(.os-field-error:not(:empty)) .os-input{border-color:var(--bad)}
+.os-app.os-public-shell{max-width:560px}
+@media(min-width:1024px){.os-app.os-public-shell:has(.os-record-form){max-width:1180px}}
+@media(min-width:1024px){
+ .os-public-shell .os-record-sections:not([hidden]){grid-template-columns:minmax(0,1fr)}
+ .os-public-shell .os-record-sections>.os-office-section:nth-child(2) .os-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .os-public-shell .os-record-sections>.os-office-section:first-child .os-field{max-width:560px}
+}

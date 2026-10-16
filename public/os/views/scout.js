@@ -276,7 +276,7 @@ export function renderScoutNew(container) {
   understand.addEventListener("click", () => runAction(understand, async () => {
     const answer = await parseScoutText(OFFICE(), sentence.value);
     understood.hidden = false;
-    if (!answer.understood) { understood.className = "os-alert warn"; understood.textContent = answer.message || "لم أفهم المطلوب."; return; }
+    if (!answer.understood) { understood.className = "os-alert warn os-feedback"; understood.querySelector(".os-feedback-copy").textContent = answer.message || "لم أفهم المطلوب."; return; }
     const d = answer.draft;
     nlText = d.nlText || "";
     mode.set(d.mode); seek.value = d.seek; if (d.tx) tx.set(d.tx);
@@ -284,8 +284,8 @@ export function renderScoutNew(container) {
     priceMin.value = d.priceMin || ""; priceMax.value = d.priceMax || ""; areaMin.value = d.areaMin || ""; areaMax.value = d.areaMax || "";
     fresh.value = d.freshnessDays ? String(d.freshnessDays) : ""; owner.checked = d.preferDirectOwner === true;
     const missing = (answer.missing || []).map((key) => ({ tx: "بيع أم إيجار", propertyTypes: "نوع العقار أو الحي", city: "المدينة" })[key] || key);
-    understood.className = `os-alert ${missing.length ? "warn" : "ok"}`;
-    understood.textContent = missing.length ? `فهمت: ${answer.summary} — ينقص: ${missing.join("، ")}.` : `فهمت: ${answer.summary}. راجع ثم اضغط «ابدأ البحث».`;
+    understood.className = `os-alert os-feedback ${missing.length ? "warn" : "ok"}`;
+    understood.querySelector(".os-feedback-copy").textContent = missing.length ? `فهمت: ${answer.summary} — ينقص: ${missing.join("، ")}.` : `فهمت: ${answer.summary}. راجع ثم اضغط «ابدأ البحث».`;
   }));
   const start = h("button", { type: "button", class: "os-btn primary block", "data-scout-start": "" }, ic("search"), "ابدأ البحث");
   const requestKey = newRequestKey();
@@ -299,18 +299,17 @@ export function renderScoutNew(container) {
       }, requestKey);
       toast(result.found ? `بدأ البحث — وجدنا ${strongCount(result.found)}` : "بدأ البحث — سنخبرك عند العثور على فرصة قوية", "ok");
       go(result.found ? "scout" : `scout/task/${result.taskId}`);
-    }, { onError: (e) => { error.hidden = false; error.textContent = e?.message || "تعذر بدء البحث"; } });
+    }, { onError: (e) => { error.hidden = false; error.querySelector(".os-feedback-copy").textContent = e?.message || "تعذر بدء البحث"; } });
   });
   append(container, head("بحث جديد"),
-    surface("section", { class: "os-card os-form" },
-      h("label", { class: "os-field" }, h("span", { text: "ماذا تريد أن أبحث لك عنه؟" }), sentence),
-      understand, understood),
-    surface("section", { class: "os-card os-form", "data-scout-form": "" },
+    officeSection({ title: "اكتب طلبك", iconName: "sparkles", description: "اكتب المواصفات لنرتبها لك، ثم راجع البيانات قبل بدء البحث." },
+      field("ماذا تريد أن أبحث لك عنه؟", sentence), actionBar(understand), understood),
+    officeSection({ title: "مواصفات البحث", iconName: "search", attrs: { "data-scout-form": "" } },
       h("div", { class: "os-field" }, h("span", { text: "نوع البحث" }), mode, hint),
-      field("أبحث عن", seek),
-      h("div", { class: "os-field" }, h("span", { text: "العملية" }), tx),
-      field("نوع العقار", type),
-      h("div", { class: "os-row2" }, field("المدينة", city), field("الأحياء", districts, { hint: "حي واحد أو عدة أحياء، بينها فاصلة" })),
+      formGrid(field("أبحث عن", seek),
+        h("div", { class: "os-field" }, h("span", { text: "العملية" }), tx),
+        field("نوع العقار", type), field("المدينة", city),
+        field("الأحياء", districts, { hint: "حي واحد أو عدة أحياء، بينها فاصلة" })),
       field("المخطط", plans, { optional: true, hint: "اسم المخطط كما يُكتب في الإعلانات — تظهر فقط الإعلانات التي تذكره" }),
       h("div", { class: "os-field" }, h("span", { text: "السعر" }), h("div", { class: "os-row2" }, priceMin, priceMax)),
       h("details", { class: "os-scout-more" }, h("summary", { text: "خيارات إضافية" }),
@@ -319,7 +318,7 @@ export function renderScoutNew(container) {
           field("الحداثة", fresh, { optional: true }),
           h("label", { class: "os-pref-row" }, h("span", { text: "أفضّل المالك المباشر" }), owner),
           h("label", { class: "os-pref-row" }, h("span", { text: "وسّع للمدينة كاملة إذا لم توجد نتائج في الأحياء والمجاورة" }), cityWide))),
-      error, start));
+      error, actionBar(start)));
   return null;
 }
 
@@ -377,9 +376,8 @@ export function renderScoutFind(container, { id }) {
         h("h2", { class: "os-task-title", text: find.headline, dir: "auto" }),
         h("p", { class: "os-sub", text: [find.price, find.area, find.rooms ? `${find.rooms} غرف` : ""].filter(Boolean).join(" · ") }),
         find.changes.length ? h("p", { class: "os-scout-note", "data-find-price-history": "", text: `تغيّر السعر: ${find.changes.map((c) => `${c.from.toLocaleString("en-US")} ← ${c.to.toLocaleString("en-US")}`).join("، ")}` }) : null),
-      surface("section", { class: "os-card", "data-find-why": "" },
-        h("div", { class: "os-card-head" }, h("h2", { class: "os-h2", text: "لماذا هي مناسبة؟" }),
-          find.fit ? h("span", { class: "os-badge", "data-find-fit": String(find.fit), text: `مطابقة تقديرية ${find.fit}%` }) : null),
+      officeSection({ title: "لماذا هي مناسبة؟", iconName: "match", attrs: { "data-find-why": "" },
+        accessory: find.fit ? h("span", { class: "os-badge", "data-find-fit": String(find.fit), text: `مطابقة تقديرية ${find.fit}%` }) : null },
         find.fit ? h("small", { class: "os-field-hint", text: "تقدير محسوب من النوع والموقع والسعر والمساحة — ليس حكمًا مؤكدًا." }) : null,
         find.why.length || find.notes.length ? h("ul", { class: "os-list", style: { marginTop: "8px" } },
           find.why.map((reason) => h("li", { class: "good" }, ic("check"), reason)),
@@ -389,7 +387,7 @@ export function renderScoutFind(container, { id }) {
           h("ul", { class: "os-list" }, find.differences.map((line) => h("li", {}, ic("info"), line)))) : null,
         find.recordId ? h("button", { type: "button", class: "os-btn soft block", style: { marginTop: "10px", justifyContent: "space-between" }, "data-find-record": find.recordId, onClick: () => go(`record/${find.recordId}`) },
           h("span", { text: `مرتبطة بـ«${find.recordTitle || "سجل في مكتبك"}»` }), ic("chev-left")) : null),
-      surface("section", { class: "os-card ref-detail-facts", "data-find-facts": "" },
+      officeSection({ title: "المصدر وبيانات الإعلان", iconName: "clipboard", className: "ref-detail-facts", attrs: { "data-find-facts": "" } },
         row("المصدر", find.sourceCount > 1 ? `${find.sources.join("، ")} — وُجدت في ${find.sourceCount} مصادر` : find.sources.join("، "), "source"),
         row("حداثة المعلومة", find.freshness, "freshness"),
         row("تاريخ الاكتشاف", find.discoveredAt ? formatDateTime(find.discoveredAt) : "", "discovered"),
@@ -467,7 +465,7 @@ export function renderScoutTask(container, { id }) {
         h("p", { class: "os-sub", text: [task.summary, task.scope, task.reason].filter(Boolean).join(" · ") }),
         task.nlText ? h("p", { class: "os-sub", dir: "auto", text: `«${task.nlText}»` }) : null,
         task.recordId ? h("button", { type: "button", class: "os-btn soft block", style: { marginTop: "10px", justifyContent: "space-between" }, onClick: () => go(`record/${task.recordId}`) }, h("span", { text: "فتح السجل المرتبط" }), ic("chev-left")) : null),
-      running && modes ? surface("section", { class: "os-card os-form" }, h("div", { class: "os-field" }, h("span", { text: "نوع البحث" }), modes, h("small", { class: "os-field-hint", text: MODE_HINT[task.mode] }))) : null,
+      running && modes ? officeSection({ title: "نوع البحث", iconName: "search" }, modes, h("small", { class: "os-field-hint", text: MODE_HINT[task.mode] })) : null,
       controlGroup("div", { class: "os-btn-row", "data-task-controls": "" },
         running ? control(TASK_CONTROL.RUN_NOW, "ابحث الآن", "primary", "refresh") : null,
         task.canPause ? control(TASK_CONTROL.PAUSE, "إيقاف مؤقت", "secondary", "pause", { success: "أُوقف هذا البحث مؤقتًا" }) : null,
