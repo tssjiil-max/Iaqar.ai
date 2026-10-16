@@ -329,3 +329,18 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 @media(max-width:359px){
  .os-app [data-tool-services]>.os-service-row{padding:12px;gap:10px}
 }
+
+/* Fix navigation-chevron overlap in RTL cards: reserve the trailing icon lane.
+   The text column may grow vertically but must never run beneath the chevron. */
+.os-app .os-settings-grid>[data-ui="navigation-tile"] .ref-reference-copy{
+  box-sizing:border-box;padding-inline-end:24px;
+}
+.os-app .os-settings-grid>[data-ui="navigation-tile"]>.os-ico{
+  pointer-events:none;
+}
+.os-app .os-settings-grid>[data-ui="navigation-tile"]:focus-visible{
+  outline:3px solid var(--brand-primary);outline-offset:3px;
+}
+@media(min-width:768px){
+  .os-app .os-settings-grid>[data-ui="navigation-tile"]{min-height:180px}
+}
