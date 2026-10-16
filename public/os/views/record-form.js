@@ -102,6 +102,7 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
     ),
     priceLabel,
     priceStatusBox,
+    session.isManager ? h("label", { class: "os-pref-row" }, h("span", { text: "إظهار هذا العرض في بحث العملاء العام (دون بيانات المالك)" }), h("input", { type: "checkbox", name: "publicSearchVisible", checked: values.publicSearchVisible === true })) : null,
     h("div", { class: "os-row2" },
       field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric", value: values.area || "" }), { optional: true }),
       field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric", value: values.rooms || "" }), { optional: true })
@@ -139,6 +140,7 @@ export function readRecordForm(root, kind) {
     contactPhone: value("contactPhone"),
     notes: notesWithDistricts(value("notes"), districts.others),
     priceStatus: value("priceStatus"),
+    ...(session.isManager ? { publicSearchVisible: root.querySelector("[name=publicSearchVisible]")?.checked === true } : {}),
     // Sent only for a new record or when the broker touched the duration (an edit keeps the current one).
     validity: value("validityTouched") ? { urgent: value("validityUrgent") === "yes", duration: value("validityDuration"), customDate: value("validityCustomDate") } : undefined
   };

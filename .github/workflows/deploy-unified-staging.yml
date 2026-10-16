@@ -60,6 +60,11 @@ jobs:
       - name: Install Worker dependencies
         run: npm ci --prefix worker
 
+      - name: Verify guest search without login on mobile and desktop
+        run: |
+          npx playwright install --with-deps chromium
+          node scripts/qa/office-os/public-search.e2e.mjs
+
       - name: Deploy and verify Staging only
         id: deploy
         env:

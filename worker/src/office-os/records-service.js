@@ -43,6 +43,7 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
     error.details = check.errors;
     throw error;
   }
+  if ("publicSearchVisible" in input && !actor?.isManager) throw ctx.deps.appError("forbidden", 403, "نشر العرض في بحث العملاء لمدير المكتب فقط");
   const now = ctx.now();
   let id = String(recordId || "").trim();
   let existing = null;
@@ -66,6 +67,7 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
   const fields = recordFields(check.value, {
     officeId, brokerId: actor.uid, sourceType: sourceType === "TELEGRAM_AGENT" ? "TELEGRAM_AGENT" : "BROKER_DIRECT", sourceReference: sourceType === "TELEGRAM_AGENT" ? "office-os:telegram-agent" : `office-os:${actor.uid}`, existing, now
   });
+  if ("publicSearchVisible" in input) fields.publicSearchVisible = input.publicSearchVisible === true && check.value.kind === "OFFER";
   if (!existing) fields.deduplicationFingerprint = recordFingerprint(check.value, officeId);
   // «مدة العرض أو الطلب»: a new record always gets one (the person's choice, or the announced default of a
   // month, marked as not chosen); an edit changes it only when the form sends a choice. Saving it is a
@@ -203,7 +205,7 @@ export async function restoreRecord(ctx, { actor, officeId, recordId }) {
  * Candidates below the automatic threshold are included and flagged, so the broker can
  * still decide — the numbers are the engine's, never cosmetic.
  */
-export async function findCandidates(ctx, { officeId, recordId, limit = 10 }) {
+export async function findCandidates(ctx, { officeId, recordId, limit = 10, allCandidates = false }) {
   const record = await ctx.store.get(["offices", officeId, "opportunities", recordId]);
   if (!record) throw ctx.deps.appError("record_not_found", 404, "السجل غير موجود");
   if (lifecycleOf(record) !== LIFECYCLE.ACTIVE) return { ok: true, candidates: [], inactive: true };
@@ -232,7 +234,7 @@ export async function findCandidates(ctx, { officeId, recordId, limit = 10 }) {
     });
   }
   candidates.sort((a, b) => b.score - a.score);
-  return { ok: true, candidates: candidates.slice(0, Math.min(20, Math.max(1, limit))) };
+  return { ok: true, candidates: allCandidates ? candidates : candidates.slice(0, Math.min(20, Math.max(1, limit))) };
 }
 
 /** Broker picked a pair by hand: persist the match and its review task. */
