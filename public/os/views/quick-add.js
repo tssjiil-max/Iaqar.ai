@@ -5,7 +5,7 @@
  * Similar records are looked for in THIS office's records only (already on the device; nothing is asked of other offices).
  */
 
-import { h, ic, clear, append, field } from "../core/dom.js";
+import { h, ic, clear, append, field, pageHeader, surface, controlGroup, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -26,18 +26,18 @@ function cardView(card, redraw) {
     l.price ? `${l.kind === "REQUEST" ? "الميزانية" : "السعر"}: ${formatNumber(l.price)}` : "",
     l.city || "", l.area ? `${formatNumber(l.area)} م²` : "", l.urgent === true ? "مستعجل" : l.urgent === false ? "غير مستعجل" : ""
   ].filter(Boolean);
-  return h("article", { class: `os-card os-quick-card${card.saved ? " is-saved" : ""}`, "data-quick-card": String(card.index) },
+  return surface("article", { class: `os-card os-quick-card${card.saved ? " is-saved" : ""}`, "data-quick-card": String(card.index) },
     h("div", { class: "os-quick-card-head" },
       h("span", { class: "os-quick-num", text: String(card.index + 1) }),
       h("b", { text: listingTitle(l) })),
     facts.length ? h("p", { class: "os-sub", text: facts.join(" · ") }) : null,
     (l.missing.length || !l.phone) ? h("p", { class: "os-quick-missing", "data-card-missing": "" }, ic("info"), ` ناقص: ${[...l.missing.map((m) => FIELD_LABEL[m] || m), l.phone ? "" : "رقم الجوال"].filter(Boolean).join("، ")}`) : null,
-    twins.length ? h("div", { class: "os-alert warn", "data-duplicate-warning": "" }, ic("alert"), " يشبه سجلًا موجودًا في مكتبك: ",
+    twins.length ? feedback({ class: "os-alert warn", "data-duplicate-warning": "" }, ic("alert"), " يشبه سجلًا موجودًا في مكتبك: ",
       ...twins.map((r) => h("button", { type: "button", class: "os-link-btn", onClick: () => go(`record/${r.id}`), text: listingTitle({ kind: String(r.opportunityKind || "").toUpperCase(), propertyType: r.propertyType, districts: [r.district].filter(Boolean) }) }))) : null,
     h("details", { class: "os-quick-original" }, h("summary", { text: "النص الأصلي" }), h("p", { text: l.original })),
     card.saved
       ? h("p", { class: "os-quick-saved", "data-card-saved": "" }, ic("check-circle"), card.duplicate ? " موجود مسبقًا — فتحنا السجل الحالي" : " تم الحفظ", h("button", { type: "button", class: "os-link-btn", onClick: () => go(`record/${card.recordId}`), text: "فتح السجل" }))
-      : h("div", { class: "os-btn-row" },
+      : controlGroup("div", { class: "os-btn-row" },
         h("button", { type: "button", class: "os-btn primary", "data-card-review": "", onClick: () => {
           openDraftInForm({
             listing: l,
@@ -59,7 +59,7 @@ export function renderQuickAdd(container) {
     const role = h("select", { class: "os-input", name: "quickRole" }, INTAKE_ROLES.map((r) => h("option", { value: r.id, text: r.label, selected: memory.role === r.id })));
     role.addEventListener("change", () => { memory.role = role.value; });
     const analyzeBtn = h("button", { type: "button", class: "os-btn primary block", "data-smart-analyze": "" }, ic("sparkles"), "تحليل وترتيب البيانات");
-    const status = h("div", { class: "os-alert", role: "alert", hidden: true });
+    const status = feedback({ class: "os-alert", role: "alert", hidden: true });
     analyzeBtn.addEventListener("click", async () => {
       status.hidden = true;
       if (memory.text.trim().length < SMART_FILL_LIMITS.minChars) { status.className = "os-alert bad"; status.textContent = "الصق الإعلان أو اكتب التفاصيل أولًا"; status.hidden = false; return; }
@@ -76,10 +76,8 @@ export function renderQuickAdd(container) {
     });
     const pending = memory.cards.filter((c) => !c.saved).length;
     append(container,
-      h("div", { class: "os-page-head" },
-        h("button", { type: "button", class: "os-back", onClick: () => go("office") }, ic("chev-right"), "رجوع"),
-        h("h1", { class: "os-page-title", text: "إضافة سريعة" }), h("span")),
-      h("section", { class: "os-card os-form" },
+      pageHeader(h("h1", { class: "os-page-title", text: "إضافة سريعة" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => go("office") }, ic("chev-right"), "رجوع"), action: h("span") }),
+      surface("section", { class: "os-card os-form" },
         h("p", { class: "os-sub", text: "الصق إعلانًا وصلك من مالك أو عميل أو وسيط متعاون — أو عدة إعلانات — ثم راجع كل واحد قبل حفظه." }),
         h("label", { class: "os-field" }, h("span", { text: "الصق إعلانك أو اكتب التفاصيل" }), textarea),
         h("div", { class: "os-row2" }, field("مصدر البيانات", channel, { optional: true }), field("صفة صاحب الإعلان", role)),

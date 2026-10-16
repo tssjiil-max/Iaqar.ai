@@ -1,6 +1,6 @@
 /** «نسيت كلمة المرور» and «تسجيل وسيط جديد» inside Office OS (pre-login). */
 
-import { h, ic } from "../core/dom.js";
+import { h, ic, feedback } from "../core/dom.js";
 import { requestPasswordReset, submitBrokerApplication } from "../core/auth-flows.js";
 import { APPLY_SUCCESS, resetMessage, validateBrokerApplication } from "../domain/auth-flows-domain.js";
 import { runAction } from "../core/ui.js";
@@ -15,7 +15,7 @@ function frame(root, { screen, title, intro = "", note = "", body, onBack }) {
 
 export function renderForgotPassword(root, { onBack } = {}) {
   const phone = h("input", { class: "os-input", name: "phone", inputmode: "tel", dir: "ltr", autocomplete: "username", placeholder: "05XXXXXXXX", required: true });
-  const status = h("div", { class: "os-alert", role: "status", hidden: true });
+  const status = feedback({ class: "os-alert", role: "status", hidden: true });
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("key"), "إرسال رابط الاسترجاع");
   const form = h("form", { class: "os-form os-auth-form", novalidate: true, "data-forgot-form": "" }, authField({ label: "رقم الجوال", input: phone, name: "phone" }), status, submit);
   form.addEventListener("submit", async (event) => {
@@ -43,7 +43,7 @@ export function renderBrokerApplication(root, { onBack } = {}) {
     officeName: input("officeName", { maxlength: "80" }),
     password: input("password", { type: "password", minlength: "8", autocomplete: "new-password" })
   };
-  const status = h("div", { class: "os-alert", role: "status", hidden: true });
+  const status = feedback({ class: "os-alert", role: "status", hidden: true });
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("check"), "إرسال طلب الاعتماد");
   // Same fields, same order — only grouped for the eye: الوسيط · المكتب · الدخول.
   const form = h("form", { class: "os-form os-auth-form", novalidate: true, "data-broker-form": "" },

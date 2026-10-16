@@ -413,9 +413,10 @@
 
   function frame(content, screenId = "") {
     gate.dataset.activeScreen = screenId;
-    gate.innerHTML = `<div class="access-shell"><section class="access-brand">
+    gate.innerHTML = `<div class="access-shell"><section class="access-brand" data-office-heading data-office-icon="office">
       <img src="${logoSrc}" alt="مكاتب عقارية ذكية"><h1>مكاتب عقارية ذكية</h1>
       <p>منصة تشغيل الوسطاء العقاريين</p></section>${content}</div>`;
+    document.dispatchEvent(new CustomEvent("iaqar:office-heading"));
   }
   function bindAccessBack(handler) {
     const back = gate.querySelector(".access-back");

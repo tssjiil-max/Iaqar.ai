@@ -6,7 +6,7 @@
  * Switching keeps everything (one form, one text box).
  */
 
-import { h, ic } from "../core/dom.js";
+import { h, ic, controlGroup, feedback } from "../core/dom.js";
 import { runAction } from "../core/ui.js";
 import { formatNumber } from "../domain/format-domain.js";
 import { PURPOSES } from "../domain/records-domain.js";
@@ -87,13 +87,13 @@ export function reviewCard(listing, { roleLabel = "", cityFromOffice = false } =
 export function fillModes({ formBox, analyze, onListing, initialText = "", start = FILL_MODE.SMART, several = "", intro = "", label = "الصق إعلانك أو اكتب التفاصيل", placeholder = SMART_EXAMPLE }) {
   let mode = start;
   let analyzed = false;
-  const tabs = h("div", { class: "os-seg os-fill-modes", role: "tablist", "aria-label": "طريقة التعبئة" });
+  const tabs = controlGroup("div", { class: "os-seg os-fill-modes", role: "tablist", "aria-label": "طريقة التعبئة" });
   const textarea = h("textarea", { class: "os-textarea os-smart-text", name: "smartText", maxlength: String(SMART_FILL_LIMITS.maxChars), rows: "5", placeholder, "aria-label": label, "data-smart-input": "", text: initialText });
   const analyzeBtn = h("button", { type: "button", class: "os-btn primary block", "data-smart-analyze": "" }, ic("sparkles"), "تحليل وترتيب البيانات");
   const result = h("div", { "data-smart-result": "" });
-  const alert = h("div", { class: "os-alert", role: "alert", hidden: true });
+  const alert = feedback({ class: "os-alert", role: "alert", hidden: true });
   const smartBox = h("div", { class: "os-smart-box", "data-smart-box": "" },
-    intro ? h("div", { class: "os-alert warn", "data-kind-notice": "", text: intro }) : "",
+    intro ? feedback({ class: "os-alert warn", "data-kind-notice": "", text: intro }) : "",
     h("label", { class: "os-field" }, h("span", { text: label }), textarea),
     analyzeBtn, alert);
   const setMode = (next) => {
@@ -137,8 +137,8 @@ export function fillModes({ formBox, analyze, onListing, initialText = "", start
     if (review.abort) return;
     analyzed = true;
     result.replaceChildren(
-      analysis.several && several ? h("div", { class: "os-alert warn", text: several }) : "",
-      review.notice ? h("div", { class: "os-alert warn", "data-kind-notice": "", text: review.notice }) : "",
+      analysis.several && several ? feedback({ class: "os-alert warn", text: several }) : "",
+      review.notice ? feedback({ class: "os-alert warn", "data-kind-notice": "", text: review.notice }) : "",
       reviewCard(listing, review));
     setMode(FILL_MODE.SMART);
     result.scrollIntoView?.({ block: "start", behavior: "smooth" });

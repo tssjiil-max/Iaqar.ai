@@ -1,6 +1,6 @@
 /** «دخول المكتب» — office owners and brokers only. Clients/owners never need an account. */
 
-import { h, ic } from "../core/dom.js";
+import { h, ic, feedback } from "../core/dom.js";
 import { signInOffice } from "../core/session.js";
 import { runAction } from "../core/ui.js";
 import { renderBrokerApplication, renderForgotPassword } from "./auth-flows.js";
@@ -12,7 +12,7 @@ export function renderLogin(root, { onSignedIn, message = "", entry = "" } = {})
   if (entry === "forgot") return renderForgotPassword(root, { onBack: back });
   const phone = h("input", { class: "os-input", name: "phone", inputmode: "tel", dir: "ltr", autocomplete: "username", placeholder: "05XXXXXXXX", required: true });
   const password = h("input", { class: "os-input", name: "password", type: "password", autocomplete: "current-password", required: true });
-  const status = h("div", { class: `os-alert bad`, role: "alert", hidden: !message, text: message });
+  const status = feedback({ class: `os-alert bad`, role: "alert", hidden: !message, text: message });
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("key"), "دخول المكتب");
   const form = h("form", { class: "os-form os-auth-form", novalidate: true, "data-login-form": "" },
     authField({ label: "رقم الجوال", input: phone, name: "phone" }),

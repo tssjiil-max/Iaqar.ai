@@ -1,0 +1,701 @@
+✔ lanes: a broker decision is NEEDS_YOU, a known wait is FOLLOWING, a finished task is DONE (3.913104ms)
+✔ counts follow the cards Daily Tasks shows: a postponed task is hidden, an overdue one is not; «اليوم» is Riyadh's day (0.932434ms)
+✔ the gate: only listed tools; money, contracts, final price and closing are forbidden; unknown tools are refused (1.766931ms)
+✔ status is never «يعمل» when off, failing or not loaded (0.262956ms)
+✔ settings are the manager's; status is readable by any member of the office only (11.339994ms)
+✔ while switched off, the agent says so and does nothing (2.685715ms)
+✔ switched on without a model key: real answers from the office's data (rules), same cards as Daily Tasks (24.859185ms)
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":1,"extractionStatus":"ok","errorCode":""}
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"ok","errorCode":""}
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"ok","errorCode":""}
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"ok","errorCode":""}
+✔ with the model: it may only name listed tools; forbidden or invented tools never run (16.756817ms)
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"failed","errorCode":"GEMINI_API_FAILED"}
+[office-os] agent model failed GEMINI_API_FAILED
+✔ the model failing never loses anything: rules answer, error counted, records untouched (11.870699ms)
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"ok","errorCode":""}
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"ok","errorCode":""}
+✔ approval gate: the model can only propose taking over a deal; it runs when the broker presses, with his permissions (12.598795ms)
+✔ office isolation: office B's agent sees none of office A's deals (8.978467ms)
+✔ a deal opened by the bot is recorded as done by the office manager; the review task carries the bot's state (2.874368ms)
+✔ a complete application is normalised (local phone, lower-case email, digits-only licence) (3.335143ms)
+✔ every required field is reported and nothing passes when empty (0.403748ms)
+✔ short password, bad email, short office name, non-Saudi phone are rejected (0.373041ms)
+✔ server and auth errors land on the right field (0.456567ms)
+✔ reset message shows only a masked email, or a generic line (0.439391ms)
+✔ photo file: only images, sane size (1.643836ms)
+✔ stored photo must be our small inline JPEG — never a URL or script (0.621276ms)
+✔ crop is a centred square (5.046711ms)
+✔ an uploaded logo is kept whole: scaled to fit, centred, never cropped (10.217058ms)
+✔ the Office OS app never navigates to the old app except any screen (72.114811ms)
+✔ the question never shows one side the other's name, number or address (2.43674ms)
+✔ buttons carry only the question's token and the answer (1.030502ms)
+✔ the decision table: client first, then the owner; one «غير مناسب» ends the match (0.47184ms)
+✔ when the bot stays out: switch off, weak match, side not linked, stopped, daily limit, already decided (0.585712ms)
+✔ off by default; only the manager switches it; nothing is asked while it is off (151.161775ms)
+✔ a side joins by the office's link: private chat only, one use, tied to the mobile on the record (86.082483ms)
+✔ new match → the client is asked → yes → the owner is asked → yes → the deal opens and each side gets its own room link (133.468163ms)
+✔ in the room: a move reaches the other side; a request to the broker reaches the broker only (39.625229ms)
+✔ «غير مناسب» from the client closes the match and the owner is never bothered (49.851485ms)
+✔ the owner declines: the match closes and the client is told, without the owner's identity (51.051973ms)
+✔ the owner is not on the bot: the broker is told and continues; his approval sends the client's link (52.749845ms)
+✔ the broker decides first: the side's button no longer does anything (39.728555ms)
+✔ what a side writes is never answered by the bot itself: it goes to the office and the broker (48.27126ms)
+✔ a side that blocked the bot: the question fails honestly and the match stays with the broker (40.743643ms)
+✔ switching the bot off stops everything at once: answers still out go to the broker, nothing is decided or sent on (137.544642ms)
+✔ editing a record never repeats a question: «غير مناسب» stands until the price changes, and no old pair is asked (223.213337ms)
+✔ one person, two offices: what he writes reaches only the office that wrote to him last (74.583433ms)
+✔ a side that moves to another Telegram account: the old chat no longer speaks for him (74.320477ms)
+✔ the deal the bot opens belongs to the records' broker — never to the bot; an unreachable side becomes a clear task (87.58232ms)
+✔ the daily limit: after three questions in a day the next match stays with the broker (131.752174ms)
+✔ webhook safety: no secret → refused; the bot's collections are closed to every client (3.257361ms)
+✔ one card per deal; every task is kept and nothing is dropped (3.258137ms)
+✔ the main button is the most pressing action; the rest stay reachable (0.887166ms)
+✔ a stage of the deal path never hides a task: a deal is listed under every stage its tasks sit in (1.360169ms)
+✔ a late task or an appointment is never hidden behind another task of the same deal (0.415266ms)
+✔ «متابعة الصفقة» gathers the existing pages; it changes no route (3.298548ms)
+✔ both existing ways to reach the sides are named, and the log only claims what the system knows (1.041038ms)
+✔ a notification opens where its push link opens (0.962289ms)
+✔ document link rules: only the link changes; status and note stay (0.846255ms)
+✔ the Worker links a library file of the same office only, logs it, and keeps the file in the library (153.225585ms)
+✔ link rules: codes, deep link, start command (3.256544ms)
+✔ the four link states are shown honestly, with the right actions (2.901991ms)
+✔ WhatsApp signup keeps the number on the WhatsApp Business app by default (coexistence) (0.660605ms)
+✔ message classes: only clear non-property messages are kept out of the records (6.564737ms)
+✔ status is honest before anything is configured, and carries no secret (61.154113ms)
+✔ Telegram: a manager links the office's chat through the central bot with a one-time code (48.219993ms)
+{"event":"operations_coverage_shadow","entityType":"opportunity","source":"canonical_intake_complete","officeId":"office-alpha","entityId":"opp_b5c3b47d0cc55fea9ac3676229d8364ab3530e68","intent":"MISSING_DATA","reason":"missing_data_authoritative","dueAt":"","missingFields":["advertiserRole","contactPhone"],"lifecycleStatus":"NEW","workflowStage":"","matchingReadiness":"NEEDS_COMPLETION"}
+✔ Telegram: the linked chat decides the office — no cross-office delivery (43.186147ms)
+{"event":"operations_coverage_shadow","entityType":"opportunity","source":"canonical_intake_complete","officeId":"office-alpha","entityId":"opp_93bdee692d1de4b97b4a8c052a480200517c5a07","intent":"MISSING_DATA","reason":"missing_data_authoritative","dueAt":"","missingFields":["opportunityKind","purpose","propertyType","priceOrBudget","advertiserRole","contactPhone"],"lifecycleStatus":"NEW","workflowStage":"","matchingReadiness":"NEEDS_COMPLETION"}
+✔ Telegram: a greeting or a short question stays in the inbox and does not become a record (32.15334ms)
+{"event":"operations_coverage_shadow","entityType":"opportunity","source":"canonical_intake_complete","officeId":"office-alpha","entityId":"opp_bfa80fd24251311eda6037ef0c2355291de406fb","intent":"MISSING_DATA","reason":"missing_data_authoritative","dueAt":"","missingFields":["advertiserRole","contactPhone"],"lifecycleStatus":"NEW","workflowStage":"","matchingReadiness":"NEEDS_COMPLETION"}
+✔ Telegram: reconnect moves the office to a new chat; disconnect stops delivery (48.247564ms)
+✔ WhatsApp: the state comes from the server routing record, per office, and disconnect is the manager's (20.303208ms)
+✔ the routing collections are closed to every client in the Firestore rules (3.340432ms)
+✔ Meta's signup messages are accepted from facebook.com and its subdomains only, over https (0.393753ms)
+✔ a closed signup window is recognised and carries no values (0.318279ms)
+✔ signup progress does not depend on the order Meta answers in (0.307223ms)
+✔ a closed or cancelled window is reported as such, and a missing code is never a success (0.260653ms)
+✔ manager-facing signup texts separate the cases and never claim success early (0.235595ms)
+✔ embedded signup starts in coexistence unless the environment says standard (0.136746ms)
+✔ an incoming request waits for my answer and offers accept / not suitable (4.60113ms)
+✔ a suggested match offers «طلب التعاون» to the office that reviewed it (0.78386ms)
+✔ my own outgoing request waits for the other office and has no buttons (0.656769ms)
+✔ accepted cooperation is نشط; finished or declined goes to السجل; duplicates merge (2.273353ms)
+✔ steps owned by the negotiation / viewing / deal are handed off, not faked (0.751973ms)
+✔ the cooperation task keeps one identity across stages (2.989062ms)
+✔ Daily Tasks shows a cooperation task only when I have something to do (0.613424ms)
+✔ the offer keeps the owner's price decision (السعر ثابت / قابل للتفاوض) (113.999206ms)
+✔ TEST 1 — fixed price accepted → PRICE_NEGOTIATION skipped → VIEWING_SCHEDULING (14.465757ms)
+✔ fixed price declined → only this match closes; offer and request stay available (68.219048ms)
+✔ TEST 2 — negotiable: client offers a price, owner accepts → «تم الاتفاق عليه» → VIEWING_SCHEDULING (66.679184ms)
+✔ TEST 3 — a slot that clashes with the broker's other viewing is not offered and cannot be confirmed (94.576965ms)
+✔ TEST 4 — booked viewing → «تم الاتفاق عليه» and the phase follows the time (VIEWING → VIEWING_RESULT) (3.14002ms)
+✔ a booked viewing is mirrored on the match so the scheduled viewing reminders pick it up (0.515376ms)
+✔ TEST 5 — result «مناسب» → FINAL_AGREEMENT (7.122296ms)
+✔ TEST 6 — result «يحتاج تفاوض» reopens the price only (no restart), then goes straight to the final step (15.584882ms)
+✔ TEST 7 — result «غير مناسب» closes this match only; offer and request stay in their normal state (72.223635ms)
+✔ TEST 8 — one card per open deal, with one phase and one action (2.666406ms)
+✔ the single deal card opens the page of the deal's current phase (0.320763ms)
+✔ records inside an open match or deal are engaged; the rest are «بلا مطابقة» (0.263066ms)
+✔ the real deal card of an open deal carries both record ids, so «بلا مطابقة» hides them (0.600154ms)
+✔ a push link with only openDailyTask opens the task like openOperation does (0.138309ms)
+✔ the deal path keeps the approved six stages in order (2.144651ms)
+✔ every open task belongs to exactly one stage (0.341354ms)
+✔ counts and filtering by stage agree with each other (0.348475ms)
+✔ stage route values are validated (0.194182ms)
+✔ closed deals: won and lost are told apart, newest first, with the real outcome only (0.514896ms)
+✔ the strip is interactive: six buttons, a count badge, and the tasks page reads ?step= (0.820636ms)
+✔ area is optional in validation, persistence and matching completeness (2.760988ms)
+✔ purpose must fit the record kind; phone must be Saudi mobile; Arabic digits accepted (0.726444ms)
+✔ repository filters exclude deleted, respect kind/status/price/search (2.610632ms)
+✔ compatibility level comes only from the computed score (0.63082ms)
+✔ daily tasks: overdue first, waiting separate, snoozed hidden until due, broker visibility (1.11518ms)
+✔ proposal templates: fields, message, link once, reply validation, expiry (1.326929ms)
+✔ journey rules: accepted viewing ≠ done, results route next step, flexible stages (0.711482ms)
+✔ deal completion permission and assignment checks (0.29872ms)
+✔ WhatsApp and Riyadh time helpers (0.546323ms)
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_intake00001","officeId":"office-alpha","at":"2026-10-16T00:55:21.944Z"}
+✔ broker adds a request without area; public office link adds an offer; match + one review task (118.956157ms)
+✔ offices are isolated (8.052207ms)
+✔ approve creates one journey; replay is idempotent (20.001599ms)
+✔ editing an approved record does not raise a second review (10.486975ms)
+✔ price proposal → WhatsApp handoff (opened only) → reply via link, no duplicates (81.310566ms)
+✔ replacing a proposal retires the previous link (18.654851ms)
+✔ viewing: accepted ≠ confirmed ≠ done; result drives the next step (41.88343ms)
+✔ deal completion needs explicit permission; closing archives and retires links (17.032703ms)
+✔ delete: linked record is archived, unlinked record soft-deleted; neither re-enters matching (24.101739ms)
+✔ Staging only, and only when configured (1.636996ms)
+✔ signature: hex HMAC-SHA256 of the raw body (11.892766ms)
+✔ single and batched payloads (1.315161ms)
+✔ Saudi mobile only (0.230487ms)
+✔ a conversation: short answers and corrections (12.049137ms)
+✔ allowed types and size limits mirror the Worker (1.031543ms)
+✔ a missing or generic MIME type falls back to the extension (0.200462ms)
+✔ metadata is cleaned, unknown values fall back, and expiry may not precede start (0.368285ms)
+✔ the twelve old folders are all present in three sections (0.1591ms)
+✔ login screen gives a new broker a way to apply (1.063852ms)
+✔ المفتاح يُنشأ لمدير المكتب فقط ويظهر مرة واحدة (6.436594ms)
+✔ بروتوكول MCP: initialize وtools/list والإشعارات وping (6.392808ms)
+✔ الرفض: بلا مفتاح، مفتاح مزيّف، مفتاح الاستقبال، GET، وكل ذلك دون تسريب سبب (2.292272ms)
+✔ المفتاح عبر المسار يعمل كالترويسة (1.061669ms)
+✔ الأدوات تقرأ بيانات المكتب فقط ولا تُرجع هاتفًا (13.463296ms)
+✔ عزل المكاتب: مفتاح مكتب ب لا يرى فرصة مكتب أ (4.226796ms)
+✔ أداة مجهولة وإلغاء المفتاح يوقفان الوصول فورًا، والاستدعاء يُسجَّل بلا نص (7.062346ms)
+✔ مغلق في Production: لا MCP_SERVER في بيئة الإنتاج (0.503358ms)
+✔ every property type of the project has a family, and the rules differ by family and by deal kind (7.865276ms)
+✔ property data fits the kind of property: no rooms for a land, per-metre price for a land (1.709575ms)
+✔ a proposal is not an agreement: the term state machine (10.668292ms)
+✔ room for «شقة للإيجار»: its own data, its own terms, proposal → answer → «ما تم الاتفاق عليه» (164.802891ms)
+✔ room for «أرض للبيع»: its own data, its own terms, proposal → answer → «ما تم الاتفاق عليه» (188.073387ms)
+✔ room for «عمارة للبيع»: its own data, its own terms, proposal → answer → «ما تم الاتفاق عليه» (91.531488ms)
+✔ room for «فيلا للبيع»: its own data, its own terms, proposal → answer → «ما تم الاتفاق عليه» (59.875497ms)
+✔ room for «محل تجاري للإيجار»: its own data, its own terms, proposal → answer → «ما تم الاتفاق عليه» (50.142158ms)
+✔ journey 1 — the owner proposes a price, the client answers, the agreed price moves to «ما تم الاتفاق عليه» (63.046203ms)
+✔ the room photo is served through the side's own link, with no record address in the page (17.933149ms)
+✔ journey 2 — a side asks the broker to step in; the message reaches the broker only (13.306911ms)
+✔ journey 3 — the broker passes it on: marked as passed on by the broker, without the phone number (21.749026ms)
+✔ journey 4 — reply to the sender, own wording to the other side, or not passed on at all (57.324214ms)
+✔ journey 5 — information request: a fixed topic, to the broker (20.049982ms)
+✔ journey 6 — terms continue after the price; «جاهز للاتفاق» needs an agreed price and no waiting proposal (76.809661ms)
+✔ journey 7 — agreeing on the viewing moves the deal to the viewing stage; the room stops with the deal (40.040554ms)
+✔ the new screen lists every category the server knows, from the shared domain (1.015059ms)
+✔ storage is unchanged: office default (managers only) + the person's own override (0.190657ms)
+✔ broker override wins over the office default, which wins over on (0.303407ms)
+✔ valid profile builds clean data (2.758274ms)
+✔ invalid phone is refused (0.334984ms)
+✔ slug is normalised, not rejected (0.459512ms)
+✔ one box: a link, an ad's text, or both — the link is cleaned and kept apart from the text (4.991828ms)
+✔ a link to a site whose terms forbid reading it is not fetched — the visitor is asked for the text in the same box (20.000282ms)
+✔ the same link with the ad's text: the text is understood and the link kept as its source (12.297321ms)
+✔ a link to a site that allows it is read once (robots.txt first) and understood; a bad link asks for the text (17.204978ms)
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_smartintake01","officeId":"office-alpha","at":"2026-10-16T00:55:23.183Z"}
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_smartintake02","officeId":"office-alpha","at":"2026-10-16T00:55:23.215Z"}
+✔ the server save keeps the source link (unverified), the capacity and both consents; matching runs right after (75.821463ms)
+✔ an ad relayed by someone who is not the owner waits for the broker before active matching (21.382814ms)
+✔ pause takes a record out of matching without deleting anything; resume brings it back (92.547263ms)
+✔ archive keeps the record and its history; restore returns it; delete still works afterwards (30.904845ms)
+✔ a record inside an open deal cannot be paused or archived (15.922461ms)
+✔ record management is office-scoped and needs a signed-in member (7.140665ms)
+✔ every management action leaves an audit entry in the office's own trail (0.649509ms)
+✔ unified list: status filter tells paused from archived; deleted is never listed (2.578243ms)
+✔ the repository screen has no section tabs; kind and «بلا مطابقة» are filters; the record page offers every action (0.864231ms)
+✔ domain: type is read from the bytes; sizes, keys and ids are strict (2.549109ms)
+✔ domain: arrangement keeps only chosen ids in order; the first photo is the main one (1.173307ms)
+[iaqar-whatsapp] request failed {
+  requestId: '3a0544b8-0103-4510-8a02-03d6a5070e2e',
+  code: 'authentication_required',
+  message: 'سجل دخول المكتب أولاً'
+}
+✔ a member uploads photos to an offer of his office; the first is the cover (62.432763ms)
+[iaqar-whatsapp] request failed {
+  requestId: '5976dabe-f120-4941-bd80-78e5160ba19f',
+  code: 'office_forbidden',
+  message: 'حسابك غير مرتبط بهذا المكتب'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '28378afa-07ac-49cc-940e-690bc5cc79e7',
+  code: 'record_not_found',
+  message: 'السجل غير موجود'
+}
+[iaqar-whatsapp] request failed {
+  requestId: 'b9367960-b09f-48fe-abf2-f4981ffa1ee4',
+  code: 'record_not_found',
+  message: 'السجل غير موجود'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '34047a3a-59fd-4314-b8f5-63902da5dd7f',
+  code: 'invalid_media_target',
+  message: 'وجهة الصورة غير صالحة'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '4f288135-e6f3-475b-a6c6-cfad04b64a2c',
+  code: 'unsupported_media',
+  message: 'اختر صورة JPG أو PNG أو WebP'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '0ff5c934-85f0-48be-ab1e-56c19e972c9b',
+  code: 'image_too_large',
+  message: 'حجم الصورة يتجاوز الحد المسموح'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '642b5a7c-96f1-45e1-836e-90e06514e4ff',
+  code: 'record_images_offer_only',
+  message: 'الصور تُضاف للعروض فقط'
+}
+[iaqar-whatsapp] request failed {
+  requestId: 'fbf522ac-6740-4186-b3b5-53b802879993',
+  code: 'media_not_found',
+  message: 'الصورة غير موجودة'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '1e5618c6-8094-4fd3-acdb-30a59dc0ea24',
+  code: 'media_not_found',
+  message: 'الصورة غير موجودة'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '95d8c67a-3fd1-4dac-a045-739775abb041',
+  code: 'media_not_found',
+  message: 'الصورة غير موجودة'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '4cd68c40-9777-4e7f-a179-20c25ed7a56e',
+  code: 'media_not_found',
+  message: 'الصورة غير موجودة'
+}
+✔ uploads are refused without membership, for another office, for requests, for non-images and oversize files (25.690432ms)
+✔ only well-formed photo addresses are served (1.742835ms)
+[iaqar-whatsapp] request failed {
+  requestId: 'c49e8520-bf4f-4083-b94e-895c9454b79c',
+  code: 'media_not_found',
+  message: 'الصورة غير موجودة'
+}
+✔ arrange: choose the main photo, reorder and remove — removed files are deleted (10.090027ms)
+[iaqar-whatsapp] request failed {
+  requestId: 'a481c280-f0f1-4176-88dc-8c55e079c9a8',
+  code: 'record_images_limit',
+  message: 'الحد الأقصى 10 صور للعقار'
+}
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_intakephoto01","officeId":"office-alpha","at":"2026-10-16T00:55:23.863Z"}
+✔ at most ten photos per offer (44.439644ms)
+✔ photos an owner attaches on the office link become the offer's photos (19.637165ms)
+✔ screens: the form previews before saving, offers only; the record page shows the gallery (0.991403ms)
+✔ explicit removals: a photo added meanwhile by a colleague survives a stale form's save (0.692062ms)
+✔ record cards expose their kind and a full accessible price label while filters and links work (203.662271ms)
+✔ an ad's link is one identity: tracking parameters, fragments and the www. prefix do not make a second ad (2.625614ms)
+✔ an item is prepared from what it says; sites whose terms forbid collecting are refused unless licensed (2.301286ms)
+✔ «المخطط» is part of a search: parsed from a sentence, shown in the summary, and a filter on the ad's words (9.423733ms)
+✔ the inbox page reads a batch, a list or plain paragraphs, and splits long lists into accepted batches (2.179172ms)
+✔ automatic sending: the page reads «#c=…&ingest=…» (the batch may hold «&»), pairing lives in this browser only (15.604982ms)
+✔ the shortcut text carries the office's criteria (type, sale/rent, city, districts, plans), the run code and the refused sites — never a key (0.396967ms)
+[office-os] failed /os/scout/ingest ingest_unavailable الاستقبال التلقائي غير مفعّل على هذه البيئة
+✔ the door is closed unless the Worker opens it (SCOUT_INGEST) — Production does not set it (35.341157ms)
+✔ only the manager creates and revokes keys; the key is shown once and stored as a hash (17.360006ms)
+✔ no key, a wrong key, or a key bent to another office is refused the same way (4.577454ms)
+✔ with the office's scout off nothing is stored (2.604312ms)
+✔ ten results arrive with one request: saved, understood, matched, shown with their links — no CSV (97.360812ms)
+✔ the same batch again (a retry) answers its first report and writes nothing (2.440616ms)
+✔ the same ads in a new batch are duplicates; a changed price is an update of the same find, never a second one (24.57394ms)
+✔ a revoked key stops at once; limits are enforced (13.316757ms)
+✔ a key of office B never writes into office A (22.045367ms)
+✔ a search is put in the words ads are written with; the price is judged afterwards, not searched (1.805659ms)
+✔ a results page is not an ad, and group chatter is not an ad (13.165719ms)
+✔ paid outside searches are paced by the mode: general once a day, deep every two hours with more forms, urgent hourly (1.305786ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ with no key the web is not searched — and the manager is told so, with the reason for every source that is off (71.846312ms)
+[scout] beat {"offices":1,"waiting":0,"strong":2,"notified":2,"fetched":2,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ web search: the scout asks in the search's own words, keeps a link to each real ad, and leaves out results pages, vague excerpts and forbidden sites (36.819253ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":2,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":2,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ pace and budget: a general search asks the web once a day; the same ad seen again is not a new find; the office never passes its daily allowance (55.184306ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] source failed web_search search_http_500
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ an urgent search asks the web inside the request itself (its first round), ahead of the others (13.528975ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ the search service fails: the round still completes, the source is left alone for a while, and the key never appears (17.579056ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ Brave is the same adapter with another driver: its own header, Saudi Arabic results, the forbidden sites excluded in the query (9.94661ms)
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":1,"failed":0}
+✔ X: recent posts through X's own API — the post's text is the ad, its link is the way back to it (11.149262ms)
+[scout] group ad kept {"offices":1}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":1,"failed":0}
+[scout] group ad kept {"offices":2}
+[scout] group ad kept {"offices":1}
+✔ Telegram groups: the manager links a group with a one-time code; only ads are kept; each office keeps its own copy; unlinking stops it (72.221666ms)
+[scout] group ad kept {"offices":1}
+✔ a channel is linked by posting the line in it; a public one gives a public link to each ad (5.640915ms)
+[office-os] failed /os/scout/web/live live_search_unavailable البحث المباشر في الويب غير متاح على هذه البيئة
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"failed","errorCode":"GEMINI_REQUEST_FAILED"}
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"failed","errorCode":"GEMINI_REQUEST_FAILED"}
+[scout] beat {"offices":2,"waiting":0,"strong":0,"notified":0,"fetched":4,"failed":0}
+[scout] live search refused 400
+[office-os] failed /os/scout/web/live live_search_unavailable البحث المباشر في الويب غير مفعّل على هذه البيئة
+✔ «ابحث في الويب الآن»: Google's answer is shown as it came, with its sources and its suggestions — and nothing of it is kept (48.937964ms)
+✔ the link reader asks only for a public https page, obeys robots.txt (longest rule wins), and names itself (1.30757ms)
+✔ «أدخل رابط الإعلان»: a page the site lets be read is read once — and the ad is kept for the broker whatever its level, in any city of the Kingdom (34.111675ms)
+✔ a site that does not allow reading: nothing is fetched from it — the broker pastes the text and the link is kept as the source (26.418228ms)
+✔ one pasted ad is kept even when weak; a digest (or a file of many) is filtered as before (36.499661ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ search settings are the office's: price and area range, kinds, pace and alerts — and its radar obeys them (36.039558ms)
+✔ a matched find says how well it fits (an estimate), why, where it differs, and what the ad left out (5.605673ms)
+✔ the five lists: new, matched, under review, saved, excluded — and an excluded find can be taken back (27.427007ms)
+✔ «ابحث عن مطابقات»: a find the office brought is matched the moment the office has the request for it (25.453535ms)
+✔ «أنشئ مهمة متابعة» puts one task in Daily Tasks; «سجّل نتيجة التواصل» closes it and keeps the result on the find (20.422818ms)
+✔ isolation and reach: nothing here contacted a listings site or Telegram, and no outside find crossed to another office (0.486142ms)
+✔ the three modes are different in priority, pace, depth, lifetime, alerts and model use — in one config (2.793638ms)
+✔ an urgent search past its three days keeps watching at the general pace; a deep one past its day completes (0.477689ms)
+✔ the search sentence: mode, what is looked for, operation, type, districts, ceiling and the direct-owner preference (12.941932ms)
+✔ a record is its own search: an offer looks for buyers, a request for properties — nothing is asked again (1.090533ms)
+✔ districts: the same one, a documented neighbour, or the rest of the city — and a search widens only step by step (0.549368ms)
+✔ fit comes from the matching engine: same district strong, neighbouring less, another district weakest; a budget is a ceiling (2.624543ms)
+✔ the level is explainable: reachable, fresh and complete raise it; old, bare or noisy lowers it; a broker's ad never passes as an owner's (2.037809ms)
+✔ one property or request seen twice is one find; two properties of one advertiser stay two (6.207158ms)
+✔ sources: only what the office may read. عقار، حراج، بيوت and وصلت need a permission (with the reason), and have no access path (1.124344ms)
+✔ the queue: an urgent search always before a deep one, a deep one before a general one; an office being worked on is skipped (0.636509ms)
+✔ off by default; only the manager switches it on; switching on reads the office once and queues its searches (58.237575ms)
+✔ scenario 1 and 2: an offer with no buyer, a request with no property → the scout opens a search for each by itself (55.084371ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ scenario 3 and 4: «ابحث عن مشتري» / «ابحث عن عقار» from the record — one press, no data asked (31.151256ms)
+[scout] beat {"offices":1,"waiting":0,"strong":2,"notified":2,"fetched":2,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ scenario 5: the general search runs in the background from the Worker's scheduler, with nobody on the site (28.89264ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ opening a find: what, why, for which record, source, freshness, confidence — and the broker's three decisions (40.547738ms)
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":0,"fetched":4,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ scenario 8: the same ad from two sources is one find — «وُجدت في مصدرين» (19.688588ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":5,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ scenario 9 and 10: a strong find nobody can be reached for is kept inside, silently — until a source shows it with a number (25.445013ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":1,"fetched":1,"failed":0}
+✔ a known ad is not new; a reduced price is recorded, the find is judged again and the broker is told (39.295822ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":14,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ scenario 11 and 12: nothing suitable → nothing is invented; many weak ads → none is shown to look busy (30.689691ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":1,"failed":0}
+✔ an ad that is already one of the office's own records is not a find (6.254014ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":24,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":0,"fetched":24,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ scenario 13: nothing in the district itself → the search widens to the documented neighbours, never straight to the city (83.779668ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":25,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":3,"notified":0,"fetched":27,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ scenario 6: a deep search really goes deeper than a general one — close types, wider price, older ads, and it ends with a summary (140.355907ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+✔ scenario 7: an urgent search — first round inside the request, highest priority, every beat, neighbours at once, an alert for every strong find (37.780365ms)
+✔ a search can be made urgent later: it restarts its clock at the urgent pace and looks at once (30.285392ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":7,"failed":0}
+✔ scenario 15: stopping one search does not touch the others (33.30814ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":29,"failed":0}
+✔ no orphan searches: sold, archived, paused or deleted records end or hold their search at once (109.768155ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ «زوّد الباحث»: a pasted digest is read at once against every running search — a few finds, no records, no messages (27.857175ms)
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":27,"failed":0}
+✔ the office's official inbox is a source: a forwarded digest is read ad by ad; a message already turned into a record is not a find (35.320695ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":27,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] source failed partner_feed feed_http_503
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":31,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":26,"failed":0}
+✔ a licensed feed is one more adapter: asked per query form with its key, its finds merge with the rest, and a failure backs off (99.339848ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":27,"failed":0}
+✔ the office's minimum level is the office's: «قوية جدًا فقط» hides the merely strong (45.477022ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":0,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":1,"notified":1,"fetched":28,"failed":0}
+✔ scenario 14: the master switch off — nothing runs, nothing is lost; on again — the searches continue (47.425656ms)
+✔ «البحث العام» off: the automatic searches wait, the ones the broker started himself keep running (29.058965ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":2,"waiting":0,"strong":0,"notified":0,"fetched":33,"failed":0}
+✔ office isolation: another office has its own scout, sees nothing of this one, and its data feeds nobody else (51.774057ms)
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":28,"failed":0}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":28,"failed":0}
+[iaqar-whatsapp] request failed {
+  requestId: '6f0a98a3-8fe8-4a59-b08d-fab4ee062b48',
+  code: 'auth_required',
+  message: 'يلزم تسجيل الدخول'
+}
+✔ resources: an idle beat reads one document; a known ad is not analysed twice; the model is not used by a general search (45.717936ms)
+[iaqar-whatsapp] request failed {
+  requestId: 'a81606bb-e631-4a41-bdf5-2200c959c0cb',
+  code: 'admin_required',
+  message: 'هذه العملية خاصة بإدارة المنصة'
+}
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ observability for the platform admin only: scheduler beat, queue sizes, sources and why — no office data, no secrets (3.275523ms)
+[scout] beat {"offices":1,"waiting":0,"strong":0,"notified":0,"fetched":30,"failed":0}
+✔ keeping time: a find nobody acted on for a month and a half leaves, a saved one stays; old pasted text leaves; the round log stays short (33.63654ms)
+[office-os] failed /os/scout/settings scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[office-os] failed /os/scout/search scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[office-os] failed /os/scout/feed scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[office-os] failed /os/scout/parse scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[office-os] failed /os/scout/find scout_unavailable الباحث عن الفرص غير متاح على هذه البيئة
+[iaqar-opp-followups] completed { checked: 0, notified: 0, skipped: 0, failed: 0 }
+[iaqar-viewing-reminders] completed { checked: 0, notified: 0, skipped: 0 }
+✔ the environment switch: without it every scout route answers «غير متاح» and no round runs; it is set for Staging and, by the owner's approval, for iaqar.ai — with no paid door (15.945425ms)
+✔ the scout never reached a listings site, and never sent a message (0.74992ms)
+✔ search normalises Arabic spelling and digits (2.453565ms)
+✔ one query searches records, open deals, closed deals, documents and messages (5.738412ms)
+✔ the audit trail reads as plain Arabic, newest first, with a link to the thing changed (4.688892ms)
+✔ a broker cannot act on an opportunity assigned to another broker; managers can (16.835935ms)
+✔ deal completion: brokerMayClose lets only the assigned broker close (10.388967ms)
+✔ inactive members, other offices and anonymous callers are refused before any data access (7.746676ms)
+✔ reply links: expired, locked and closed states; wrong options refused (11.918225ms)
+[iaqar-whatsapp] request failed {
+  requestId: '9bb3e1a9-b64a-4347-884c-c4a58f2be917',
+  code: 'intake_not_found',
+  message: 'لم يتم العثور على الطلب'
+}
+✔ public reply endpoints are rate limited (25.46746ms)
+✔ a visitor cannot move a submission to another office (2.891434ms)
+✔ setup: approved deal between an owner at 1,200,000 and a client at 1,100,000 (88.159689ms)
+✔ broker gets two different secure links; other offices cannot (18.983341ms)
+✔ party view shows only role labels, property and the deal stage — no personal data (14.947112ms)
+✔ client −5% → owner sees the new price and only fitting buttons; duplicates are no-ops (20.721769ms)
+✔ typed price accepts digits only; comments are refused (11.235982ms)
+✔ compromise uses the average of the last two prices (18.349677ms)
+✔ price sent to the broker is private (17.220916ms)
+✔ intervention: event, task in daily tasks, notification, flagged session; log stays visible (28.693166ms)
+✔ broker free text reaches only the chosen party (22.325755ms)
+✔ accepting agrees on the price → viewing slots from the broker calendar → booked on agreement (49.873676ms)
+✔ replaced link stops at once; closing the deal stops both links (24.502799ms)
+✔ stage labels follow the approved path only (0.374815ms)
+✔ permanent office URL stays /m while hosted sharing uses immutable Worker /s URL (2.191781ms)
+✔ without a preview version sharing safely falls back to /m until the card is published (0.255304ms)
+✔ without a slug the permanent link falls back to the public landing of the office (0.482306ms)
+✔ image key changes whenever visible preview content changes (0.63759ms)
+✔ forced refresh preserves the deterministic key and appends a safe unique suffix (0.341354ms)
+✔ menu share waits for immutable publish and passes the current preview version (0.696689ms)
+✔ page header keeps live title, back callback and reference action in named slots (86.391722ms)
+✔ page header handles literal untrusted text and omits empty action toolbar (9.286657ms)
+✔ shared surface preserves tag, attributes, hidden state and original child controls (8.195653ms)
+✔ navigation tile matches office hierarchy and preserves navigation callback and data selectors (14.194458ms)
+✔ dialog heading exposes the same visual slots while retaining close control (13.197497ms)
+✔ standalone heading reuses original description node so live updates and ids survive (6.065475ms)
+✔ control groups keep tab semantics and original interactive children (4.735322ms)
+✔ loading state announces progress and preserves requested dimensions and data selectors (5.778634ms)
+✔ feedback surface retains alert text updates, hidden state and tone styling (8.618726ms)
+✔ comparison table preserves RTL column order and custom cell nodes (16.435554ms)
+✔ empty states use office icon and copy slots and retain their original action (21.600998ms)
+✔ feedback keeps prose and duplicate record actions inside one shrinkable content slot (7.952237ms)
+✔ public/index.html is the new Office OS shell, not the legacy app (5.271134ms)
+✔ reply page loads only runtime config and the reply module (no Firebase, no account) (0.390769ms)
+✔ preview channel routes to the preview Worker; staging and production are unchanged (4.898488ms)
+✔ preview deploy is fenced to the preview channel and preview Worker (0.781397ms)
+✔ offer ad: every written fact, nothing more (15.962236ms)
+✔ purchase request — the spec example (2.850904ms)
+✔ lease request with yearly rent (1.386117ms)
+✔ amounts: Arabic and Latin digits, words, millions (0.744592ms)
+✔ several districts, written in different ways (0.514815ms)
+✔ several ads in one paste are split (7.073344ms)
+✔ incomplete text → asks, never fills (0.528146ms)
+✔ non real-estate text and too-short text (0.921188ms)
+✔ ambiguous offer/request → empty, asked (0.810611ms)
+✔ the one schema rejects anything outside it (0.393964ms)
+✔ a model may only fill gaps with values the text supports (1.19504ms)
+✔ duplicates are looked for in this office's records only (0.839985ms)
+✔ intake origin: known values only; an external broker is a claim (0.661105ms)
+✔ compound amounts and «بالحي» (1.689014ms)
+✔ the assistant understands only what is written: a person on request, problems, the listed topics, greetings (1.294009ms)
+✔ a chat in HUMAN mode gets nothing from the assistant; unknown twice hands over instead of looping (0.95658ms)
+✔ every written answer points to a screen of the office app; none promises a price or a legal opinion (0.246051ms)
+✔ the office card shows only real states (0.43164ms)
+✔ the support address refuses an unsigned or wrongly signed call before reading anything (13.182545ms)
+✔ before the business account links the bot, customer messages are ignored and nothing is sent (1.347339ms)
+✔ linking: the account owner is told, and the office card shows the assistant (9.152795ms)
+✔ the assistant answers a listed question on the account's behalf (3.283109ms)
+✔ the assistant's own replies echoed back by Telegram never pause it (5.782469ms)
+✔ while waiting for details, a listed question is answered and a greeting asks again (no empty tickets) (0.597279ms)
+✔ asking for a person: handed over, a ticket, an alert with «إعادة الرد الآلي»; silent until the owner hands it back (12.526667ms)
+✔ the owner writing in a chat himself pauses the assistant there (3.686748ms)
+✔ a problem asks for details, then becomes a report the owner is alerted about (6.550781ms)
+✔ unlinking the bot from the account stops every reply (4.443001ms)
+✔ an office ticket from the app: stored with its office only, alerted to the support manager, limited per day (78.520661ms)
+✔ wiring: separate bot, separate address; the intake bot's script and webhook are untouched (3.711569ms)
+✔ support activation script: Staging address only, stable secret, never the intake bot (3.435624ms)
+✔ the six office tools keep the approved labels and each one has a working route (2.616942ms)
+✔ calculator: sale — commission, VAT on the commission, transaction tax and the buyer total (0.486933ms)
+✔ calculator: rent has no transaction tax, and rates can be changed (0.328424ms)
+✔ calculator: Arabic digits are read; empty, zero and absurd amounts are refused; bad rates fall back (0.806544ms)
+✔ market: only the office's active records count; averages are per type and purpose (2.149147ms)
+✔ market: a request with no offer of the same type in its district is listed as a gap (0.464479ms)
+✔ templates: placeholders are filled from the office profile and never shown raw (0.660565ms)
+✔ templates are drafts: the screen shares or copies, it never calls the Worker to send (0.362946ms)
+✔ guide steps open real routes; services are official https links opened outside the app (0.882569ms)
+✔ durations: week/month/three months end at the END of the Riyadh day; custom must be future; urgency never shortens (1.684107ms)
+✔ the matching rule: only ACTIVE or older (no fields) records take part; sold, expired or awaiting confirmation do not (0.292371ms)
+✔ one reminder 3 days before, one ask at expiry, one periodic ask — never twice for the same step (0.366572ms)
+✔ a side's own words — Saudi, Egyptian, English — are understood, and unclear words are not guessed (2.120664ms)
+✔ saving: a chosen duration is kept; without one the announced month is applied and marked as not chosen; an edit keeps it (67.41821ms)
+✔ an expired offer takes part in no new match; renewing the same record brings it back (no duplicate) (27.86629ms)
+✔ sold: its open matches stop, the record is kept; inside an open deal the broker gets one task, the deal is untouched (70.205958ms)
+✔ isolation: another office cannot change a record's validity or availability (15.153083ms)
+✔ the sweep: an unreachable side gets nothing and nothing is deleted; an older record is untouched (14.8162ms)
+✔ a linked side: asked once with buttons, its answer renews the same record; another chat cannot answer (40.157441ms)
+✔ a side's words: one record → a confirmation button; several → «which one?»; nothing changes without the press (35.824366ms)
+✔ before telling a client, an offer with stale availability is confirmed with the owner first (28.415046ms)
+✔ six viewing answers, each with a fixed effect (1.988335ms)
+✔ phase: a requested re-viewing is «تحديد موعد» in the viewing stage, whatever the price state (0.488867ms)
+✔ «لا يوجد رد»: the viewing is not marked done; the result task returns after two days (92.718825ms)
+✔ «معاينة أخرى»: the deal stays open in the viewing stage and asks for a new time (36.392652ms)
+✔ «لم يحضر»: the deal stays open in the viewing stage and asks for a new time (44.751602ms)
+✔ viewing results are office-scoped and validated (26.503647ms)
+✔ reminders: ten minutes before the viewing, in addition to 2h and 30m (0.913055ms)
+✔ documents domain: template by purpose, summary over required items only (1.236593ms)
+✔ documents domain: changes are validated (0.92275ms)
+✔ documents through the Worker: update, own items, history, and the state kept at closing (89.100195ms)
+✔ a broker who is not assigned to the deal cannot change its documents (30.540622ms)
+✔ screens: the workspace shows the checklist and names missing documents before closing (0.615667ms)
+✔ a viewing the broker confirms gets the scheduled reminders; a recorded result stops them (35.032813ms)
+✔ 5 · 7 — one long message is understood at once; «الوبرة» is a district, never a city (23.753575ms)
+✔ 6 · 10 — every detail reaches the summary and the record's description; an offer never takes a request's purpose (2.259673ms)
+✔ 1 · 3 · 4 · 5 · 6 · 7 · 8 · 9 · 11 · 12 — the owner: offer, no second welcome, everything understood, price asked once, edit keeps the rest (49.769529ms)
+✔ 2 · 4 · 10 — the client (the reported try-out): «عميل يبحث عن عقار» goes straight to the request; never back to the welcome (24.423465ms)
+✔ natural words instead of buttons: «أنا عميل» chooses; a greeting before choosing gets the short choice, not the full welcome (18.511405ms)
+✔ opening the page again continues the conversation (no reset, no welcome) (2.838686ms)
+✔ 14 — pressing twice does it once (7.096949ms)
+✔ 11 — a typed Saudi number: 05… and 966… both work in the try-out; on Telegram the contact button stays required (37.181896ms)
+✔ 13 · 15 — the try-out saved, sent and linked nothing; each member has his own; another office cannot use it (7.287897ms)
+✔ rules: the office link, languages, small talk, a request for a person, one question at a time (3.489887ms)
+✔ rules: executive commands are understood without the model; summaries use only the deal's own data (2.895611ms)
+✔ rules: «دخول بتيليجرام» — the sign-in address, the returned data, Telegram's check string, freshness (1.033276ms)
+✔ gates: with the office manager off, an office link sends nothing (15.163859ms)
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":1,"extractionStatus":"ok","errorCode":""}
+✔ an owner registers an offer from the office link: persona button, one question at a time, own number, summary, «سجّل» (83.380901ms)
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"ok","errorCode":""}
+{"requestId":"","sourceType":"office_os_assist","mimeType":"","fileSize":0,"model":"gemini-3.1-flash-lite","durationMs":0,"extractionStatus":"failed","errorCode":"GEMINI_API_FAILED"}
+✔ the same person registers a second transaction without linking again; English in → English out (the model) (15.132472ms)
+✔ another language: the model's own question (Urdu here) is what the person gets (9.239816ms)
+✔ «أبي أكلم الوسيط» hands the chat to the office; a webhook delivered twice is answered once (13.984813ms)
+✔ office isolation: a link to an office whose manager is off is ignored; an unknown office is told so (1.238255ms)
+✔ «تابع العملاء اللي ما ردوا»: shown first, sent only after the broker presses, once per side (13.62411ms)
+✔ «رتب المعاينات» / «ليش توقفت» / «جهز ملخص المفاوضة» from the office's own deals; suggestions are counts only (16.388332ms)
+✔ «دخول بتيليجرام»: the Worker checks Telegram's signature and age; a valid one links the broker's alerts (19.720551ms)
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_intakeVal01","officeId":"office-alpha","at":"2026-10-16T00:55:28.889Z"}
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_intakeVal02","officeId":"office-alpha","at":"2026-10-16T00:55:28.894Z"}
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_intakeVal03","officeId":"office-alpha","at":"2026-10-16T00:55:28.899Z"}
+✔ validity settings: the office default applies to a new record that chose none; limits are enforced (16.203644ms)
+✔ the office's public page: the owner's chosen duration is kept; none chosen → the office default; an older page → unchanged (20.326915ms)
+✔ review fixes: old buttons do nothing; a non-Saudi number is told clearly; updates out of order are both handled (12.002527ms)
+✔ review fixes: a started conversation does not hold a linked side's messages forever, and «إيقاف» stays a side command (9.849344ms)
+✔ review fixes: a reminder is not used up when it cannot be delivered (side stopped the bot), nor sent about a sold offer (4.515772ms)
+✔ «جرّب مدير مكتبك» (no Telegram): the same conversation in the app — nothing sent, nothing saved, nobody linked (24.778014ms)
+✔ the central bot kept elsewhere (TELEGRAM_WEBHOOK_KEPT): this environment sends nothing, yet «دخول بتيليجرام» is verified and saved (3.134511ms)
+✔ Noto Naskh Arabic is the app font: one self-hosted variable file with its licence, preloaded on every entry page (3.567954ms)
+✔ type scale for Naskh: real weights only, a named size scale off the root, and line heights that fit the face (2.050088ms)
+✔ cards share one light petrol frame; tiles inside use the softer one (0.813125ms)
+✔ the sheet's icons exist, are well-formed and drawn in one language (24px, currentColor, no ids or masks) (0.51758ms)
+✔ WhatsApp and Telegram use their official glyphs and brand colours (white inside filled buttons) (0.559282ms)
+✔ office page order: office card → office tools → التعاون → مركز التواصل والدعم (0.358259ms)
+ℹ tests 397
+ℹ suites 0
+ℹ pass 397
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19047.348193

@@ -7,7 +7,7 @@
  * page never changes the deal and never sends anything.
  */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
@@ -31,9 +31,9 @@ export function renderDealHub(container, { journeyId }) {
     clear(container);
     const toTasks = h("button", { type: "button", class: "os-back", "data-back-to-card": "" }, ic("chev-right"), "بطاقة الصفقة");
     toTasks.addEventListener("click", () => { rememberDeal(journeyId); go(tasksRouteToReturnTo()); });
-    append(container, h("div", { class: "os-page-head" }, toTasks, h("h1", { class: "os-page-title", text: "متابعة الصفقة" }), h("span")));
-    if (journey === undefined) { append(container, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
-    if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
+    append(container, pageHeader(h("h1", { class: "os-page-title", text: "متابعة الصفقة" }), { backControl: toTasks, action: h("span") }));
+    if (journey === undefined) { append(container, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" })); return; }
+    if (!journey) { append(container, feedback({ class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
 
     const now = new Date();
     const offer = recordById(journey.offerId) || { ...journey.offerSummary, opportunityKind: "OFFER" };
@@ -50,7 +50,7 @@ export function renderDealHub(container, { journeyId }) {
     // 1 — fixed place for: which deal, which stage, what is needed now (kept short so it can stay in view while scrolling).
     const nowTitle = primary ? primary.title : summary.nextLabel || "لا يوجد إجراء مطلوب منك الآن";
     const nowReason = primary?.model.reason || summary.nextReason;
-    append(container, h("section", { class: "os-card os-follow-summary", "data-follow-summary": "" },
+    append(container, surface("section", { class: "os-card os-follow-summary", "data-follow-summary": "" },
       h("div", { class: "os-follow-deal" },
         h("h2", { class: "os-h2", text: [view.propertyType, view.location].filter(Boolean).join(" · ") || "صفقة" }),
         h("span", { class: "ref-status step-" + summary.step, "data-follow-stage": "", text: summary.paused ? `${summary.stage} · متوقفة مؤقتًا` : summary.stage })),
@@ -58,13 +58,13 @@ export function renderDealHub(container, { journeyId }) {
         group?.urgency.label ? h("span", { class: `ref-urgency is-${group.urgency.level}`, "data-follow-urgency": group.urgency.level, text: group.urgency.label }) : null,
         h("small", { text: "المطلوب الآن: " }), h("b", { text: nowTitle }))));
     // …with its details and the one main button right under it.
-    append(container, h("section", { class: "os-card os-follow-next", "data-follow-next": "" },
+    append(container, surface("section", { class: "os-card os-follow-next", "data-follow-next": "" },
       owner || client ? h("p", { class: "os-follow-parties" }, ic("users"), h("span", { text: [owner ? `المالك: ${owner}` : "", client ? `العميل: ${client}` : ""].filter(Boolean).join(" · ") })) : null,
       nowReason && nowReason !== nowTitle ? h("p", { class: "os-follow-reason", text: nowReason }) : null,
       primary ? primary.button : null));
 
     // 2 — the five parts of the deal; each opens the existing page at that part.
-    append(container, h("section", { class: "os-card os-follow-sections", "aria-label": "أقسام الصفقة" },
+    append(container, surface("section", { class: "os-card os-follow-sections", "aria-label": "أقسام الصفقة" },
       followSections(journey, { events, now }).map((section) => {
         const row = h("button", { type: "button", class: "os-follow-row" + (section.attention ? " needs" : ""), "data-follow-section": section.id },
           h("span", { class: "os-set-icon" }, ic(section.icon)),
@@ -77,7 +77,7 @@ export function renderDealHub(container, { journeyId }) {
 
     // 3 — every open task of this deal stays reachable here.
     if (group?.tasks.length) {
-      append(container, h("section", { class: "os-card", "data-follow-tasks": String(group.tasks.length) },
+      append(container, surface("section", { class: "os-card", "data-follow-tasks": String(group.tasks.length) },
         h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("clipboard"), `مهام الصفقة: ${subtaskCountLabel(group.tasks.length)}`),
         h("ul", { class: "ref-deal-subs os-follow-subs" }, dealTaskRows(group.tasks, group.primary, now))));
     }
@@ -87,7 +87,7 @@ export function renderDealHub(container, { journeyId }) {
     const bot = dealBotView(journey);
     const botToggle = bot?.action ? h("button", { type: "button", class: `os-btn ${bot.paused ? "secondary" : "danger"}`, "data-deal-bot-action": bot.action }, ic(bot.paused ? "send" : "user"), bot.actionLabel) : null;
     if (botToggle) botToggle.addEventListener("click", () => runAction(botToggle, () => setDealBotPaused(session.officeId, journeyId, bot.action === "pause"), { success: bot.action === "pause" ? "استلمت التواصل — توقف البوت عن هذه الصفقة" : "عاد التواصل إلى البوت" }));
-    append(container, h("section", { class: "os-card os-follow-contact", "data-follow-contact": "" },
+    append(container, surface("section", { class: "os-card os-follow-contact", "data-follow-contact": "" },
       h("h2", { class: "os-h2", style: { marginBottom: "4px" } }, ic("send"), "التواصل مع الطرفين"),
       h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: "طريقتان قائمتان، تختار المناسب لكل حالة. لا يُرسل شيء إلا بضغطك على زر الإرسال في صفحته." }),
       bot ? h("div", { class: "os-follow-option os-follow-bot", "data-deal-bot": bot.paused ? "PAUSED" : "ACTIVE" },

@@ -4,7 +4,7 @@
  * (review page). Sending itself happens only in the Worker.
  */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
 import { loadChannels } from "../core/channels.js";
@@ -33,7 +33,7 @@ export function botCard(view = {}, reload) {
       await runAction(toggle, async () => { await setBotEnabled(session.officeId, !view.enabled); await reload(); }, { success: view.enabled ? "تم إيقاف البوت" : "البوت يعمل الآن" });
     });
   }
-  return h("article", { class: "os-card os-chan os-bot", "data-bot": "" },
+  return surface("article", { class: "os-card os-chan os-bot", "data-bot": "" },
     h("header", { class: "os-chan-head" },
       h("span", { class: "os-set-icon" }, ic("sparkles")),
       h("div", { class: "os-set-text" }, h("b", { text: "بوت المكتب — التواصل مع الأطراف" }), h("small", { text: "البوت يسأل العميل ثم المالك عن المطابقة، ويرسل صفحة التفاوض عند موافقتهما، ويخبرك فقط عند الحاجة." })),
@@ -48,13 +48,13 @@ export function botCard(view = {}, reload) {
       h("li", { text: "أي رسالة مكتوبة من طرف تصلك في مركز التواصل، ولا يرد عليها البوت من عنده." }),
       h("li", { text: "من أي صفقة تستطيع «استلام التواصل» فيتوقف البوت عنها." })),
     view.note ? h("p", { class: "os-sub", "data-bot-note": "", text: view.note }) : null,
-    toggle ? h("div", { class: "os-btn-row" }, toggle) : null);
+    toggle ? controlGroup("div", { class: "os-btn-row" }, toggle) : null);
 }
 
 /** «تنبيهاتي على تيليجرام» — each broker links his own chat; loads and refreshes itself. */
 export function brokerAlertsCard() {
-  const body = h("div", { class: "os-skeleton" });
-  const card = h("article", { class: "os-card os-chan", "data-bot-alerts": "" }, body);
+  const body = loadingState({ class: "os-skeleton" });
+  const card = surface("article", { class: "os-card os-chan", "data-bot-alerts": "" }, body);
   const pending = { link: "", until: 0 };
   let timer = 0;
   const draw = (view = {}) => {
@@ -86,8 +86,8 @@ export function brokerAlertsCard() {
       !view.available ? h("p", { class: "os-sub", "data-bot-alerts-note": "", text: "بوت المنصة غير مفعّل للإرسال على هذه البيئة بعد." }) : null,
       view.available && pending.link ? h("div", { class: "os-chan-link", "data-bot-alerts-pending": "" },
         h("p", { class: "os-sub", text: "افتح الرابط من حسابك الشخصي في تيليجرام ثم اضغط «Start». الرابط صالح 15 دقيقة ولمرة واحدة." }),
-        h("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-bot-alerts-open": "" }, ic("telegram"), "فتح تيليجرام"), copy)) : null,
-      view.available ? h("div", { class: "os-btn-row" }, login, link, unlink) : login ? h("div", { class: "os-btn-row" }, login) : null);
+        controlGroup("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: pending.link, target: "_blank", rel: "noopener", "data-bot-alerts-open": "" }, ic("telegram"), "فتح تيليجرام"), copy)) : null,
+      view.available ? controlGroup("div", { class: "os-btn-row" }, login, link, unlink) : login ? controlGroup("div", { class: "os-btn-row" }, login) : null);
     // While the link waits for «Start», check again so the card turns «مرتبط» by itself.
     if (pending.link && card.isConnected) timer = setTimeout(() => { if (card.isConnected) refresh().catch(() => {}); }, 4000);
   };
@@ -111,7 +111,7 @@ const PARTY_STATE = Object.freeze({
  * Sending the link is the broker's own act (copy, or his own WhatsApp).
  */
 export function partyBotRow(record = {}, { who = "العميل" } = {}) {
-  const row = h("div", { class: "os-bot-party", "data-bot-party": "" }, h("div", { class: "os-skeleton", style: { height: "40px" } }));
+  const row = h("div", { class: "os-bot-party", "data-bot-party": "" }, loadingState({ class: "os-skeleton", style: { height: "40px" } }));
   const draw = (status, link = null) => {
     clear(row);
     if (!status.available) { row.hidden = true; return; }
@@ -127,9 +127,9 @@ export function partyBotRow(record = {}, { who = "العميل" } = {}) {
         ? h("div", { class: "os-chan-link", "data-bot-party-pending": "" },
           h("p", { class: "os-sub", text: `أرسل هذا الرابط إلى ${who}. يفتحه ويضغط «Start» ثم «مشاركة رقمي» للتأكيد — يُقبل فقط الرقم المسجل هنا. بعدها يراسله البوت بالمطابقات. الرابط لمرة واحدة.` }),
           h("p", { class: "os-bot-link", dir: "ltr", "data-bot-party-url": "", text: link.deepLink }),
-          h("div", { class: "os-btn-row" }, copy,
+          controlGroup("div", { class: "os-btn-row" }, copy,
             link.whatsappUrl ? h("a", { class: "os-btn whatsapp", href: link.whatsappUrl, target: "_blank", rel: "noopener", "data-bot-party-whatsapp": "" }, ic("whatsapp"), "إرساله بواتساب") : null))
-        : h("div", { class: "os-btn-row" }, make));
+        : controlGroup("div", { class: "os-btn-row" }, make));
   };
   partyBotStatus(session.officeId, record.id).then((status) => draw(status)).catch(() => { row.hidden = true; });
   return row;
@@ -139,5 +139,5 @@ export function partyBotRow(record = {}, { who = "العميل" } = {}) {
 export function botAskLine(match = {}) {
   const label = ASK_STATE_LABEL[String(match.botAskState || "")];
   if (!label) return null;
-  return h("div", { class: "os-alert info os-bot-ask", "data-bot-ask": String(match.botAskState) }, ic("telegram"), h("span", { text: `${label}. يمكنك اتخاذ القرار بنفسك في أي وقت، فيتوقف سؤال البوت.` }));
+  return feedback({ class: "os-alert info os-bot-ask", "data-bot-ask": String(match.botAskState) }, ic("telegram"), h("span", { text: `${label}. يمكنك اتخاذ القرار بنفسك في أي وقت، فيتوقف سؤال البوت.` }));
 }

@@ -125,11 +125,11 @@
   </style>
   <link rel="stylesheet" href="/os/site-theme.css">
 </head>
-<body>
+<body class="office-standalone">
   <div class="shell" id="app">
     <div class="card" id="loginCard">
-      <h1>لوحة إدارة IAQAR.AI</h1>
-      <p>دخول مخصص لمدير المنصة فقط.</p>
+      <div data-office-heading data-office-icon="gear"><h1>لوحة إدارة IAQAR.AI</h1>
+      <p>دخول مخصص لمدير المنصة فقط.</p></div>
       <form id="loginForm" class="toolbar">
         <input name="email" type="email" autocomplete="username" placeholder="البريد الإلكتروني" required>
         <input name="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" required>
@@ -139,8 +139,8 @@
     </div>
     <div id="console" class="hidden">
       <div class="card">
-        <h1>لوحة إدارة IAQAR.AI</h1>
-        <p id="adminUserLine">مرحبًا</p>
+        <div data-office-heading data-office-icon="gear"><h1>لوحة إدارة IAQAR.AI</h1>
+        <p id="adminUserLine">مرحبًا</p></div>
         <div class="nav" id="mainNav"></div>
         <button class="btn secondary" id="logoutBtn" type="button">تسجيل الخروج</button>
       </div>
@@ -154,5 +154,6 @@
   <script src="/__/firebase/init.js"></script>
   <script src="/js/runtime-config.js"></script>
   <script type="module" src="/js/admin-console.js"></script>
+  <script type="module" src="/os/standalone-shell.js"></script>
 </body>
 </html>

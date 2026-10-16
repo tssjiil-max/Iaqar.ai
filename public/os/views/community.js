@@ -1,6 +1,6 @@
 /** #/community — «التعاون بين الوسطاء»: direct cooperation between the offer broker and the request broker. */
 
-import { h, ic, clear, append, emptyState } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { journeyForMatch } from "../core/live.js";
@@ -43,7 +43,7 @@ function card(view, redraw) {
   actions.append(details);
   const line = [view.propertyLine, view.priceOrBudget].filter(Boolean).join(" · ");
   const turn = turnLine(view);
-  return h("article", { class: "os-card os-coop-card", "data-coop": view.id },
+  return surface("article", { class: "os-card os-coop-card", "data-coop": view.id },
     h("div", { class: "os-coop-icon" }, ic("handshake")),
     h("div", { class: "os-coop-copy" },
       h("h3", { text: view.partnerOfficeName || view.kindLabel }),
@@ -53,15 +53,12 @@ function card(view, redraw) {
 }
 
 export function renderCommunity(container) {
-  append(container, h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => go("office") }, ic("chev-right"), "رجوع"),
-    h("h1", { class: "os-page-title", text: "التعاون بين الوسطاء" }), h("span")));
-  append(container, h("p", { class: "os-sub", text: "تعاون مباشر بين وسيط العرض ووسيط الطلب حتى إتمام الصفقة" }));
+  append(container, pageHeader(h("h1", { class: "os-page-title", text: "التعاون بين الوسطاء" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => go("office") }, ic("chev-right"), "رجوع"), action: h("span"), description: "تعاون مباشر بين وسيط العرض ووسيط الطلب حتى إتمام الصفقة" }));
   let rows = [];
   let ready = false;
   let tab = "active";
   let touched = false;
-  const chips = h("div", { class: "os-chips", role: "group", "aria-label": "حالات التعاون" });
+  const chips = controlGroup("div", { class: "os-chips", role: "group", "aria-label": "حالات التعاون" });
   const list = h("div", { class: "os-task-list", "aria-live": "polite" });
   const draw = () => {
     const tabs = communityViews(rows, session.officeId);
@@ -73,9 +70,9 @@ export function renderCommunity(container) {
       chips.append(h("button", { type: "button", class: "os-chip", "data-tab": t.id, "aria-pressed": String(tab === t.id), onClick: () => { touched = true; tab = t.id; draw(); } }, t.label, n ? h("span", { class: "n", text: String(n) }) : null));
     }
     clear(list);
-    if (!ready) { append(list, h("div", { class: "os-skeleton" })); return; }
+    if (!ready) { append(list, loadingState({ class: "os-skeleton" })); return; }
     if (!tabs[tab].length) {
-      append(list, h("div", { class: "os-card" }, emptyState("handshake", tab === "active" ? "لا يوجد تعاون نشط" : tab === "waiting" ? "لا شيء بانتظار رد" : "السجل فارغ",
+      append(list, surface("div", { class: "os-card" }, emptyState("handshake", tab === "active" ? "لا يوجد تعاون نشط" : tab === "waiting" ? "لا شيء بانتظار رد" : "السجل فارغ",
         "عند ظهور مطابقة مع مكتب آخر أو وصول طلب تعاون ستجده هنا.")));
       return;
     }
@@ -84,6 +81,6 @@ export function renderCommunity(container) {
   append(container, chips, list);
   draw();
   const off = watchCooperation(session.officeId, (next) => { rows = next; ready = true; draw(); },
-    () => { ready = true; clear(list); append(list, h("div", { class: "os-alert bad", text: "تعذر تحميل طلبات التعاون." })); });
+    () => { ready = true; clear(list); append(list, feedback({ class: "os-alert bad", text: "تعذر تحميل طلبات التعاون." })); });
   return off;
 }

@@ -4,7 +4,7 @@
  * value the visitor sends; the Worker re-checks the intake belongs to that office.
  */
 
-import { h, ic, clear, field, setFieldError, clearFieldErrors, append } from "../core/dom.js";
+import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { db, workerBase } from "../core/runtime.js";
 import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
@@ -68,7 +68,7 @@ function successView(root, office, kind, { matches = 0 } = {}) {
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب.`);
   append(root, h("main", { class: "os-app os-public-page os-public-receipt", style: { maxWidth: "560px" } },
     h("p", { class: "os-public-office-name", text: office.officeName || "المكتب العقاري" }),
-    h("div", { class: "os-card os-public-done", style: { textAlign: "center" } },
+    surface("div", { class: "os-card os-public-done", style: { textAlign: "center" } },
       h("div", { class: "os-task-icon", style: { margin: "0 auto 8px", background: "var(--ok-tint)", color: "var(--ok)" } }, ic("check-circle")),
       h("h2", { class: "os-h2", style: { justifyContent: "center" }, text: "تم استلام بياناتك" }),
       h("p", { class: "os-sub", text: `شكرًا لك. سيتواصل معك ${office.brokerName || "الوسيط"} عند وجود خيار مناسب.` }),
@@ -111,7 +111,7 @@ const CAPACITY = Object.freeze({
 function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
   const recordKind = kind === "owner" ? RECORD_KIND.OFFER : RECORD_KIND.REQUEST;
   let purpose = "";
-  const purposeSeg = h("div", { class: "os-seg", role: "group", "aria-label": "الغرض" });
+  const purposeSeg = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "الغرض" });
   const hidden = h("input", { type: "hidden", name: "purpose" });
   const drawPurpose = () => {
     clear(purposeSeg);
@@ -140,8 +140,8 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
   // The rules and the Worker accept up to 5 photos from the public link, for offers only.
   const picker = kind === "owner" ? imagePicker({ max: 5, hint: "حتى 5 صور للعقار. تُصغَّر تلقائيًا قبل الإرسال." }) : null;
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("send"), "إرسال");
-  const status = h("div", { class: "os-alert bad", role: "alert", hidden: true });
-  const waiting = h("div", { class: "os-alert info", role: "status", hidden: true, "data-public-waiting": "", text: "جارٍ البحث عن العقارات أو الطلبات المناسبة لك، يرجى الانتظار قليلًا" });
+  const status = feedback({ class: "os-alert bad", role: "alert", hidden: true });
+  const waiting = feedback({ class: "os-alert info", role: "status", hidden: true, "data-public-waiting": "", text: "جارٍ البحث عن العقارات أو الطلبات المناسبة لك، يرجى الانتظار قليلًا" });
   // Consent: processing is required to send; WhatsApp notices are a separate, optional choice.
   const consent = h("input", { type: "checkbox", name: "consentProcessing", "data-consent-processing": "" });
   const consentWa = h("input", { type: "checkbox", name: "consentWhatsapp", "data-consent-whatsapp": "" });
@@ -195,7 +195,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       };
     }
   });
-  const form = h("form", { class: "os-card", novalidate: true }, fill.el, fields);
+  const form = surface("form", { class: "os-card", novalidate: true }, fill.el, fields);
   let submissionRef = null;
   let intakeStored = false;
   form.addEventListener("submit", async (event) => {
@@ -286,7 +286,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
 
 export async function renderPublicOffice(root, target) {
   clear(root);
-  const main = h("main", { class: "os-app", style: { maxWidth: "560px" } }, h("div", { class: "os-skeleton", style: { height: "220px" } }));
+  const main = h("main", { class: "os-app", style: { maxWidth: "560px" } }, loadingState({ class: "os-skeleton", style: { height: "220px" } }));
   append(root, main);
   let office = null;
   try {
@@ -296,16 +296,14 @@ export async function renderPublicOffice(root, target) {
   }
   clear(main);
   if (!office) {
-    append(main, h("div", { class: "os-card" }, h("h1", { class: "os-h2", text: "رابط المكتب غير متاح" }), h("p", { class: "os-sub", text: "تحقق من الرابط أو تواصل مع المكتب مباشرة." })));
+    append(main, surface("div", { class: "os-card" }, h("h1", { class: "os-h2", text: "رابط المكتب غير متاح" }), h("p", { class: "os-sub", text: "تحقق من الرابط أو تواصل مع المكتب مباشرة." })));
     return;
   }
   document.title = office.officeName || "المكتب العقاري";
   const choose = (kind, carry = null) => {
     clear(main);
     append(main, 
-      h("div", { class: "os-page-head" },
-        h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"),
-        h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), h("span")),
+      pageHeader(h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"), action: h("span") }),
       h("p", { class: "os-public-office-name", text: office.officeName || "" }),
       intakeForm(root, office, kind, { switchKind: choose, carry }));
     window.scrollTo({ top: 0 });

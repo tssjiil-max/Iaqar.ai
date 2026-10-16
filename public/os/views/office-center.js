@@ -6,7 +6,7 @@
  * All read the office's own data (member-read by the rules); changes go through the Worker.
  */
 
-import { h, ic, clear, append, emptyState } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe } from "../core/state.js";
@@ -22,13 +22,11 @@ import { MIN_QUERY, searchOffice } from "../domain/search-domain.js";
 import { AUDIT_FILTERS, auditViews, filterAudit } from "../domain/audit-domain.js";
 
 function pageHead(title) {
-  return h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => back("office") }, ic("chev-right"), "رجوع"),
-    h("h1", { class: "os-page-title", text: title }), h("span"));
+  return pageHeader(h("h1", { class: "os-page-title", text: title }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("office") }, ic("chev-right"), "رجوع"), action: h("span") });
 }
 
 function chips(options, selected, onPick, attr) {
-  const row = h("div", { class: "os-chips os-center-chips", role: "group" });
+  const row = controlGroup("div", { class: "os-chips os-center-chips", role: "group" });
   for (const option of options) {
     const chip = h("button", { type: "button", class: "os-chip", "aria-pressed": String(option.id === selected), [attr]: option.id },
       option.label, option.count === undefined ? null : h("span", { class: "n", text: String(option.count) }));
@@ -41,7 +39,7 @@ function chips(options, selected, onPick, attr) {
 // ------------------------------------------------------------------ مركز التواصل
 
 export function renderInbox(container) {
-  const body = h("div", { "data-inbox": "" }, h("div", { class: "os-skeleton" }));
+  const body = h("div", { "data-inbox": "" }, loadingState({ class: "os-skeleton" }));
   append(container, pageHead("مركز التواصل"), body);
   let items = null;
   let selected = "ALL";
@@ -54,7 +52,7 @@ export function renderInbox(container) {
       if (result.recordId) go(`record/${result.recordId}`);
     }, { success: "بدأت معالجة الرسالة — سيظهر السجل في العروض والطلبات" }));
     const open = view.recordId ? h("button", { type: "button", class: "os-btn secondary", "data-inbox-record": view.recordId, onClick: () => go(`record/${view.recordId}`) }, ic("eye"), "فتح السجل") : null;
-    return h("article", { class: "os-card os-inbox-card", "data-inbox-item": view.id, "data-message-class": view.messageClass, "data-inbox-state": view.state },
+    return surface("article", { class: "os-card os-inbox-card", "data-inbox-item": view.id, "data-message-class": view.messageClass, "data-inbox-state": view.state },
       h("header", { class: "os-inbox-head" },
         h("span", { class: `os-inbox-class is-${view.messageClass.toLowerCase()}`, text: view.classLabel }),
         h("span", { class: "os-inbox-meta" }, ic(view.channel === "telegram" ? "telegram" : view.channel === "whatsapp" ? "whatsapp" : "mail"), view.channelLabel),
@@ -63,13 +61,13 @@ export function renderInbox(container) {
       h("footer", { class: "os-inbox-foot" },
         h("small", { class: "os-sub", text: `${view.sender} · ${view.stateLabel}` }),
         view.reason && view.kept ? h("small", { class: "os-sub", "data-inbox-reason": "", text: `لماذا لم تتحول تلقائيًا: ${view.reason}` }) : null),
-      convert || open ? h("div", { class: "os-btn-row" }, convert, open) : null);
+      convert || open ? controlGroup("div", { class: "os-btn-row" }, convert, open) : null);
   };
 
   const draw = () => {
     clear(body);
-    if (failed) return append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل الرسائل." }));
-    if (!items) return append(body, h("div", { class: "os-skeleton" }));
+    if (failed) return append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل الرسائل." }));
+    if (!items) return append(body, loadingState({ class: "os-skeleton" }));
     const views = items.map(inboxItemView);
     const counts = countByClass(views);
     const options = [{ id: "ALL", label: "الكل", count: views.length }, ...MESSAGE_CLASS_ORDER.filter((key) => counts[key]).map((key) => ({ id: key, label: MESSAGE_CLASS_LABEL[key], count: counts[key] }))];
@@ -132,11 +130,11 @@ export function renderSearch(container, { query = "" } = {}) {
 // ------------------------------------------------------------------ سجل النشاط
 
 export function renderAudit(container) {
-  const body = h("div", { "data-audit": "" }, h("div", { class: "os-skeleton" }));
+  const body = h("div", { "data-audit": "" }, loadingState({ class: "os-skeleton" }));
   append(container, pageHead("سجل النشاط"), body);
   if (!session.isManager) {
     clear(body);
-    append(body, h("div", { class: "os-alert warn", text: "سجل النشاط لمدير المكتب فقط." }));
+    append(body, feedback({ class: "os-alert warn", text: "سجل النشاط لمدير المكتب فقط." }));
     return null;
   }
   let selected = "ALL";
@@ -163,6 +161,6 @@ export function renderAudit(container) {
     const recordTitles = Object.fromEntries(state.records.map((record) => { const view = recordView(record); return [view.id, `${view.kindLabel}: ${view.title}`]; }));
     views = auditViews(entries, { memberNames, recordTitles });
     if (body.isConnected) draw();
-  }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل سجل النشاط." })); });
+  }).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل سجل النشاط." })); });
   return null;
 }

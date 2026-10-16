@@ -1,7 +1,7 @@
 import { SPECIALTIES } from "../domain/office-profile-domain.js";
 import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 import { openGeneralTask } from "./task-fallback.js";
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, surface, pageHeader, controlGroup } from "../core/dom.js";
 import { propertyTypeIcon } from "../core/icons.js";
 import { go, back } from "../core/nav.js";
 import { watchCooperation } from "../core/community.js";
@@ -145,7 +145,7 @@ function agentCard() {
 /** «بلاغ أو استفسار»: one short form; the support manager receives it (and on Telegram when the assistant is linked). */
 function openSupportTicket() {
   let kind = TICKET_KIND.QUESTION;
-  const kinds = h("div", { class: "os-seg", role: "group", "aria-label": "نوع الرسالة" },
+  const kinds = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "نوع الرسالة" },
     ...[TICKET_KIND.QUESTION, TICKET_KIND.REPORT].map((value) => {
       const b = h("button", { type: "button", "aria-pressed": String(value === kind), "data-support-kind": value, text: TICKET_KIND_LABEL[value] });
       b.addEventListener("click", () => { kind = value; kinds.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); });
@@ -184,7 +184,7 @@ function supportCard() {
   // One row of chips: the office's linked channels, then the platform support line and «بلاغ أو استفسار».
   const actions = channels;
   channels.append(report);
-  const card = h("section", { class: "os-card ref-office-section ref-support-card", "data-support-card": "" },
+  const card = surface("section", { class: "os-card ref-office-section ref-support-card", "data-support-card": "" },
     h("button", { type: "button", class: "os-home-community", "data-inbox-entry": "", onClick: () => go("inbox") },
       h("span", { class: "os-set-icon" }, ic("support")),
       h("span", {}, h("b", { text: "مركز التواصل والدعم" }), h("small", { text: "الرسائل الواردة من قنوات المكتب مصنّفة" }), h("span", { class: "os-coop-badge", "data-inbox-summary": "" })),
@@ -251,7 +251,7 @@ export function renderOffice(container){
       office.licenseDate ? profileRow("calendar", "تاريخ الرخصة", String(office.licenseDate), {ltr:true}) : null),
     office.description ? h("p",{class:"ref-office-description",text:office.description}) : null);
   const toggle = h("button", {type:"button",class:"ref-profile-toggle","aria-label":"طي تفاصيل المكتب","aria-expanded":"true","aria-controls":detailsId},ic("chev-right"));
-  const profile = h("section", {class:"os-card ref-office-profile"},
+  const profile = surface("section", {class:"os-card ref-office-profile"},
     h("div",{class:"ref-office-profile-main"},
       h("div",{class:"ref-office-profile-head"},h("h2",{class:nameSize,text:officeName})),
       profileRow("user", "الوسيط", broker),details),
@@ -266,7 +266,7 @@ export function renderOffice(container){
     details.inert=!expanded;
   });
   append(container, profile,
-    h("section",{class:"os-card ref-reference-section"},
+    surface("section", {class:"os-card ref-reference-section"},
       h("div",{class:"ref-reference-heading ref-office-heading"},h("h2", { text: "أدوات المكتب" }),h("p",{text:"كل ما تحتاجه لإدارة أعمالك العقارية في مكان واحد"})),
       h("div",{class:"ref-reference-grid ref-office-tools"},REFERENCE_TOOLS.map(referenceTool))),
 
@@ -274,14 +274,14 @@ export function renderOffice(container){
     h("button", { type: "button", class: "os-btn primary block ref-quick-add", "data-quick-add": "", onClick: () => go("quick-add") }, ic("sparkles"), "إضافة سريعة", h("small", { text: "الصق إعلانًا من واتساب أو تيليجرام" })),
 
     // Order (approved): office card → office tools → التعاون → مركز التواصل والدعم; the bottom bar stays fixed.
-    h("details", { class: "os-card ref-office-section ref-office-status" },
+    surface("details", { class: "os-card ref-office-section ref-office-status" },
       h("summary", { text: "حالة مدير المكتب والباحث العقاري" }),
       agentCard(),
 
       // «الباحث عن الفرص»: shown only where it is available; opens its own page.
       scoutHomeCard()),
 
-    h("section", { class: "os-card ref-office-section" },
+    surface("section", { class: "os-card ref-office-section" },
       h("button", { type: "button", class: "os-home-community", "data-community-entry": "", onClick: () => go("community") },
         h("span", { class: "os-set-icon" }, ic("handshake")),
         h("span", {}, h("b", { text: "التعاون" }), h("small", { text: "تعاون مباشر بين وسيط العرض ووسيط الطلب" }), h("span", { class: "os-coop-badge", "data-coop-summary": "" })),
@@ -317,11 +317,11 @@ export function renderTaskDetail(container,{taskId}){const draw=()=>{clear(conta
  const status=t.late?"متأخرة":({WAITING_EXTERNAL_RESPONSE:"بانتظار رد",IN_PROGRESS:"قيد التنفيذ",OPEN:"مفتوحة"})[String(task.status||"").toUpperCase()]||"مفتوحة";
  const last=model.lastEvent?model.lastEvent+(model.lastEventAt?" · "+timeInfo({lastEventAt:model.lastEventAt}).text:""):"";
  const row=(label,value,extra="")=>value?h("div",{class:"ref-detail-row "+extra},h("small",{text:label}),h("b",{text:value})):null;
- const facts=h("section",{class:"os-card ref-detail-facts"},
+ const facts=surface("section", {class:"os-card ref-detail-facts"},
   row("نوع المهمة",step===0?"مراجعة تطابق":model.button),
   row("حالة المهمة",status,t.late?"late":""),
   rv?row("وصف الطلب",[rv.propertyType,rv.location,rv.priceLabel].filter(Boolean).join(" · ")):null,
   h("div",{class:"ref-detail-row ref-detail-step current"},h("small",{text:"المرحلة الحالية"}),h("b",{},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}))),
   row("آخر حركة",last),
   row("المطلوب منك الآن",model.reason||STEPS[step][2],"now"));
- append(container,h("header",{class:"ref-detail-header"},h("span",{},ic("more")),h("h1",{text:"تفاصيل المهمة"}),h("button",{type:"button",class:"os-icon-btn","aria-label":"رجوع",onClick:()=>back("tasks")},ic("chev-left"))),h("div",{class:"ref-detail-title"},h("div",{},h("h2",{text:step===0?"مراجعة تطابق":model.button}),h("p",{text:v.location})),h("span",{class:"ref-status step-"+step,text:STEPS[step][0]})),h("section",{class:"os-card ref-property"},photo(record),h("div",{},h("h3",{text:v.propertyType||"العقار"}),h("p",{text:v.location}),h("b",{text:v.priceLabel.replace(/^(السعر|الميزانية)\s*/,"")})),h("div",{class:"ref-property-facts"},v.rooms?h("span",{},ic("bed"),v.rooms+" غرف"):null,v.areaLabel?h("span",{},ic("area"),v.areaLabel):null)),facts,h("button",{type:"button",class:"os-btn primary block ref-follow",text:step===0?"مراجعة المطابقة":model.opens==="session"?"فتح غرفة التفاوض":model.button,onClick:()=>openTask(task,model)}));};draw();return subscribe(k=>{if(k==="tasks"||k==="records")draw();});}
+ append(container,pageHeader("تفاصيل المهمة",{backControl:h("button",{type:"button",class:"os-back","aria-label":"رجوع",onClick:()=>back("tasks")},ic("chev-right"),"رجوع"),iconName:"tasks-check"}),h("div",{class:"ref-detail-title"},h("div",{},h("h2",{text:step===0?"مراجعة تطابق":model.button}),h("p",{text:v.location})),h("span",{class:"ref-status step-"+step,text:STEPS[step][0]})),surface("section", {class:"os-card ref-property"},photo(record),h("div",{},h("h3",{text:v.propertyType||"العقار"}),h("p",{text:v.location}),h("b",{text:v.priceLabel.replace(/^(السعر|الميزانية)\s*/,"")})),h("div",{class:"ref-property-facts"},v.rooms?h("span",{},ic("bed"),v.rooms+" غرف"):null,v.areaLabel?h("span",{},ic("area"),v.areaLabel):null)),facts,h("button",{type:"button",class:"os-btn primary block ref-follow",text:step===0?"مراجعة المطابقة":model.opens==="session"?"فتح غرفة التفاوض":model.button,onClick:()=>openTask(task,model)}));};draw();return subscribe(k=>{if(k==="tasks"||k==="records")draw();});}

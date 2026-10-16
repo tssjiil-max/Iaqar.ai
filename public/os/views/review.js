@@ -4,7 +4,7 @@
  */
 
 import { botAskLine } from "./bot-settings.js";
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback, comparisonTable } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -20,19 +20,18 @@ const STATE_ICON = { match: "check", differ: "alert", unknown: "question" };
 
 function compareTable(offer, request) {
   const rows = compareRecords(offer, request);
-  return h("table", { class: "os-compare" },
-    h("thead", {}, h("tr", {}, h("th", { text: "" }), h("th", { text: "العرض" }), h("th", { text: "الطلب" }))),
-    h("tbody", {}, rows.map((row) => h("tr", {},
-      h("td", {}, h("span", { class: `os-state ${row.state}` }, ic(STATE_ICON[row.state])), row.label),
-      h("td", { text: row.offer }),
-      h("td", {}, row.request, row.note ? h("small", { style: { display: "block", color: row.state === "match" ? "var(--ok)" : "var(--warn)" }, text: row.note }) : null)
-    ))));
+  return comparisonTable({ label: "مقارنة العرض والطلب", columns: ["", "العرض", "الطلب"],
+    rows: rows.map(row => [
+      h("span", {}, h("span", { class: `os-state ${row.state}` }, ic(STATE_ICON[row.state])), row.label),
+      row.offer,
+      h("span", {}, row.request, row.note ? h("small", { style: { display: "block", color: row.state === "match" ? "var(--ok)" : "var(--warn)" }, text: row.note }) : null)
+    ]) });
 }
 
 function openInfoRequest(match) {
   let role = RECIPIENT.CLIENT;
   const body = h("div", { class: "os-form" });
-  const seg = h("div", { class: "os-seg", role: "group", "aria-label": "المستلم" });
+  const seg = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "المستلم" });
   const drawSeg = () => {
     clear(seg);
     for (const [id, label] of [[RECIPIENT.CLIENT, "العميل"], [RECIPIENT.OWNER, "المالك"]]) {
@@ -89,15 +88,13 @@ export function renderReview(container, { matchId }) {
   let match;
   const draw = () => {
     clear(container);
-    append(container, h("div", { class: "os-page-head" },
-      h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "المهام اليومية"),
-      h("h1", { class: "os-page-title", text: "مراجعة المطابقة" }), h("span")));
-    if (match === undefined) { append(container, h("div", { class: "os-skeleton" })); return; }
-    if (!match) { append(container, h("div", { class: "os-alert bad", text: "المطابقة غير موجودة أو لم تعد متاحة." })); return; }
+    append(container, pageHeader(h("h1", { class: "os-page-title", text: "مراجعة المطابقة" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("tasks") }, ic("chev-right"), "المهام اليومية"), action: h("span") }));
+    if (match === undefined) { append(container, loadingState({ class: "os-skeleton" })); return; }
+    if (!match) { append(container, feedback({ class: "os-alert bad", text: "المطابقة غير موجودة أو لم تعد متاحة." })); return; }
     const offer = recordById(match.offerId || match.ownerOfferId);
     const request = recordById(match.requestId || match.clientRequestId);
     if (!offer || !request) {
-      append(container, state.recordsReady ? h("div", { class: "os-alert warn", text: "أحد سجلي المطابقة غير متاح في المستودع." }) : h("div", { class: "os-skeleton" }));
+      append(container, state.recordsReady ? feedback({ class: "os-alert warn", text: "أحد سجلي المطابقة غير متاح في المستودع." }) : loadingState({ class: "os-skeleton" }));
       return;
     }
     const level = compatibilityLevel(match.score);
@@ -105,7 +102,7 @@ export function renderReview(container, { matchId }) {
     const warnings = matchWarnings(match);
     const decided = match.brokerDecision && match.brokerDecision !== "POSTPONED";
     const superseded = match.isCurrent === false || match.status === "superseded";
-    const infoReplies = ["client", "owner"].map((role) => match[`infoReply_${role}`] ? h("div", { class: "os-alert info" }, h("b", { text: role === "client" ? "رد العميل: " : "رد المالك: " }), match[`infoReply_${role}`].label) : null);
+    const infoReplies = ["client", "owner"].map((role) => match[`infoReply_${role}`] ? feedback({ class: "os-alert info" }, h("b", { text: role === "client" ? "رد العميل: " : "رد المالك: " }), match[`infoReply_${role}`].label) : null);
 
     const approveBtn = h("button", { type: "button", class: "os-btn primary block" }, ic("handshake"), "اعتماد وبدء التفاوض");
     approveBtn.addEventListener("click", () => runAction(approveBtn, async () => {
@@ -113,14 +110,14 @@ export function renderReview(container, { matchId }) {
       toast("تم اعتماد المطابقة — جهّز أول مقترح", "ok");
       go(`journey/${res.journeyId}`);
     }));
-    const moreRow = h("div", { class: "os-btn-row", style: { marginTop: "8px" } },
+    const moreRow = controlGroup("div", { class: "os-btn-row", style: { marginTop: "8px" } },
       h("button", { type: "button", class: "os-btn secondary", onClick: () => openInfoRequest(match) }, ic("question"), "طلب معلومات"),
       h("button", { type: "button", class: "os-btn secondary", onClick: () => openPostpone(match) }, ic("clock"), "تأجيل"),
       h("button", { type: "button", class: "os-btn danger", onClick: (e) => reject(match, e.currentTarget) }, ic("x-circle"), "رفض"));
 
     append(container,
       botAskLine(match),
-      h("div", { class: "os-card os-review-card" },
+      surface("div", { class: "os-card os-review-card" },
         h("div", { class: "os-review-heading" },
           h("div", {},
         h("div", { style: { display: "flex", justifyContent: "space-between", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
@@ -132,15 +129,15 @@ export function renderReview(container, { matchId }) {
         h("div", { style: { marginTop: "10px" } }, compareTable(offer, request))
       ),
       h("div", { class: "os-grid-2" },
-        reasons.length ? h("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("check-circle"), "أسباب التوافق"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, reasons.map((r) => h("li", { class: "good" }, ic("check"), r)))) : null,
-        warnings.length ? h("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("alert"), "نقاط الاختلاف"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, warnings.map((w) => h("li", { class: "warn" }, ic("alert"), w)))) : null
+        reasons.length ? surface("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("check-circle"), "أسباب التوافق"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, reasons.map((r) => h("li", { class: "good" }, ic("check"), r)))) : null,
+        warnings.length ? surface("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("alert"), "نقاط الاختلاف"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, warnings.map((w) => h("li", { class: "warn" }, ic("alert"), w)))) : null
       ),
       infoReplies,
       decided || superseded
-        ? h("div", { class: "os-card" },
-          h("div", { class: `os-alert ${match.brokerDecision === "APPROVED" ? "ok" : "info"}`, text: superseded && !decided ? "حُدّثت بيانات أحد السجلين فأصبحت هذه النسخة قديمة." : match.brokerDecision === "APPROVED" ? "تم اعتماد هذه المطابقة." : "تم رفض هذه المطابقة." }),
+        ? surface("div", { class: "os-card" },
+          feedback({ class: `os-alert ${match.brokerDecision === "APPROVED" ? "ok" : "info"}`, text: superseded && !decided ? "حُدّثت بيانات أحد السجلين فأصبحت هذه النسخة قديمة." : match.brokerDecision === "APPROVED" ? "تم اعتماد هذه المطابقة." : "تم رفض هذه المطابقة." }),
           match.journeyId ? h("button", { type: "button", class: "os-btn primary block", style: { marginTop: "10px" }, onClick: () => go(`journey/${match.journeyId}`) }, "فتح مساحة الفرصة") : null)
-        : h("div", { class: "os-card" }, approveBtn, moreRow,
+        : surface("div", { class: "os-card" }, approveBtn, moreRow,
           h("p", { class: "os-sub", style: { marginTop: "8px", fontSize: ".86rem" }, text: "لن يُرسل أي شيء للعميل أو المالك قبل قرارك." }))
     );
   };

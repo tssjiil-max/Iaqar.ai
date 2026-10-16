@@ -3,7 +3,7 @@
  * across the three main screens; each screen keeps its own local content below.
  */
 
-import { h, ic, btn, clear, append, emptyState } from "../core/dom.js";
+import { h, ic, btn, clear, append, emptyState, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session, signOutOffice } from "../core/session.js";
 import { openSheet, toast } from "../core/ui.js";
@@ -63,7 +63,7 @@ function refreshBellDot(bell) {
 
 /** «التنبيهات»: the latest notifications; each opens the place its push link opens. */
 function openNotifications() {
-  const body = h("div", { class: "os-notifications", "data-notifications": "" }, h("div", { class: "os-skeleton" }));
+  const body = h("div", { class: "os-notifications", "data-notifications": "" }, loadingState({ class: "os-skeleton" }));
   const sheet = openSheet("التنبيهات", body);
   const since = seenAt();
   listNotifications(session.officeId, session.isManager ? 40 : 120).then((list) => {
@@ -86,7 +86,7 @@ function openNotifications() {
     newest = { officeId: session.officeId, time: newestTime(mine), checkedAt: Date.now() };
     markSeen(Math.max(newest.time, Date.now()));
     document.querySelectorAll(".ref-bell").forEach((bell) => bell.classList.remove("has-new"));
-  }).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل التنبيهات." })); });
+  }).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل التنبيهات." })); });
 }
 
 function openMenu() {

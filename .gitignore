@@ -11,3 +11,10 @@ playwright-report/
 test-results/
 blob-report/
 
+
+qa/structural-visual/before/*.png
+qa/structural-visual/after/*.png
+scripts/qa/office-os/qa-run-artifacts/
+qa/structural-visual/logs/browser-install.log
+qa/structural-visual/post-review-community/
+qa/structural-visual/post-review-widths/*.png

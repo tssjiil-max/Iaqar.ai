@@ -5,7 +5,7 @@
  * Everything goes through the Worker; nothing here sends a message to a client or an owner.
  */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction, toast } from "../core/ui.js";
@@ -18,9 +18,7 @@ import { DURATION, DURATION_OPTIONS } from "../domain/validity-domain.js";
 const SUGGESTIONS = ["وش يحتاج تدخلي اليوم؟", "عطني أقوى المطابقات الجديدة", "رتب المعاينات", "ليش توقفت الصفقات", "تابع العملاء اللي ما ردوا", "وش أُنجز اليوم؟"];
 
 function head(title, backTo) {
-  return h("div", { class: "os-page-head" },
-    h("button", { type: "button", class: "os-back", onClick: () => (backTo ? go(backTo) : back("office")) }, ic("chev-right"), "رجوع"),
-    h("h1", { class: "os-page-title", text: title }), h("span"));
+  return pageHeader(h("h1", { class: "os-page-title", text: title }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => (backTo ? go(backTo) : back("office")) }, ic("chev-right"), "رجوع"), action: h("span") });
 }
 
 function itemRow(item) {
@@ -50,7 +48,7 @@ export function renderAgent(container) {
   const status = h("p", { class: "os-sub", "data-agent-state": "" });
   const input = h("textarea", { class: "os-textarea os-agent-input", rows: "2", maxlength: "1000", placeholder: "اكتب سؤالك أو أمرك لمدير المكتب…", "data-agent-input": "", dir: "auto" });
   const send = h("button", { type: "button", class: "os-btn primary", "data-agent-send": "" }, ic("send"), "إرسال");
-  const chips = h("div", { class: "os-chips", role: "group", "aria-label": "اقتراحات" },
+  const chips = controlGroup("div", { class: "os-chips", role: "group", "aria-label": "اقتراحات" },
     ...SUGGESTIONS.map((text) => h("button", { type: "button", class: "os-chip", "data-agent-suggest": "", onClick: () => { input.value = text; submit(); } }, text)));
   // Proactive: what the office manager noticed (counts from the office's own data); pressing one only asks.
   const noticed = h("div", { class: "os-center-list", "data-agent-noticed": "" });
@@ -111,8 +109,8 @@ export function renderAgentTry(container) {
   const share = h("button", { type: "button", class: "os-btn primary", "data-try-share": "" }, ic("phone"), "مشاركة رقمي");
   append(contactRow, h("small", { class: "os-sub", text: "في تيليجرام يضغط الشخص زر «مشاركة رقمي». هنا اكتب رقمًا تجريبيًا:" }), phone, share);
   append(container, head("جرّب مدير مكتبك", "settings/agent"),
-    h("div", { class: "os-alert", text: "تجربة فقط: نفس محادثة تيليجرام التي يراها المالك أو الوسيط أو العميل. لا يُرسل شيء لأحد ولا يُحفظ أي سجل." }),
-    thread, contactRow, h("div", { class: "os-agent-compose" }, input, send), h("div", { class: "os-btn-row" }, restart));
+    feedback({ class: "os-alert", text: "تجربة فقط: نفس محادثة تيليجرام التي يراها المالك أو الوسيط أو العميل. لا يُرسل شيء لأحد ولا يُحفظ أي سجل." }),
+    thread, contactRow, h("div", { class: "os-agent-compose" }, input, send), controlGroup("div", { class: "os-btn-row" }, restart));
   const addMine = (textValue) => append(thread, h("div", { class: "os-agent-msg is-mine" }, h("p", { dir: "auto", text: textValue })));
   const show = (result) => {
     let askContact = false;
@@ -133,7 +131,7 @@ export function renderAgentTry(container) {
           mine.push(button);
           return button;
         });
-        append(box, h("div", { class: "os-btn-row" }, ...buttons));
+        append(box, controlGroup("div", { class: "os-btn-row" }, ...buttons));
       }
       append(thread, box);
     }
@@ -170,7 +168,7 @@ function officeLinkBox(link) {
   return h("div", { class: "os-chan-link", "data-agent-office-link": "on" },
     h("p", { class: "os-sub", text: "شارك هذا الرابط مع الملاك والوسطاء والعملاء: يفتح محادثة مع مدير مكتبك الذكي، ويسجل العرض أو الطلب بعد موافقتهم، ويصلك كل سجل في مكتبك." }),
     h("code", { class: "os-mono", dir: "ltr", text: link }),
-    h("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: link, target: "_blank", rel: "noopener" }, ic("telegram"), "فتح"), copy));
+    controlGroup("div", { class: "os-btn-row" }, h("a", { class: "os-btn primary", href: link, target: "_blank", rel: "noopener" }, ic("telegram"), "فتح"), copy));
 }
 
 /** «صلاحية العروض والطلبات» for this office: default duration, periodic confirmation, reminder timing (platform limits apply). */
@@ -185,7 +183,7 @@ function validityCard(s, redraw) {
     redraw({ ...(await saveAgentSettings(session.officeId, { validity: { defaultDuration: select.value, periodicDays: Number(periodic.value), remindBeforeDays: Number(remind.value) } })), loaded: true });
   }, { success: "تم حفظ إعدادات الصلاحية" }));
   const row = (label, control, hint) => h("label", { class: "os-field" }, h("span", { text: label }), control, hint ? h("small", { text: hint }) : null);
-  return h("section", { class: "os-card", "data-validity-settings": "" },
+  return surface("section", { class: "os-card", "data-validity-settings": "" },
     h("h2", { class: "os-h2", text: "صلاحية العروض والطلبات" }),
     h("p", { class: "os-sub", text: "تطبق على سجلات مكتبك فقط. لا يُحذف أي سجل؛ المنتهي يتوقف عن المطابقات الجديدة حتى يُجدد." }),
     row("المدة الافتراضية إذا لم يختر صاحب السجل", select),
@@ -196,8 +194,8 @@ function validityCard(s, redraw) {
 
 export function renderAgentSettings(container) {
   append(container, head("مدير المكتب الذكي", "settings"));
-  if (!session.isManager) { append(container, h("div", { class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." })); return null; }
-  const body = h("div", { "data-agent-settings": "" }, h("div", { class: "os-skeleton" }));
+  if (!session.isManager) { append(container, feedback({ class: "os-alert warn", text: "هذه الإعدادات لمدير المكتب فقط." })); return null; }
+  const body = h("div", { "data-agent-settings": "" }, loadingState({ class: "os-skeleton" }));
   append(container, body);
   const draw = (s) => {
     clear(body);
@@ -210,33 +208,33 @@ export function renderAgentSettings(container) {
     save.addEventListener("click", () => runAction(save, async () => { draw({ ...(await saveAgentSettings(session.officeId, { instructions: area.value })), loaded: true }); }, { success: "تم حفظ التعليمات" }));
     const actions = h("div", { class: "os-center-list", "data-agent-actions": "" }, h("p", { class: "os-sub", text: "جارٍ تحميل آخر الإجراءات…" }));
     append(body,
-      h("section", { class: "os-card" },
+      surface("section", { class: "os-card" },
         h("div", { class: "os-card-head" }, h("h2", { class: "os-h2", text: "الحالة" }), h("span", { class: `ref-agent-status${view.tone ? ` is-${view.tone}` : ""}`, "data-agent-settings-state": view.state, text: view.label })),
         h("p", { class: "os-sub", text: "يجيب الوسطاء من بيانات المكتب فقط، ولا ينفذ قرارات المال والعقود والسعر النهائي وإغلاق الصفقة. أي تغيير ينفذه بعد ضغط الوسيط بنفسه." }),
         toggle,
         h("p", { class: "os-sub", "data-agent-today": "", text: `اليوم: ${s.today?.chats || 0} محادثة · ${s.today?.aiCalls || 0} طلب للذكاء الاصطناعي · ${s.today?.fallbacks || 0} رد بالقواعد · ${s.today?.errors || 0} خطأ` }),
-        s.aiConfigured ? null : h("div", { class: "os-alert warn", text: "الذكاء الاصطناعي غير مهيأ على هذه البيئة، فيرد مدير المكتب من بيانات المكتب بالقواعد." })),
-      h("section", { class: "os-card" },
+        s.aiConfigured ? null : feedback({ class: "os-alert warn", text: "الذكاء الاصطناعي غير مهيأ على هذه البيئة، فيرد مدير المكتب من بيانات المكتب بالقواعد." })),
+      surface("section", { class: "os-card" },
         h("h2", { class: "os-h2", text: "تعليمات المكتب" }),
         h("p", { class: "os-sub", text: "نبرة التواصل وما يركز عليه، ضمن قواعد الخصوصية والصلاحيات التي لا تتغير." }),
         area, save),
       validityCard(s, draw),
-      h("section", { class: "os-card" },
+      surface("section", { class: "os-card" },
         h("h2", { class: "os-h2", text: "القنوات" }),
         h("p", { class: "os-sub", "data-agent-telegram": "", text: s.telegramBotOn ? "بوت تيليجرام مفعّل في مكتبك: يسأل الطرفين عن المطابقات ويفتح الصفقة عند موافقتهما." : "بوت تيليجرام متوقف في مكتبك." }),
         s.officeBotLink ? officeLinkBox(s.officeBotLink) : h("p", { class: "os-sub", "data-agent-office-link": "off", text: "رابط مكتبك على تيليجرام يظهر هنا بعد تشغيل البوت ومدير المكتب الذكي." }),
-        h("div", { class: "os-btn-row" },
+        controlGroup("div", { class: "os-btn-row" },
           h("button", { type: "button", class: "os-btn primary", "data-agent-try": "", onClick: () => go("agent/try") }, ic("robot"), "جرّب مدير مكتبك"),
           h("button", { type: "button", class: "os-btn secondary", onClick: () => go("settings/channels") }, ic("link"), "قنوات المكتب"))),
-      h("section", { class: "os-card" }, h("h2", { class: "os-h2", text: "آخر الإجراءات" }), actions));
+      surface("section", { class: "os-card" }, h("h2", { class: "os-h2", text: "آخر الإجراءات" }), actions));
     listAuditLog(session.officeId, 60).then((rows) => {
       clear(actions);
       const mine = rows.filter((row) => /^(AGENT_|BOT_)/.test(String(row.action || ""))).slice(0, 15);
       if (!mine.length) { append(actions, h("p", { class: "os-sub", text: "لا توجد إجراءات مسجلة بعد." })); return; }
       const labels = { AGENT_ENABLED: "تشغيل مدير المكتب", AGENT_DISABLED: "إيقاف مدير المكتب", AGENT_ACTION_APPROVED: "إجراء نفذه الوسيط من المحادثة", BOT_ENABLED: "تشغيل بوت تيليجرام", BOT_DISABLED: "إيقاف بوت تيليجرام" };
-      for (const row of mine) append(actions, h("div", { class: "os-card os-center-row" }, h("span", { class: "os-set-text" }, h("b", { text: labels[row.action] || row.action }), h("small", { text: relativeAgo(row.createdAt) || "" }))));
+      for (const row of mine) append(actions, surface("div", { class: "os-card os-center-row" }, h("span", { class: "os-set-text" }, h("b", { text: labels[row.action] || row.action }), h("small", { text: relativeAgo(row.createdAt) || "" }))));
     }).catch(() => { clear(actions); append(actions, h("p", { class: "os-sub", text: "تعذر تحميل الإجراءات." })); });
   };
-  loadAgentStatus(session.officeId, { fresh: true }).then(draw).catch(() => { clear(body); append(body, h("div", { class: "os-alert bad", text: "تعذر تحميل حالة مدير المكتب." })); });
+  loadAgentStatus(session.officeId, { fresh: true }).then(draw).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل حالة مدير المكتب." })); });
   return null;
 }

@@ -12,8 +12,8 @@
   </style>
   <link rel="stylesheet" href="/os/site-theme.css">
 </head>
-<body>
-<main><h1>جاري تحويل الرسالة إلى مكتبك</h1><p>سيتم فرزها وتشغيل المطابقة تلقائيًا بعد التحقق من حساب المكتب.</p></main>
+<body class="office-standalone">
+<main><div data-office-heading data-office-icon="send"><h1>جاري تحويل الرسالة إلى مكتبك</h1><p>سيتم فرزها وتشغيل المطابقة تلقائيًا بعد التحقق من حساب المكتب.</p></div></main>
 <script>
 (() => {
   const params = new URLSearchParams(location.search);
@@ -36,5 +36,6 @@
   location.replace(next.toString());
 })();
 </script>
+  <script type="module" src="/os/standalone-shell.js"></script>
 </body>
 </html>

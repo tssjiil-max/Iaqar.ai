@@ -4,7 +4,7 @@
  */
 
 import { openGeneralTask } from "./task-fallback.js";
-import { h, ic, clear, emptyState, append } from "../core/dom.js";
+import { h, ic, clear, emptyState, append, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -124,7 +124,7 @@ function taskCard(task, now) {
   const record=taskRecord(task)||{},view=recordView(record),step=taskStep(task);
   const meta=parseMeta(task),client=recordById(task.requestId||meta.clientRequestId),contactName=client?.contactName||view.contactName;
   // One main button per card; tapping the card itself opens «تفاصيل المهمة» (no second arrow).
-  const card=h("article",{class:"os-card ref-task-card","data-task":task.id,"data-type":model.type,onClick:(e)=>{if(!e.target.closest("button,a"))go("task/"+task.id);}},photo(record),h("div",{class:"ref-task-copy"},h("h3",{text:actionTitleOf(model)}),contactName?h("b",{class:"ref-contact"},ic("user"),contactName):null,h("p",{text:[view.propertyType,view.location].filter(Boolean).join(" · ")||model.title})),h("div",{class:"ref-task-actions"},h("div",{class:"ref-task-meta"},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}),timeChip(task)),h("div",{},button)));
+  const card=surface("article", {class:"os-card ref-task-card","data-task":task.id,"data-type":model.type,onClick:(e)=>{if(!e.target.closest("button,a"))go("task/"+task.id);}},photo(record),h("div",{class:"ref-task-copy"},h("h3",{text:actionTitleOf(model)}),contactName?h("b",{class:"ref-contact"},ic("user"),contactName):null,h("p",{text:[view.propertyType,view.location].filter(Boolean).join(" · ")||model.title})),h("div",{class:"ref-task-actions"},h("div",{class:"ref-task-meta"},h("span",{class:"ref-status step-"+step,text:STEPS[step][0]}),timeChip(task)),h("div",{},button)));
   return card;
 }
 
@@ -180,7 +180,7 @@ function dealCard(group, now) {
       h("summary", {}, ic("clipboard"), h("span", { text: `مهام الصفقة: ${subtaskCountLabel(group.tasks.length)}` }), ic("chev-down")),
       h("ul", { class: "ref-deal-subs" }, rows))
     : null;
-  return h("article", { class: "os-card ref-task-card ref-deal-card", "data-task": primary.id, "data-deal": group.id, "data-type": model.type, "data-deal-tasks": String(group.tasks.length), onClick: (e) => { if (!e.target.closest("button,a,summary,details")) open(); } },
+  return surface("article", { class: "os-card ref-task-card ref-deal-card", "data-task": primary.id, "data-deal": group.id, "data-type": model.type, "data-deal-tasks": String(group.tasks.length), onClick: (e) => { if (!e.target.closest("button,a,summary,details")) open(); } },
     photo(offer),
     h("div", { class: "ref-task-copy" },
       h("h3", { text: [view.propertyType, view.location].filter(Boolean).join(" · ") || model.title || "صفقة" })),
@@ -200,7 +200,7 @@ function closedDealCard(journey) {
   const model = closedDealModel(journey);
   const open = h("button", { type: "button", class: "os-btn secondary", "data-open-deal": model.id }, h("span", { text: "فتح الصفقة" }), ic("chev-left"));
   open.addEventListener("click", () => go(`journey/${model.id}`));
-  return h("article", { class: "os-card ref-task-card ref-closed-card", "data-closed-deal": model.id, "data-won": String(model.won), onClick: (e) => { if (!e.target.closest("button,a")) go(`journey/${model.id}`); } },
+  return surface("article", { class: "os-card ref-task-card ref-closed-card", "data-closed-deal": model.id, "data-won": String(model.won), onClick: (e) => { if (!e.target.closest("button,a")) go(`journey/${model.id}`); } },
     photo({ propertyType: model.propertyType }),
     h("div", { class: "ref-task-copy" },
       h("h3", { text: model.statusLabel }),
@@ -235,7 +235,7 @@ export function renderTasks(container, { filter = "all", step = null, lane = nul
   let closedError = "";
   let returned = null;      // the deal card the broker just came back to (briefly marked)
   const countPill = h("span", { class: "os-count" });
-  const chipsRow = h("div", { class: "os-chips", role: "group", "aria-label": "تصفية المهام" });
+  const chipsRow = controlGroup("div", { class: "os-chips", role: "group", "aria-label": "تصفية المهام" });
   const list = h("div", { class: "os-task-list", "aria-live": "polite" });
   const strip = h("div", { "data-path-strip": "" });
   const stageHead = h("div", { class: "ref-stage-head", "data-stage-head": "", hidden: true });
@@ -287,10 +287,10 @@ export function renderTasks(container, { filter = "all", step = null, lane = nul
       countPill.textContent = dealCountLabel(n);
       append(stageHead, h("b", { text: `مرحلة «${STEPS[CLOSED_STEP][0]}» — ${dealCountLabel(n)}` }),
         h("button", { type: "button", class: "ref-stage-all", "data-stage-all": "", onClick: () => selectStep(null) }, "عرض كل المهام"));
-      if (closed === null) { append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" })); return; }
-      if (closedError) append(list, h("div", { class: "os-alert bad", text: closedError }));
+      if (closed === null) { append(list, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" })); return; }
+      if (closedError) append(list, feedback({ class: "os-alert bad", text: closedError }));
       if (!closed.length && !closedError) {
-        append(list, h("div", { class: "os-card" }, emptyState("check-circle", "لا توجد صفقات مغلقة بعد", "عند إتمام صفقة أو إغلاقها تظهر هنا مع تاريخها الكامل.")));
+        append(list, surface("div", { class: "os-card" }, emptyState("check-circle", "لا توجد صفقات مغلقة بعد", "عند إتمام صفقة أو إغلاقها تظهر هنا مع تاريخها الكامل.")));
         return;
       }
       for (const journey of closed) append(list, closedDealCard(journey));
@@ -316,22 +316,22 @@ export function renderTasks(container, { filter = "all", step = null, lane = nul
         h("button", { type: "button", class: "ref-stage-all", "data-stage-all": "", onClick: () => selectStep(null) }, "عرض كل المهام"));
     }
     if (!state.tasksReady) {
-      append(list, h("div", { class: "os-skeleton" }), h("div", { class: "os-skeleton" }));
+      append(list, loadingState({ class: "os-skeleton" }), loadingState({ class: "os-skeleton" }));
       return;
     }
     if (!shown.length && activeLane) {
       const done = doneSection();
       if (done) { append(list, done); return; }
-      append(list, h("div", { class: "os-card" }, emptyState("check-circle", activeLane === LANE.NEEDS_YOU ? "لا توجد قرارات تنتظرك" : activeLane === LANE.FOLLOWING ? "لا شيء بانتظار رد" : "لم يُنجز شيء اليوم بعد",
+      append(list, surface("div", { class: "os-card" }, emptyState("check-circle", activeLane === LANE.NEEDS_YOU ? "لا توجد قرارات تنتظرك" : activeLane === LANE.FOLLOWING ? "لا شيء بانتظار رد" : "لم يُنجز شيء اليوم بعد",
         activeLane === LANE.NEEDS_YOU ? "جميع المعاملات تحت المتابعة، ولا توجد قرارات تنتظرك حاليًا." : "")));
       return;
     }
     if (!shown.length) {
       if (activeStep !== null) {
-        append(list, h("div", { class: "os-card" }, emptyState("check-circle", `لا شيء في مرحلة «${STEPS[activeStep][0]}» الآن`, STEPS[activeStep][2])));
+        append(list, surface("div", { class: "os-card" }, emptyState("check-circle", `لا شيء في مرحلة «${STEPS[activeStep][0]}» الآن`, STEPS[activeStep][2])));
         return;
       }
-      append(list, h("div", { class: "os-card" }, emptyState("check-circle",
+      append(list, surface("div", { class: "os-card" }, emptyState("check-circle",
         active === "waiting" ? "لا شيء بانتظار رد" : "لا توجد مهام الآن",
         active === "waiting" ? "المقترحات المرسلة تظهر هنا حتى يصل الرد." : "أضف عروضًا وطلبات، وعند ظهور مطابقة ستصلك مهمة المراجعة هنا.",
         h("button", { type: "button", class: "os-btn secondary", onClick: () => go("repo") }, ic("plus-circle"), "إضافة عرض أو طلب"))));

@@ -4,7 +4,7 @@
  * Presentation only — what is sent and how it is checked stays in core/ and domain/.
  */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, surface } from "../core/dom.js";
 
 let fieldSeq = 0;
 
@@ -19,7 +19,7 @@ export function authShell(root, { screen, title, intro = "", note = "", body, af
         h("div", { class: "os-public-rule" }),
         intro ? h("p", { class: "os-sub os-auth-intro", text: intro }) : null,
         note ? h("p", { class: "os-auth-note", "data-auth-note": "", role: "note" }, ic("shield"), h("span", { text: note })) : null),
-      h("div", { class: "os-card os-auth-card" }, body, after))));
+      surface("div", { class: "os-card os-auth-card" }, body, after))));
 }
 
 /**

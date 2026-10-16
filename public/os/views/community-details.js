@@ -1,6 +1,6 @@
 /** تفاصيل التعاون: الوسطاء (وسيط العرض · وسيط الطلب · وسيط مشارك) واتفاق نسب العمولة. */
 
-import { h, ic, append, clear } from "../core/dom.js";
+import { h, ic, append, clear, surface, loadingState } from "../core/dom.js";
 import { session } from "../core/session.js";
 import { listMembers } from "../core/live.js";
 import { runAction, openSheet } from "../core/ui.js";
@@ -55,7 +55,7 @@ export function openCooperationDetails(view, { onChanged } = {}) {
       h("li", { "data-broker-role": row.role },
         ic(row.role === BROKER_ROLE.PARTICIPATING_BROKER ? "user" : "broker"),
         h("span", {}, h("b", { text: row.label }), h("small", { text: [officeLabel(view, row.officeId), row.name].filter(Boolean).join(" · ") })))));
-    return h("section", { class: "os-card" }, h("h3", { class: "os-h2", text: `الوسطاء (${cooperationBrokerCount(record)} من ${HARD_MAX_BROKERS_PER_COOPERATION})` }), list);
+    return surface("section", { class: "os-card" }, h("h3", { class: "os-h2", text: `الوسطاء (${cooperationBrokerCount(record)} من ${HARD_MAX_BROKERS_PER_COOPERATION})` }), list);
   }
 
   function commissionSection() {
@@ -66,7 +66,7 @@ export function openCooperationDetails(view, { onChanged } = {}) {
     const note = current.agreed
       ? `آخر اتفاق: ${record.commissionAgreementUpdatedAt ? formatDateTime(record.commissionAgreementUpdatedAt) : ""}`.trim()
       : "نسب مبدئية قابلة للتعديل والاتفاق بين الطرفين، وليست حكمًا ملزمًا.";
-    const section = h("section", { class: "os-card" }, h("h3", { class: "os-h2", text: "اتفاق التعاون" }), h("div", { class: "os-shares" }, rows), h("p", { class: "os-field-note", text: note }));
+    const section = surface("section", { class: "os-card" }, h("h3", { class: "os-h2", text: "اتفاق التعاون" }), h("div", { class: "os-shares" }, rows), h("p", { class: "os-field-note", text: note }));
     if (view.active) {
       const edit = h("button", { type: "button", class: "os-btn secondary", "data-edit-commission": "" }, ic("edit"), "تعديل النسب");
       edit.addEventListener("click", () => {
@@ -91,10 +91,10 @@ export function openCooperationDetails(view, { onChanged } = {}) {
     const count = cooperationBrokerCount(record);
     if (count >= HARD_MAX_BROKERS_PER_COOPERATION) return h("p", { class: "os-field-note", "data-max-brokers": "", text: MAX_BROKERS_MESSAGE });
     const add = h("button", { type: "button", class: "os-btn secondary block", "data-add-participating": "" }, ic("plus"), "إضافة وسيط مشارك");
-    const holder = h("section", { class: "os-card" }, add);
+    const holder = surface("section", { class: "os-card" }, add);
     add.addEventListener("click", async () => {
       clear(holder);
-      append(holder, h("h3", { class: "os-h2", text: "إضافة وسيط مشارك" }), h("div", { class: "os-skeleton" }));
+      append(holder, h("h3", { class: "os-h2", text: "إضافة وسيط مشارك" }), loadingState({ class: "os-skeleton" }));
       let members = [];
       try { members = await listMembers(session.officeId); } catch (_) { /* shown as empty below */ }
       const sides = resolveCooperationSides(record);

@@ -86,6 +86,8 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
   const TYPES = { ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".html": "text/html", ".png": "image/png", ".woff2": "font/woff2", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml" };
 
   const injectShell = (html) => html
+    .replace(/<link[^>]+(?:href="https:\/\/fonts\.(?:googleapis|gstatic)\.com)[^>]*>/g, "")
+    .replace(/document\.write\('<script src="https:\/\/www\.gstatic\.com[^']+'\);/g, "")
     .replace(/<script src="https:\/\/www\.gstatic\.com[^>]*><\/script>\s*/g, "")
     .replace('<script src="/__/firebase/init.js"></script>', `<script>${stub}</script>`)
     .replace('<script src="/js/runtime-config.js"></script>', '<script src="/js/runtime-config.js"></script>\n  <script>window.IAQAR.workerBase = location.origin + "/worker";</script>');
@@ -94,6 +96,10 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
     try {
       const url = new URL(req.url, "http://local");
       const send = (status, type, body) => { res.writeHead(status, { "content-type": type, "cache-control": "no-store" }); res.end(body); };
+      // Offline fixtures: no published release and no push service in the in-memory UI harness.
+      if (url.pathname === "/version.json") return send(200, "application/json", "{}");
+      if (url.pathname === "/js/fcm-fid.js") return send(200, "text/javascript", "window.IAQAR_FCM_READY = Promise.resolve(null);");
+      if (url.pathname === "/__/firebase/init.js") return send(200, "text/javascript", stub);
       if (url.pathname === "/harness/token") return send(200, "text/plain", idTokenFor(url.searchParams.get("uid") || ""));
       if (url.pathname === "/harness/signin") {
         const email = url.searchParams.get("email");
@@ -149,7 +155,7 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
       if (!full.startsWith(path.join(ROOT, "public")) || !fs.existsSync(full) || fs.statSync(full).isDirectory()) return send(404, "text/plain", "not found");
       const ext = path.extname(full);
       let body = fs.readFileSync(full);
-      if (file === "/index.html" || file === "/r.html" || file === "/s.html") body = injectShell(body.toString("utf8"));
+      if (ext === ".html") body = injectShell(body.toString("utf8"));
       send(200, `${TYPES[ext] || "application/octet-stream"}; charset=utf-8`, body);
     } catch (error) {
       res.writeHead(500); res.end(String(error?.stack || error));

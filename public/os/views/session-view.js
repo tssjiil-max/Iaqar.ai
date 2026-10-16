@@ -6,7 +6,7 @@
  * The broker watches the whole negotiation and steps in when asked or when he sees a need.
  */
 
-import { h, ic, clear, append } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -38,7 +38,7 @@ function brokerCard(event) {
 
 function linksCard(journey, state) {
   const jid = journey.journeyId || journey.id;
-  const card = h("section", { class: "os-card", "aria-label": "روابط الغرفة" },
+  const card = surface("section", { class: "os-card", "aria-label": "روابط الغرفة" },
     h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("link"), "روابط الطرفين"));
   if (!state.links) {
     const load = h("button", { type: "button", class: "os-btn primary block" }, ic("link"), "تجهيز رابطي المالك والعميل");
@@ -70,7 +70,7 @@ function linksCard(journey, state) {
     return h("div", { class: "os-session-link", "data-link-role": role, "data-link-awaiting": String(Boolean(link.awaiting)) },
       h("div", {}, h("b", { text: `رابط ${ROLE_LABEL[role]}` }),
         h("small", { text: link.awaiting ? "بانتظار رده — أرسل له تذكيرًا بالرابط" : link.opened ? "فتح الطرف الرابط" : link.hasPhone ? "لم يُفتح بعد" : "لا يوجد رقم جوال — انسخ الرابط" })),
-      h("div", { class: "os-btn-row" }, wa, copy, replace));
+      controlGroup("div", { class: "os-btn-row" }, wa, copy, replace));
   };
   append(card, h("div", { class: "os-session-links" }, row("owner"), row("client")));
   return card;
@@ -85,7 +85,7 @@ function requestsCard(journey, ui) {
   const open = openRequests(journey);
   const legacy = journey.session?.intervention?.required && !open.length;
   if (!open.length && !legacy) return null;
-  const card = h("section", { class: "os-card", "aria-label": "طلبات الطرفين للوسيط", "data-room-requests": "" },
+  const card = surface("section", { class: "os-card", "aria-label": "طلبات الطرفين للوسيط", "data-room-requests": "" },
     h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("alert"), "طلبات الطرفين للوسيط", h("span", { class: "os-count", text: String(open.length || 1) })));
   if (legacy) {
     // A request made before the room kept its content: follow it up, then mark it done.
@@ -140,16 +140,16 @@ function requestsCard(journey, ui) {
         h("b", { text: `${request.roleLabel} — ${request.kindLabel}${request.topic ? `: ${request.topic}` : ""}` }),
         h("small", { text: relativeAgo(request.at) || "" })),
       request.text ? h("p", { class: "os-request-text", dir: "auto", "data-request-text": "", text: request.text }) : request.kind === "intervention" ? h("p", { class: "os-request-text os-sub", text: "لم يكتب رسالة — يطلب تواصلك معه." }) : null,
-      h("div", { class: "os-btn-row" }, forward, writeButton("rephrase", "edit", "إعادة صياغتها"), writeButton("reply", "reply", `الرد على ${request.roleLabel}`)),
+      controlGroup("div", { class: "os-btn-row" }, forward, writeButton("rephrase", "edit", "إعادة صياغتها"), writeButton("reply", "reply", `الرد على ${request.roleLabel}`)),
       writer,
-      h("div", { class: "os-btn-row" }, dismiss, handled, dealLink)));
+      controlGroup("div", { class: "os-btn-row" }, dismiss, handled, dealLink)));
   }
   return card;
 }
 
 function composer(journey, draft) {
   const jid = journey.journeyId || journey.id;
-  const seg = h("div", { class: "os-seg", role: "group", "aria-label": "إرسال إلى" });
+  const seg = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "إرسال إلى" });
   const choices = [["owner", "إلى المالك"], ["client", "إلى العميل"], ["both", "إلى الطرفين"]];
   for (const [value, label] of choices) {
     const b = h("button", { type: "button", "aria-pressed": String(draft.audience === value), text: label });
@@ -191,13 +191,10 @@ export function renderSession(container, { journeyId }) {
     }
     const y = window.scrollY;
     clear(container);
-    append(container, h("div", { class: "os-page-head" },
-      h("button", { type: "button", class: "os-back", onClick: () => { rememberDeal(journeyId); back("tasks"); } }, ic("chev-right"), "رجوع"),
-      h("h1", { class: "os-page-title", text: "غرفة التفاوض" }),
-      h("button", { type: "button", class: "os-ref", onClick: () => go(`journey/${journeyId}`), text: "الفرصة" })));
+    append(container, pageHeader(h("h1", { class: "os-page-title", text: "غرفة التفاوض" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => { rememberDeal(journeyId); back("tasks"); } }, ic("chev-right"), "رجوع"), action: h("button", { type: "button", class: "os-ref", onClick: () => go(`journey/${journeyId}`), text: "الفرصة" }) }));
     if (journey) append(container, dealFollowBar({ ...journey, journeyId }, { page: "session" }));
-    if (journey === undefined) { append(container, h("div", { class: "os-skeleton" })); return; }
-    if (!journey) { append(container, h("div", { class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
+    if (journey === undefined) { append(container, loadingState({ class: "os-skeleton" })); return; }
+    if (!journey) { append(container, feedback({ class: "os-alert bad", text: "الصفقة غير موجودة." })); return; }
     const prices = sessionPrices(journey);
     const offer = journey.offerSummary || {};
     const cards = events.filter(isSessionEvent).map(brokerCard);
@@ -221,7 +218,7 @@ export function renderSession(container, { journeyId }) {
       }),
       roomAgreedCard(roomAgreedItems(journey)),
       requestsCard(journey, state),
-      h("section", { class: "os-card os-room-part os-deal-sides", "aria-label": "المالك مقابل العميل", "data-room-part": "versus", "data-room-family": schema.family, "data-room-deal": schema.deal },
+      surface("section", { class: "os-card os-room-part os-deal-sides", "aria-label": "المالك مقابل العميل", "data-room-part": "versus", "data-room-family": schema.family, "data-room-deal": schema.deal },
         h("h2", { class: "os-h2 os-part-title" }, ic("swap"), "المالك مقابل العميل"),
         roomSidesCard({ sides: { owner: sideOf("owner"), client: sideOf("client") }, status: { owner: partyStatus(journey, "owner"), client: partyStatus(journey, "client") }, ready: { owner: ready.owner, client: ready.client }, viewer: "broker", priceLabel: schema.priceLabel }),
         h("div", { class: "os-room-block" },
@@ -229,11 +226,11 @@ export function renderSession(container, { journeyId }) {
           roomTermsList(termRows(journey, "broker"), { viewer: "broker" }),
           h("small", { class: "os-sub", text: "البنود يتفق عليها الطرفان بالأزرار من رابطيهما. تدخّل برسالة عند الحاجة." }))),
       open ? linksCard(journey, state) : null,
-      interventions.length ? h("details", { class: "os-card os-session-history os-deal-history", "data-broker-log": "" },
+      interventions.length ? surface("details", { class: "os-card os-session-history os-deal-history", "data-broker-log": "" },
         h("summary", {}, ic("broker"), h("span", { text: "سجل تدخلات الوسيط" }), h("span", { class: "os-count", text: String(interventions.length) })),
         sessionEventList(interventions)) : null,
       historyDetails(cards, { emptyText: "لا توجد حركات بعد — أرسل الروابط للطرفين." }),
-      open ? composer(journey, draft) : h("div", { class: "os-card" }, h("div", { class: "os-alert info", text: "أُغلقت الصفقة وتوقفت روابط الغرفة. السجل محفوظ." })));
+      open ? composer(journey, draft) : surface("div", { class: "os-card" }, feedback({ class: "os-alert info", text: "أُغلقت الصفقة وتوقفت روابط الغرفة. السجل محفوظ." })));
     window.scrollTo({ top: y });
     if (state.requestMode) container.querySelector("textarea[name=requestText]")?.focus({ preventScroll: true });
   };
