@@ -90,3 +90,12 @@ New commits on the PR branch:
 Scope: DOM composition and CSS only; no Firestore, API, authentication, permissions, or production configuration changes. These are source changes, not proof of visual acceptance. Browser regression and individual before/after review for the service links and settings cards remain **PENDING**. Do not mark the PR ready, merge, or deploy on this evidence alone.
 
 Immediate next action: run affected office-tools and settings functional tests; exercise `#/tools/services` at 320, 360, 390, 430, 768, 1024, 1440, verify link target/rel and no horizontal overflow, then review the resulting captures. Continue authenticated legacy interiors and remaining visual matrix thereafter.
+
+## Additional source/test checkpoint (2026-10-16)
+
+- `97c89b5b`: added a JSDOM regression test for existing settings button click semantics and native official-service link href/target/rel/class attributes. **Test committed, not executed in this session.**
+- `2f289a62`: scoped navigation-tile trailing chevron lane and visible keyboard focus, preventing RTL text overlap without modifying navigation handlers.
+
+Verification status: no PR-triggered workflow runs were returned for commit `97c89b5b` when queried. No new browser screenshot review or functional test run was performed. The source modifications are real but visual/functional acceptance is **not yet established**.
+
+Next steps remain: run `node --test test/office-os-structural-section.test.mjs` and affected office-tools/settings suites, capture all required viewport widths, compare the authenticated legacy interiors, review remaining matrix items, and only then consider PR readiness and Staging deployment. Do not deploy to production.
