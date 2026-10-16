@@ -1,6 +1,6 @@
 /** Add / edit a repository record. Server re-validates with the same domain rules. */
 
-import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, officeSection, formGrid, actionBar, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -65,7 +65,7 @@ export function validityField(values = {}, { isNew = true } = {}) {
 }
 
 export function recordFormFields({ kind, values = {}, lockKind = false, onKindChange }) {
-  const form = h("div", { class: "os-form" });
+  const form = h("div", { class: "os-form os-record-sections" });
   const purposeWrap = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "الغرض" });
   const hiddenPurpose = h("input", { type: "hidden", name: "purpose", value: values.purpose || "" });
   const drawPurposes = () => {
@@ -93,25 +93,22 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
   const priceStatusBox = priceStatusField(values.priceStatus);
   priceStatusBox.hidden = kind !== RECORD_KIND.OFFER;
   form.append(
-    field("نوع السجل", kindSeg),
-    h("div", { class: "os-field" }, h("span", { text: "الغرض" }), purposeWrap, hiddenPurpose, h("span", { class: "os-error", role: "alert" })),
-    field("نوع العقار", h("div", {}, typeInput, types)),
-    h("div", { class: "os-row2" },
-      field("المدينة", h("input", { class: "os-input", name: "city", value: values.city || session.office?.city || "", autocomplete: "address-level2" })),
-      field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "الملقا، النرجس" }))
-    ),
-    priceLabel,
-    priceStatusBox,
-    h("div", { class: "os-row2" },
-      field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric", value: values.area || "" }), { optional: true }),
-      field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric", value: values.rooms || "" }), { optional: true })
-    ),
-    h("div", { class: "os-row2" },
-      field(kind === RECORD_KIND.REQUEST ? "اسم العميل" : "اسم المالك", h("input", { class: "os-input", name: "contactName", value: values.contactName || "", autocomplete: "name" }), { optional: true }),
-      field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", value: values.contactPhone || "", placeholder: "05XXXXXXXX", autocomplete: "tel" }))
-    ),
-    field("مواصفات وملاحظات", h("textarea", { class: "os-textarea", name: "notes", maxlength: "1000", placeholder: "المواصفات المطلوبة أو المميزات…", text: values.notes || "" }), { optional: true }),
-    validityField(values, { isNew: !values.id })
+    officeSection({ title: "نوع السجل والغرض", iconName: "offers" },
+      formGrid(field("نوع السجل", kindSeg),
+        h("div", { class: "os-field" }, h("span", { text: "الغرض" }), purposeWrap, hiddenPurpose, h("span", { class: "os-error", role: "alert" })))),
+    officeSection({ title: "العقار والموقع", iconName: "pin" },
+      formGrid(field("نوع العقار", h("div", {}, typeInput, types)),
+        field("المدينة", h("input", { class: "os-input", name: "city", value: values.city || session.office?.city || "", autocomplete: "address-level2" })),
+        field("الحي", h("input", { class: "os-input", name: "district", value: values.district || "", placeholder: "الملقا، النرجس" })),
+        field("المساحة (م²)", h("input", { class: "os-input", name: "area", inputmode: "numeric", value: values.area || "" }), { optional: true }),
+        field("عدد الغرف", h("input", { class: "os-input", name: "rooms", inputmode: "numeric", value: values.rooms || "" }), { optional: true }))),
+    officeSection({ title: "السعر والشروط", iconName: "calculator" }, formGrid(priceLabel, priceStatusBox)),
+    officeSection({ title: "بيانات التواصل", iconName: "user" },
+      formGrid(field(kind === RECORD_KIND.REQUEST ? "اسم العميل" : "اسم المالك", h("input", { class: "os-input", name: "contactName", value: values.contactName || "", autocomplete: "name" }), { optional: true }),
+        field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", value: values.contactPhone || "", placeholder: "05XXXXXXXX", autocomplete: "tel" })))),
+    officeSection({ title: "المواصفات ومدة السجل", iconName: "clipboard" },
+      field("مواصفات وملاحظات", h("textarea", { class: "os-textarea", name: "notes", maxlength: "1000", placeholder: "المواصفات المطلوبة أو المميزات…", text: values.notes || "" }), { optional: true }),
+      validityField(values, { isNew: !values.id }))
   );
   drawPurposes();
   return { form, getKind: () => kind };
@@ -206,7 +203,7 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
     });
     if (fill) form.prepend(originBox);
     const saveBtn = h("button", { type: "submit", class: "os-btn primary block" }, ic("check"), existing ? "حفظ التعديلات" : "حفظ وفحص المطابقات");
-    const formEl = surface("form", { class: "os-card", novalidate: true }, fill ? fill.el : null, form, h("div", { class: "os-form-actions" }, saveBtn));
+    const formEl = h("form", { class: "os-record-form", novalidate: true }, fill ? fill.el : null, form, h("div", { class: "os-form-actions" }, actionBar(saveBtn)));
     const syncSave = () => { saveBtn.closest(".os-form-actions").hidden = form.hidden; };
     if (fill) new MutationObserver(syncSave).observe(form, { attributes: true, attributeFilter: ["hidden"] });
     formEl.addEventListener("submit", async (event) => {

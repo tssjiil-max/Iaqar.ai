@@ -8,7 +8,7 @@
  * Nothing technical is shown (no queue, no source logs, no model calls); the broker decides, the scout does the work.
  */
 
-import { h, ic, clear, append, emptyState, field, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, field, pageHeader, surface, officeSection, formGrid, actionBar, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../core/ui.js";
@@ -675,18 +675,14 @@ export function renderScoutSettings(container) {
       reload();
     }, { success: "تم حفظ إعدادات الباحث عن الفرص" }));
     append(body,
-      surface("section", { class: "os-card" },
-        h("div", { class: "os-card-head" }, h("h2", { class: "os-h2", text: "الباحث" }), statusPill(view, { "data-scout-settings-state": view.state })),
+      officeSection({ title: "حالة الباحث", iconName: "search" }, statusPill(view, { "data-scout-settings-state": view.state }),
         h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: "يبحث في الخلفية حتى والتطبيق مغلق. عند الإيقاف تتوقف كل عمليات البحث، وتبقى النتائج والإعدادات كما هي. لا يراسل أحدًا في أي حال." }),
         toggle),
-      surface("section", { class: "os-card" },
-        h("h2", { class: "os-h2", text: "البحث العام 24/7" }),
+      officeSection({ title: "البحث العام 24/7", iconName: "clock" },
         h("div", { class: "os-pref-list" }, h("label", { class: "os-pref-row" }, h("span", { text: "ابحث تلقائيًا لكل عرض أو طلب مفتوح لا يوجد له طرف مقابل، واكتشف فرصًا جديدة تناسب نشاط المكتب" }), general)),
         field("وتيرة البحث", cadence)),
-      surface("section", { class: "os-card os-form" },
-        h("h2", { class: "os-h2", text: "نطاق عمل المكتب" }),
-        h("p", { class: "os-sub", text: "تُضبط مرة واحدة، ويعمل بها الباحث تلقائيًا." }),
-        h("div", { class: "os-row2" }, field("المدينة", city), field("الأحياء المهمة", districts, { optional: true })),
+      officeSection({ title: "نطاق عمل المكتب", iconName: "pin", description: "تُضبط مرة واحدة، ويعمل بها الباحث تلقائيًا." },
+        formGrid(field("المدينة", city), field("الأحياء المهمة", districts, { optional: true })),
         field("المخططات المهمة", plans, { optional: true, hint: "عند كتابة مخطط تظهر فقط الإعلانات التي تذكره" }),
         h("div", { class: "os-field" }, h("span", {}, "أنواع العقارات", h("small", { text: " (بدون اختيار = كل الأنواع)" })), types),
         h("div", { class: "os-pref-list" },
@@ -697,24 +693,20 @@ export function renderScoutSettings(container) {
         h("div", { class: "os-field" }, h("span", {}, "السعر (ريال)", h("small", { text: " (اختياري)" })), h("div", { class: "os-row2" }, priceMin, priceMax)),
         h("div", { class: "os-field" }, h("span", {}, "المساحة (م²)", h("small", { text: " (اختياري)" })), h("div", { class: "os-row2" }, areaMin, areaMax)),
         h("div", { class: "os-field" }, h("span", { text: "الحد الأدنى لجودة الفرصة المعروضة" }), quality)),
-      surface("section", { class: "os-card" },
-        h("h2", { class: "os-h2", text: "التنبيهات" }),
+      officeSection({ title: "التنبيهات", iconName: "bell" },
         h("div", { class: "os-pref-list" },
           h("label", { class: "os-pref-row" }, h("span", { text: "تنبيهات الباحث داخل المكتب" }), alerts),
           h("label", { class: "os-pref-row" }, h("span", { text: "إشعار على الجوال عند الفرص التي تستحق انتباهك" }), push)),
         h("div", { class: "os-field" }, h("span", { text: "حساسية التنبيهات (البحث العام)" }), alertLevel),
         h("p", { class: "os-sub", text: "تظهر الفرص القوية دائمًا في صفحة الباحث عن الفرص وفي جرس التنبيهات." })),
-      surface("section", { class: "os-card", "data-scout-sources": "" },
-        h("h2", { class: "os-h2", text: "المصادر" }),
-        h("p", { class: "os-sub", text: "تظهر هنا المصادر التي تم التحقق من جواز استخدامها فقط." }),
+      officeSection({ title: "المصادر", iconName: "archive", attrs: { "data-scout-sources": "" }, description: "تظهر هنا المصادر التي تم التحقق من جواز استخدامها فقط." },
         h("div", { class: "os-pref-list" }, sourceBoxes.map((x) => h("label", { class: "os-pref-row" }, h("span", { text: x.label }), x.box)))),
-      telegram?.configured ? surface("section", { class: "os-card", "data-scout-chats": "" },
-        h("h2", { class: "os-h2", text: "قروبات وقنوات تيليجرام" }),
-        h("p", { class: "os-sub", text: "أضف بوت المنصة إلى قروب عقاري أو قناة أنت فيها، فيقرأ الباحث إعلاناتها تلقائيًا بدل اللصق اليدوي. يحتاج موافقة مشرف القروب." }),
+      telegram?.configured ? officeSection({ title: "قروبات وقنوات تيليجرام", iconName: "telegram", attrs: { "data-scout-chats": "" },
+        description: "أضف بوت المنصة إلى قروب عقاري أو قناة أنت فيها، فيقرأ الباحث إعلاناتها تلقائيًا بدل اللصق اليدوي. يحتاج موافقة مشرف القروب." },
         telegram.chats.length ? h("div", { class: "os-pref-list" }, telegram.chats.map(chatRow)) : null,
         telegram.chats.length < telegram.limit ? addChat : h("p", { class: "os-sub", text: `الحد ${telegram.limit} قروبات أو قنوات.` })) : null,
       ingestCard(s),
-      save);
+      actionBar(save));
   };
   const reload = () => loadScout(OFFICE(), { fresh: true }).then(draw).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل إعدادات الباحث عن الفرص." })); });
   reload();

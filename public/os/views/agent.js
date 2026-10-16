@@ -5,7 +5,7 @@
  * Everything goes through the Worker; nothing here sends a message to a client or an owner.
  */
 
-import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, officeSection, field, formGrid, actionBar, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction, toast } from "../core/ui.js";
@@ -182,14 +182,11 @@ function validityCard(s, redraw) {
   save.addEventListener("click", () => runAction(save, async () => {
     redraw({ ...(await saveAgentSettings(session.officeId, { validity: { defaultDuration: select.value, periodicDays: Number(periodic.value), remindBeforeDays: Number(remind.value) } })), loaded: true });
   }, { success: "تم حفظ إعدادات الصلاحية" }));
-  const row = (label, control, hint) => h("label", { class: "os-field" }, h("span", { text: label }), control, hint ? h("small", { text: hint }) : null);
-  return surface("section", { class: "os-card", "data-validity-settings": "" },
-    h("h2", { class: "os-h2", text: "صلاحية العروض والطلبات" }),
-    h("p", { class: "os-sub", text: "تطبق على سجلات مكتبك فقط. لا يُحذف أي سجل؛ المنتهي يتوقف عن المطابقات الجديدة حتى يُجدد." }),
-    row("المدة الافتراضية إذا لم يختر صاحب السجل", select),
-    row("التأكيد الدوري لـ «حتى ألغيه» (بالأيام)", periodic, "من 7 إلى 90 يومًا"),
-    row("التذكير قبل الانتهاء (بالأيام)", remind, "من يوم إلى 7 أيام"),
-    save);
+  return officeSection({ title: "صلاحية العروض والطلبات", iconName: "clock", attrs: { "data-validity-settings": "" },
+    description: "تطبق على سجلات مكتبك فقط. لا يُحذف أي سجل؛ المنتهي يتوقف عن المطابقات الجديدة حتى يُجدد." },
+    formGrid(field("المدة الافتراضية إذا لم يختر صاحب السجل", select),
+      field("التأكيد الدوري لـ «حتى ألغيه» (بالأيام)", periodic, { hint: "من 7 إلى 90 يومًا" }),
+      field("التذكير قبل الانتهاء (بالأيام)", remind, { hint: "من يوم إلى 7 أيام" })), actionBar(save));
 }
 
 export function renderAgentSettings(container) {
@@ -208,25 +205,22 @@ export function renderAgentSettings(container) {
     save.addEventListener("click", () => runAction(save, async () => { draw({ ...(await saveAgentSettings(session.officeId, { instructions: area.value })), loaded: true }); }, { success: "تم حفظ التعليمات" }));
     const actions = h("div", { class: "os-center-list", "data-agent-actions": "" }, h("p", { class: "os-sub", text: "جارٍ تحميل آخر الإجراءات…" }));
     append(body,
-      surface("section", { class: "os-card" },
-        h("div", { class: "os-card-head" }, h("h2", { class: "os-h2", text: "الحالة" }), h("span", { class: `ref-agent-status${view.tone ? ` is-${view.tone}` : ""}`, "data-agent-settings-state": view.state, text: view.label })),
+      officeSection({ title: "الحالة", iconName: "robot" },
+        h("span", { class: `ref-agent-status${view.tone ? ` is-${view.tone}` : ""}`, "data-agent-settings-state": view.state, text: view.label }),
         h("p", { class: "os-sub", text: "يجيب الوسطاء من بيانات المكتب فقط، ولا ينفذ قرارات المال والعقود والسعر النهائي وإغلاق الصفقة. أي تغيير ينفذه بعد ضغط الوسيط بنفسه." }),
         toggle,
         h("p", { class: "os-sub", "data-agent-today": "", text: `اليوم: ${s.today?.chats || 0} محادثة · ${s.today?.aiCalls || 0} طلب للذكاء الاصطناعي · ${s.today?.fallbacks || 0} رد بالقواعد · ${s.today?.errors || 0} خطأ` }),
         s.aiConfigured ? null : feedback({ class: "os-alert warn", text: "الذكاء الاصطناعي غير مهيأ على هذه البيئة، فيرد مدير المكتب من بيانات المكتب بالقواعد." })),
-      surface("section", { class: "os-card" },
-        h("h2", { class: "os-h2", text: "تعليمات المكتب" }),
-        h("p", { class: "os-sub", text: "نبرة التواصل وما يركز عليه، ضمن قواعد الخصوصية والصلاحيات التي لا تتغير." }),
-        area, save),
+      officeSection({ title: "تعليمات المكتب", iconName: "clipboard", description: "نبرة التواصل وما يركز عليه، ضمن قواعد الخصوصية والصلاحيات التي لا تتغير." },
+        field("تعليمات التواصل", area), actionBar(save)),
       validityCard(s, draw),
-      surface("section", { class: "os-card" },
-        h("h2", { class: "os-h2", text: "القنوات" }),
+      officeSection({ title: "القنوات", iconName: "send" },
         h("p", { class: "os-sub", "data-agent-telegram": "", text: s.telegramBotOn ? "بوت تيليجرام مفعّل في مكتبك: يسأل الطرفين عن المطابقات ويفتح الصفقة عند موافقتهما." : "بوت تيليجرام متوقف في مكتبك." }),
         s.officeBotLink ? officeLinkBox(s.officeBotLink) : h("p", { class: "os-sub", "data-agent-office-link": "off", text: "رابط مكتبك على تيليجرام يظهر هنا بعد تشغيل البوت ومدير المكتب الذكي." }),
         controlGroup("div", { class: "os-btn-row" },
           h("button", { type: "button", class: "os-btn primary", "data-agent-try": "", onClick: () => go("agent/try") }, ic("robot"), "جرّب مدير مكتبك"),
           h("button", { type: "button", class: "os-btn secondary", onClick: () => go("settings/channels") }, ic("link"), "قنوات المكتب"))),
-      surface("section", { class: "os-card" }, h("h2", { class: "os-h2", text: "آخر الإجراءات" }), actions));
+      officeSection({ title: "آخر الإجراءات", iconName: "clock" }, actions));
     listAuditLog(session.officeId, 60).then((rows) => {
       clear(actions);
       const mine = rows.filter((row) => /^(AGENT_|BOT_)/.test(String(row.action || ""))).slice(0, 15);

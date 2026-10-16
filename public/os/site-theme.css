@@ -252,3 +252,13 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-market-layout>.os-market-stats{grid-column:1/-1;margin:0}
 .os-market-layout>.os-market-prices{grid-column:1/-1}
 .os-market-layout .os-office-section-body .os-list{margin:0}
+.os-record-sections>.os-office-section{margin:0}
+.os-record-form>.os-form-actions>.os-action-bar{justify-content:flex-end}
+.os-record-form>.os-form-actions .os-btn{flex:0 1 340px}
+.os-record-form :is(.os-fill,.os-intake-origin){margin-bottom:16px}
+.os-record-form .os-form[hidden]{display:none}
+@media(min-width:1024px){
+ .os-app:has(.os-record-form){max-width:1180px}
+ .os-record-sections:not([hidden]){grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+ .os-record-sections>.os-intake-origin,.os-record-sections>.os-office-section:last-of-type{grid-column:1/-1}
+}

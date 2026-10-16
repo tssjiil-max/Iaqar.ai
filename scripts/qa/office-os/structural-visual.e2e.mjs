@@ -12,6 +12,8 @@ const screens=[
  ['record',`record/${seed.review.offerId}`],['record-edit',`record/${seed.review.offerId}/edit`],['new-offer','record/new?kind=OFFER'],['new-request','record/new?kind=REQUEST'],['quick-add','quick-add'],
  ['review',`review/${seed.review.matchId}`],['journey',`journey/${seed.negotiation.journeyId}`],['viewing',`journey/${seed.viewingResult.journeyId}`],['deal',`deal/${seed.negotiation.journeyId}`],['session',`session/${seed.negotiation.journeyId}`],
  ['scout','scout'],['scout-new','scout/new'],['agent','agent'],['agent-try','agent/try'],['library','library'],['search','search'],['inbox','inbox'],['audit','audit'],['community','community'],
+ ['search-results','search?q=الملقا'],['search-empty','search?q=ززززلايوجد'],
+ ['new-offer-manual','record/new?kind=OFFER'],['new-request-manual','record/new?kind=REQUEST'],
  ...['calculator','forms','guide','services','market'].map(n=>[n,`tools/${n}`]),
  ['settings','settings'],...['profile','link','channels','cooperation','agent','scout','notifications','brokers'].map(n=>[`settings-${n}`,`settings/${n}`]),
  ['missing-record','record/missing-record'],['missing-review','review/missing-match'],['missing-journey','journey/missing-journey'],['missing-scout','scout/opp/so_missing0000'],
@@ -32,6 +34,9 @@ try{
    const page=await ctx.newPage();page.on('pageerror',e=>errors.push(`${name}/${width}: ${e.message}`));
    await page.goto(harness.origin+(route.startsWith('/')?route:`/#/${route}`));
    await page.locator('.os-app').waitFor();await page.waitForTimeout(300);await page.evaluate(()=>document.fonts.ready);
+   if(name.endsWith('-manual')){await page.locator('[data-fill-mode="manual"]').click();await page.locator('input[name="propertyType"]').waitFor({state:'visible'});}
+   if(name==='search-results')await page.locator('[data-search-group]').first().waitFor();
+   if(name==='search-empty')await page.locator('.os-empty',{hasText:'لا توجد نتائج'}).waitFor();
    if(name==='public-owner'){await page.getByRole('button',{name:/لدي عقار/}).click();await page.locator('textarea').first().waitFor();}
    const metrics=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,headers:document.querySelectorAll('[data-ui="page-header"]').length,headings:document.querySelectorAll('.os-page-head').length,surfaces:document.querySelectorAll('[data-ui="surface"]').length,cards:document.querySelectorAll('.os-card').length,tiles:document.querySelectorAll('[data-ui="navigation-tile"]').length,rtl:document.documentElement.dir}));
    results.push({name,route,width,...metrics});
