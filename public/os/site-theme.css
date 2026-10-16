@@ -301,3 +301,31 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
   .os-app .os-settings-grid>[data-ui="navigation-tile"]{padding:12px;gap:10px}
   .os-settings-grid .ref-reference-icon{width:42px;height:42px;flex-basis:42px}
 }
+
+/* Shared official-service tiles: native links, same two-column mobile geometry
+   as office settings, with readable multiline copy and visible keyboard focus. */
+.os-app [data-tool-services].os-settings-grid{direction:rtl;align-items:stretch}
+.os-app [data-tool-services].os-settings-grid>.os-service-row{
+  box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;
+  position:relative;min-width:0;width:100%;height:100%;margin:0;
+  gap:14px;padding:18px 16px 20px;min-height:170px;
+  border:1px solid var(--brand-line);border-radius:16px;
+  background:var(--surface);box-shadow:var(--shadow);
+  color:var(--text);text-align:start;text-decoration:none;
+}
+[data-tool-services].os-settings-grid>.os-service-row .ref-reference-icon{align-self:flex-start}
+[data-tool-services].os-settings-grid>.os-service-row .ref-reference-copy{
+  min-width:0;flex:1;overflow-wrap:anywhere;text-align:start;
+}
+[data-tool-services].os-settings-grid>.os-service-row .ref-reference-copy :is(strong,small){
+  display:block;white-space:normal;overflow-wrap:anywhere;
+}
+[data-tool-services].os-settings-grid>.os-service-row>.os-ico{
+  position:absolute;inset-inline-end:14px;top:28px;width:18px;height:18px;
+}
+.os-app [data-tool-services]>.os-service-row:focus-visible{
+  outline:3px solid var(--brand-primary);outline-offset:3px;
+}
+@media(max-width:359px){
+ .os-app [data-tool-services]>.os-service-row{padding:12px;gap:10px}
+}
