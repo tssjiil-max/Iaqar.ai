@@ -8,7 +8,18 @@ export async function readWebhookBody(request) {
   const bytes=new Uint8Array(size);let at=0;for(const chunk of chunks){bytes.set(chunk,at);at+=chunk.byteLength;}
   return new TextDecoder().decode(bytes);
 }
+export function classifyEconomicWhatsApp(text) {
+  const value=String(text||'').trim();
+  // Deterministic and deliberately conservative: no LLM and no claims of semantic understanding.
+  const requiresHuman=/(عمول[ةه]|عربون|عقد|توقيع|سعر نهائي|غي[رّ]+ السعر|غير السعر|حساب بنكي|هوي[ةه])/i.test(value);
+  const intent=/(إيجار|ايجار|استئجار|أستأجر|استاجر|للإيجار)/i.test(value)?'rent'
+    :/(بيع|للبيع|أبيع|ابيع)/i.test(value)?'sale'
+    :/(استثمار|استثماري)/i.test(value)?'investment'
+    :/(شراء|أشتري|اشتري|ابغى|أبحث|ابحث|مطلوب)/i.test(value)?'purchase':'inquiry';
+  return {intent,requiresHuman,usage:{inputTokens:0,outputTokens:0},simulated:true};
+}
 export async function classifyWithClaude(ctx, text, history = []) {
+  if(ctx.env.ECONOMIC_TEST_MODE==='enabled') return classifyEconomicWhatsApp(text);
   if (!ctx.env.ANTHROPIC_API_KEY || !ctx.env.ANTHROPIC_MODEL) throw Object.assign(Error('claude_not_configured'),{code:'claude_not_configured'});
   const response = await (ctx.fetchImpl || fetch)('https://api.anthropic.com/v1/messages', {
     method:'POST', signal:AbortSignal.timeout(15000),

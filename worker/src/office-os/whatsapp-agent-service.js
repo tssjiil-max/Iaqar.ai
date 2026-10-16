@@ -88,12 +88,17 @@ async function buildReply(ctx,job,c) {
  let classified;
  if(job.waReply&&job.waInventory)classified={intent:job.waIntent,requiresHuman:false,usage:job.claudeUsage||{inputTokens:0,outputTokens:0}};
  else {
+ if(ctx.env.ECONOMIC_TEST_MODE!=='enabled') {
  const usagePath=['offices',job.officeId,'usage',`whatsapp_claude_${ctx.now().toISOString().slice(0,10)}`];
  await ctx.store.create(usagePath,{attempts:0,createdAt:ctx.now()});let reserved=false;
  await ctx.store.update(usagePath,u=>{reserved=false;if(Number(u.attempts||0)>=200)return null;reserved=true;return {attempts:Number(u.attempts||0)+1,updatedAt:ctx.now()};});
  if(!reserved)return {human:true,reason:'claude_daily_budget_reached'};
+ }
  classified=await classifyWithClaude(ctx,text,c.turns||[]);
+ if(ctx.env.ECONOMIC_TEST_MODE!=='enabled') {
+ const usagePath=['offices',job.officeId,'usage',`whatsapp_claude_${ctx.now().toISOString().slice(0,10)}`];
  await ctx.store.update(usagePath,u=>({inputTokens:Number(u.inputTokens||0)+classified.usage.inputTokens,outputTokens:Number(u.outputTokens||0)+classified.usage.outputTokens}));
+ }
  }
  if(classified.requiresHuman)return {human:true,reason:'claude_handoff'};
  const persona=personaFromText(text);
@@ -154,7 +159,7 @@ async function processJob(ctx,queue) {
   const fresh=await ctx.store.get(cp),freshMapping=await mappingFor(ctx,job.phoneNumberId,job.wabaId);
   if(fresh.lease!==lease||millis(fresh.leaseUntil)<=ctx.now().getTime())return;
   if(!whatsappAgentAvailable(ctx.env)||!await officeOn(ctx,job.officeId)||fresh.optedOut||fresh.handoff||!coexistence(freshMapping)||freshMapping.officeId!==job.officeId||!list(ctx.env.WHATSAPP_AGENT_ALLOWED_RECIPIENTS).map(digits).includes(job.senderPhone)||ctx.now().getTime()-millis(job.receivedAt)>=86400000){await finish(ctx,job,queue,'HUMAN_REVIEW',{waError:'policy_changed'});return;}
-  if(ctx.env.WHATSAPP_AGENT_SEND!=='enabled'){
+  if(ctx.env.ECONOMIC_TEST_MODE==='enabled'||ctx.env.WHATSAPP_AGENT_SEND!=='enabled'){
    await finish(ctx,job,queue,'SIMULATED');return;
   }
   if(!ctx.env.META_WHATSAPP_ACCESS_TOKEN)throw Object.assign(Error('meta_token_missing'),{code:'meta_token_missing'});
