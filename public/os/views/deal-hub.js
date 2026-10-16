@@ -7,7 +7,7 @@
  * page never changes the deal and never sends anything.
  */
 
-import { h, ic, clear, append, pageHeader, surface, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, loadingState, feedback, officeSection } from "../core/dom.js";
 import { go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
@@ -87,8 +87,7 @@ export function renderDealHub(container, { journeyId }) {
     const bot = dealBotView(journey);
     const botToggle = bot?.action ? h("button", { type: "button", class: `os-btn ${bot.paused ? "secondary" : "danger"}`, "data-deal-bot-action": bot.action }, ic(bot.paused ? "send" : "user"), bot.actionLabel) : null;
     if (botToggle) botToggle.addEventListener("click", () => runAction(botToggle, () => setDealBotPaused(session.officeId, journeyId, bot.action === "pause"), { success: bot.action === "pause" ? "استلمت التواصل — توقف البوت عن هذه الصفقة" : "عاد التواصل إلى البوت" }));
-    append(container, surface("section", { class: "os-card os-follow-contact", "data-follow-contact": "" },
-      h("h2", { class: "os-h2", style: { marginBottom: "4px" } }, ic("send"), "التواصل مع الطرفين"),
+    append(container, officeSection({ title: "التواصل مع الطرفين", iconName: "send", className: "os-follow-contact", attrs: { "data-follow-contact": "" } },
       h("p", { class: "os-sub", style: { marginBottom: "10px" }, text: "طريقتان قائمتان، تختار المناسب لكل حالة. لا يُرسل شيء إلا بضغطك على زر الإرسال في صفحته." }),
       bot ? h("div", { class: "os-follow-option os-follow-bot", "data-deal-bot": bot.paused ? "PAUSED" : "ACTIVE" },
         h("div", { class: "os-set-text" }, h("b", { text: "بوت المكتب" }), h("small", { text: bot.label })),

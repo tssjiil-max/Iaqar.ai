@@ -3,7 +3,7 @@
  * Stage (where it is) and current action (what is needed now) are shown separately.
  */
 
-import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback, officeSection } from "../core/dom.js";
 import { propertyTypeIcon } from "../core/icons.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
@@ -299,9 +299,8 @@ function proposalsCard(journey, proposals) {
   const active = Object.values(journey.activeProposals || {});
   const current = proposals.filter((p) => active.includes(p.id)).sort((a, b) => Number(a.recipientRole !== RECIPIENT.OWNER) - Number(b.recipientRole !== RECIPIENT.OWNER));
   if (!current.length) return null;
-  return surface("div", { class: "os-card" },
-    h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("clipboard"), "المقترح الحالي"),
-    h("div", { class: "os-current-proposals" }, current.map((p) => {
+  return officeSection({ title: "المقترح الحالي", iconName: "clipboard" },
+      h("div", { class: "os-current-proposals" }, current.map((p) => {
       const lines = [p.fields?.price ? `السعر المقترح ${formatPrice(p.fields.price)}` : "", p.fields?.viewingAt ? `المعاينة ${formatDateTime(p.fields.viewingAt)}` : "", p.fields?.question || p.fields?.actionText || p.fields?.stepText || ""].filter(Boolean);
       const status = p.status === PROPOSAL_STATUS.ANSWERED ? `وصل رد: ${replyLabel(p.kind, p.reply || {})}` : sendStateLabel(p);
       return h("div", { class: "os-proposal-preview" },

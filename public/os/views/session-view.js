@@ -6,7 +6,7 @@
  * The broker watches the whole negotiation and steps in when asked or when he sees a need.
  */
 
-import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback, officeSection } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -38,8 +38,7 @@ function brokerCard(event) {
 
 function linksCard(journey, state) {
   const jid = journey.journeyId || journey.id;
-  const card = surface("section", { class: "os-card", "aria-label": "روابط الغرفة" },
-    h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("link"), "روابط الطرفين"));
+  const card = officeSection({ title: "روابط الطرفين", iconName: "link", className: "os-card", attrs: { "aria-label": "روابط الغرفة" } });
   if (!state.links) {
     const load = h("button", { type: "button", class: "os-btn primary block" }, ic("link"), "تجهيز رابطي المالك والعميل");
     load.addEventListener("click", () => runAction(load, async () => {
@@ -47,7 +46,7 @@ function linksCard(journey, state) {
       state.links = res.links;
       state.redraw();
     }));
-    append(card, h("p", { class: "os-sub", style: { marginBottom: "8px" }, text: "لكل طرف رابط خاص بغرفة هذه الصفقة، بلا تسجيل دخول، ويبقى صالحًا طوال الصفقة." }), load);
+    append(card.querySelector(".os-office-section-body"), h("p", { class: "os-sub", style: { marginBottom: "8px" }, text: "لكل طرف رابط خاص بغرفة هذه الصفقة، بلا تسجيل دخول، ويبقى صالحًا طوال الصفقة." }), load);
     return card;
   }
   const row = (role) => {
@@ -72,7 +71,7 @@ function linksCard(journey, state) {
         h("small", { text: link.awaiting ? "بانتظار رده — أرسل له تذكيرًا بالرابط" : link.opened ? "فتح الطرف الرابط" : link.hasPhone ? "لم يُفتح بعد" : "لا يوجد رقم جوال — انسخ الرابط" })),
       controlGroup("div", { class: "os-btn-row" }, wa, copy, replace));
   };
-  append(card, h("div", { class: "os-session-links" }, row("owner"), row("client")));
+  append(card.querySelector(".os-office-section-body"), h("div", { class: "os-session-links" }, row("owner"), row("client")));
   return card;
 }
 
@@ -85,14 +84,14 @@ function requestsCard(journey, ui) {
   const open = openRequests(journey);
   const legacy = journey.session?.intervention?.required && !open.length;
   if (!open.length && !legacy) return null;
-  const card = surface("section", { class: "os-card", "aria-label": "طلبات الطرفين للوسيط", "data-room-requests": "" },
-    h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("alert"), "طلبات الطرفين للوسيط", h("span", { class: "os-count", text: String(open.length || 1) })));
+  const card = officeSection({ title: "طلبات الطرفين للوسيط", iconName: "alert", attrs: { "data-room-requests": "" },
+    accessory: h("span", { class: "os-count", text: String(open.length || 1) }) });
   if (legacy) {
     // A request made before the room kept its content: follow it up, then mark it done.
     const flag = journey.session.intervention;
     const done = h("button", { type: "button", class: "os-btn primary" }, ic("check"), "تم التدخل");
     done.addEventListener("click", () => runAction(done, () => api("/os/session/resolve", { officeId: session.officeId, journeyId: jid }), { success: "أُغلق الطلب" }));
-    append(card, h("div", { class: "os-request" }, h("p", { class: "os-request-text", text: `طلب ${ROLE_LABEL[flag.by] || "الطرف"} تدخل الوسيط. تواصل معه ثم اضغط «تم التدخل».` }), done));
+    append(card.querySelector(".os-office-section-body"), h("div", { class: "os-request" }, h("p", { class: "os-request-text", text: `طلب ${ROLE_LABEL[flag.by] || "الطرف"} تدخل الوسيط. تواصل معه ثم اضغط «تم التدخل».` }), done));
     return card;
   }
   const decide = (button, request, decision, text = "") => runAction(button, async () => {
@@ -135,7 +134,7 @@ function requestsCard(journey, ui) {
         h("small", { class: "os-sub", text: mode.decision === "reply" ? "يصل ردك إلى المرسل فقط." : `تصل رسالتك إلى ${to} باسمك أنت (الوسيط)، لا على لسان ${request.roleLabel}.` }),
         box, send);
     }
-    append(card, h("article", { class: "os-request", "data-request": request.id, "data-request-role": request.role, "data-request-kind": request.kind },
+    append(card.querySelector(".os-office-section-body"), h("article", { class: "os-request", "data-request": request.id, "data-request-role": request.role, "data-request-kind": request.kind },
       h("div", { class: "os-request-head" },
         h("b", { text: `${request.roleLabel} — ${request.kindLabel}${request.topic ? `: ${request.topic}` : ""}` }),
         h("small", { text: relativeAgo(request.at) || "" })),
@@ -218,10 +217,9 @@ export function renderSession(container, { journeyId }) {
       }),
       roomAgreedCard(roomAgreedItems(journey)),
       requestsCard(journey, state),
-      surface("section", { class: "os-card os-room-part os-deal-sides", "aria-label": "المالك مقابل العميل", "data-room-part": "versus", "data-room-family": schema.family, "data-room-deal": schema.deal },
-        h("h2", { class: "os-h2 os-part-title" }, ic("swap"), "المالك مقابل العميل"),
-        roomSidesCard({ sides: { owner: sideOf("owner"), client: sideOf("client") }, status: { owner: partyStatus(journey, "owner"), client: partyStatus(journey, "client") }, ready: { owner: ready.owner, client: ready.client }, viewer: "broker", priceLabel: schema.priceLabel }),
-        h("div", { class: "os-room-block" },
+      officeSection({ title: "المالك مقابل العميل", iconName: "swap", className: "os-room-part os-deal-sides", attrs: { "aria-label": "المالك مقابل العميل", "data-room-part": "versus", "data-room-family": schema.family, "data-room-deal": schema.deal } },
+      roomSidesCard({ sides: { owner: sideOf("owner"), client: sideOf("client") }, status: { owner: partyStatus(journey, "owner"), client: partyStatus(journey, "client") }, ready: { owner: ready.owner, client: ready.client }, viewer: "broker", priceLabel: schema.priceLabel }),
+      h("div", { class: "os-room-block" },
           h("h3", {}, ic("clipboard"), `بنود الاتفاق — ${schema.familyLabel} · ${schema.dealLabel}`),
           roomTermsList(termRows(journey, "broker"), { viewer: "broker" }),
           h("small", { class: "os-sub", text: "البنود يتفق عليها الطرفان بالأزرار من رابطيهما. تدخّل برسالة عند الحاجة." }))),

@@ -20,10 +20,6 @@ function pageHead(title) {
   return pageHeader(h("h1", { class: "os-page-title", text: title }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => back("office") }, ic("chev-right"), "رجوع"), action: h("span") });
 }
 
-function sectionTitle(text, sub = "") {
-  return h("div", { class: "os-tool-heading" }, h("h2", { class: "os-h2", text }), sub ? h("p", { class: "os-sub", text: sub }) : null);
-}
-
 // ------------------------------------------------------------------ النماذج
 
 async function copyText(text) {
@@ -63,10 +59,9 @@ function renderForms(container) {
     for (const template of templatesFor(context).filter((t) => t.group === group)) {
       const text = h("textarea", { class: "os-textarea os-template-text", rows: "6", "aria-label": template.title, "data-template-text": template.id });
       text.value = template.text;
-      list.append(surface("article", { class: "os-card os-template", "data-template": template.id },
-        h("h3", { class: "os-h2", text: template.title }),
-        text,
-        controlGroup("div", { class: "os-btn-row" },
+      list.append(officeSection({ title: template.title, iconName: 'office', className: "os-template", attrs: { "data-template": template.id } },
+      text,
+      controlGroup("div", { class: "os-btn-row" },
           h("button", { type: "button", class: "os-btn primary", "data-template-share": "", onClick: () => shareText(text.value.trim()) }, ic("whatsapp"), "مشاركة"),
           h("button", { type: "button", class: "os-btn secondary", "data-template-copy": "", onClick: () => copyText(text.value.trim()) }, ic("clipboard"), "نسخ"))));
     }
@@ -143,7 +138,7 @@ function renderCalculator(container) {
   append(container, pageHead("الحاسبة"),
     h("p", { class: "os-sub os-tool-intro", text: "حساب تقديري للسعي والضريبة. النِّسب قابلة للتعديل، والأرقام النهائية تُعتمد من الجهات الرسمية." }),
     tabs,
-    officeSection({ title: "بيانات الحساب", iconName: "calculator" },
+    officeSection({ title: "بيانات الحساب", iconName: "reference-calculator" },
       formGrid(field(amountLabel, amount, { error }),
         field("نسبة السعي %", commission), field("ضريبة القيمة المضافة %", vat), transferField)),
     result);

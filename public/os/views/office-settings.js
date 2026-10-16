@@ -406,9 +406,8 @@ export function renderChannelSettings(container) {
         h("span", { class: "os-set-icon" }, ic("inbox-in")),
         h("span", { class: "os-set-text" }, h("b", { text: "مركز التواصل" }), h("small", { text: "كل ما وصل من القنوات، مصنّفًا: اجتماعية، استفسار، عرض، طلب، متعلقة بصفقة" })),
         ic("chev-left")),
-      surface("section", { class: "os-card os-set-legacy" },
-        h("h2", { class: "os-h2" }, ic("shield"), "الأتمتة"),
-        h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: payload.bot?.enabled
+      officeSection({ title: "الأتمتة", iconName: "shield", className: "os-set-legacy", attrs: { class: "os-card os-set-legacy" } },
+      h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: payload.bot?.enabled
           ? `الوضع الحالي: ${automationLabel(payload)}. لا يُرسل شيء عبر واتساب تلقائيًا.`
           : `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` })));
     clearTimeout(timer);

@@ -262,3 +262,5 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
  .os-record-sections:not([hidden]){grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
  .os-record-sections>.os-intake-origin,.os-record-sections>.os-office-section:last-of-type{grid-column:1/-1}
 }
+.os-field .os-field-error{color:var(--bad)}
+.os-field:has(.os-field-error:not(:empty)) .os-input{border-color:var(--bad)}

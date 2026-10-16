@@ -27,6 +27,10 @@ test("shared office sections preserve RTL structure, group identity and existing
     const withoutCount = officeSection({ title: "الوسطاء", iconName: "users" }, h("span", { text: "عضو" }));
     assert.equal(withoutCount.querySelector(".os-center-count"), null);
     assert.equal(withoutCount.querySelector(".os-office-section-body").textContent, "عضو");
+    const stage = h("span", { "data-room-stage": "", text: "التفاوض" });
+    const room = officeSection({ title: "روابط الطرفين", attrs: { "aria-label": "روابط الغرفة" }, accessory: stage });
+    assert.equal(room.getAttribute("aria-label"), "روابط الغرفة");
+    assert.equal(room.querySelector("[data-room-stage]"), stage);
     const phone = h("input", { name: "phone", value: "0501111111" });
     const error = h("small", { role: "alert", "data-error": "phone" });
     const hint = h("small", { role: "status" });

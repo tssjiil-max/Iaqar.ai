@@ -25,10 +25,10 @@ export function renderNotificationSettings(container) {
     const save = h("button", { type: "button", class: "os-btn primary block", "data-pref-save": "" }, ic("check"), "حفظ تفضيلات الإشعارات");
     save.addEventListener("click", () => runAction(save, async () => {
       const result = await saveNotificationPrefs(Object.fromEntries(Object.entries(boxes).map(([k, el]) => [k, el.checked])));
-      status.className = "os-alert ok";
-      status.textContent = result.scope === "office" ? "تم حفظ تفضيلات الإشعارات لهذا المكتب" : "تم الحفظ لحسابك فقط. يطبّق مدير المكتب تفضيلات المكتب على الإشعارات.";
+      status.className = "os-alert ok os-feedback";
+      status.querySelector(".os-feedback-copy").textContent = result.scope === "office" ? "تم حفظ تفضيلات الإشعارات لهذا المكتب" : "تم الحفظ لحسابك فقط. يطبّق مدير المكتب تفضيلات المكتب على الإشعارات.";
       status.hidden = false;
-    }, { success: "تم الحفظ", onError: () => { status.className = "os-alert bad"; status.textContent = "تعذر حفظ تفضيلات الإشعارات"; status.hidden = false; } }));
+    }, { success: "تم الحفظ", onError: () => { status.className = "os-alert bad os-feedback"; status.querySelector(".os-feedback-copy").textContent = "تعذر حفظ تفضيلات الإشعارات"; status.hidden = false; } }));
     append(body,
       officeSection({ title: "أنواع الإشعارات", iconName: "bell",
         description: "تُحفظ لهذا المكتب ولحسابك. إيقاف النوع هنا يمنع إرساله من الخادم أيضًا." },
