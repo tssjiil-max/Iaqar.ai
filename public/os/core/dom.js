@@ -134,8 +134,16 @@ export function officeSection({ title, iconName = 'office', description = '', cl
 }
 
 /** The same icon / title / supporting line hierarchy used by office tool tiles. */
-export function navigationTile({ title, hint = '', iconName = 'office', tone = 'blue', attrs = {}, onClick }) {
-  return h('button', { ...attrs, type: 'button', class: `os-set-row ref-reference-tool ref-office-tool tone-${tone}`, 'data-ui': 'navigation-tile', onClick },
+export function navigationTile({ title, hint = '', iconName = 'office', tone = 'blue', attrs = {}, onClick, href = '' }) {
+  // Links keep native browser navigation; action tiles remain buttons.
+  // Both variants share the same semantic content slots and visual geometry.
+  const isLink = Boolean(href);
+  return h(isLink ? 'a' : 'button', {
+    ...attrs,
+    ...(isLink ? { href } : { type: 'button', onClick }),
+    class: `os-set-row ref-reference-tool ref-office-tool tone-${tone} ${attrs.class || ''}`.trim(),
+    'data-ui': 'navigation-tile'
+  },
     h('span', { class: 'ref-reference-icon os-set-icon', 'aria-hidden': 'true' }, ic(iconName)),
     h('span', { class: 'ref-reference-copy os-set-text' }, h('strong', { text: title }), hint ? h('small', { text: hint }) : null),
     ic('chev-left'));
