@@ -7,12 +7,13 @@
 .os-overlay { position: fixed; inset: 0; background: rgb(8 47 58 / 38%); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
 .os-overlay.center { align-items: center; }
 
-.os-feedback-icon { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--tone-bg); color: var(--tone-ink); --ico: currentColor; }
-.os-feedback-icon svg { width: 23px; height: 23px; color: inherit; display: block; }
+:is(.os-dialog, .os-toast) .os-feedback-icon { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--tone-bg); color: var(--tone-ink); --ico: currentColor; }
+:is(.os-dialog, .os-toast) .os-feedback-icon svg { width: 23px; height: 23px; color: inherit; display: block; }
 
 /* Confirmation dialog */
 .os-dialog { --tone-bg: #edf7fb; --tone-ink: var(--brand-primary, #03677a); box-sizing: border-box; direction: rtl; text-align: start; background: #fff; border: 1px solid #d9e8ef; border-radius: 20px; max-width: 420px; width: calc(100% - 32px); max-height: calc(100dvh - 32px); overflow: auto; margin: auto; padding: 20px 18px 18px; box-shadow: 0 18px 44px rgb(8 47 58 / 16%); font-family: var(--font, "Office Tajawal", Tajawal, Tahoma, sans-serif); color: var(--navy, #101733); }
 .os-dialog.danger { --tone-bg: #fdecec; --tone-ink: var(--bad, #b03a3a); }
+.os-dialog-head > .os-feedback-icon { margin: 0; }
 .os-dialog-head { display: flex; align-items: flex-start; gap: 12px; }
 .os-dialog-head .os-h2 { margin: 0; font-size: 1.12rem; font-weight: 700; line-height: 1.5; color: inherit; overflow-wrap: anywhere; }
 .os-dialog-text { margin: 6px 0 0; color: var(--muted, #586b80); line-height: 1.7; overflow-wrap: anywhere; }
@@ -26,7 +27,7 @@
 /* Toast — office app (.os-toast) and legacy pages (#toast.toast) share one look. */
 .os-toast, #toast.toast { --tone-bg: #edf7fb; --tone-ink: var(--brand-primary, #03677a); box-sizing: border-box; direction: rtl; position: fixed; inset-inline: 16px; margin: 0 auto; max-width: 520px; z-index: 100; background: #fff; color: var(--navy, #101733); border: 1px solid #d9e8ef; border-radius: 16px; box-shadow: 0 12px 32px rgb(8 47 58 / 14%); font-family: var(--font, "Office Tajawal", Tajawal, Tahoma, sans-serif); font-weight: 600; font-size: .93rem; line-height: 1.6; text-align: start; display: flex; gap: 10px; align-items: center; }
 .os-toast { bottom: calc(16px + env(safe-area-inset-bottom)); padding: 10px 14px 10px 12px; animation: os-toast-in .18s ease-out; }
-.os-toast .os-feedback-icon { width: 34px; height: 34px; border-radius: 10px; }
+.os-toast .os-feedback-icon { margin: 0; width: 34px; height: 34px; border-radius: 10px; }
 .os-toast .os-feedback-icon svg { width: 20px; height: 20px; }
 .os-toast > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .os-toast.ok, #toast.toast[data-tone="ok"] { --tone-bg: #e3f9ef; --tone-ink: #0c7d59; }

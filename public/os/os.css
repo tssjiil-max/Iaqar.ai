@@ -1142,3 +1142,12 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 /* Keyboard focus: one ring everywhere. */
 .os-btn:focus-visible, .os-chip:focus-visible, .os-seg button:focus-visible, .os-option:focus-visible, .os-back:focus-visible, .os-icon-btn:focus-visible { outline: 3px solid var(--brand-soft); outline-offset: 2px; }
 
+
+/* Checkboxes and radios: one native control size and brand tint on every office surface.
+   :where() keeps specificity at zero, so component rules (.os-pref-row, .os-office-check, …) still win. */
+:where(.os-app, .os-session-app, .os-sheet, .os-dialog) input:where([type="checkbox"], [type="radio"]) {
+  width: 22px; height: 22px; flex: none; accent-color: var(--brand-primary, #03677A); cursor: pointer;
+}
+:where(.os-app, .os-session-app, .os-sheet, .os-dialog) input:where([type="checkbox"], [type="radio"]):focus-visible {
+  outline: 3px solid #9bcad2; outline-offset: 2px;
+}

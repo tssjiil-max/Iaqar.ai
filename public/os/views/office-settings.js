@@ -396,7 +396,7 @@ export function renderChannelSettings(container) {
     if (byId.telegram && !byId.telegram.linkWaiting) pending.link = "";
     clear(body);
     append(body,
-      h("p", { class: "os-sub", text: "كل مكتب يربط قنواته بنفسه، والرسائل الواردة تصل إلى مكتبك فقط. القنوات وسيلة نقل: تصل الرسائل إلى مركز التواصل ثم تُعالج كأي عميل أو عرض أو طلب." }),
+      feedback({ class: "os-alert info", "data-channels-intro": "", text: "كل مكتب يربط قنواته بنفسه، والرسائل الواردة تصل إلى مكتبك فقط. القنوات وسيلة نقل: تصل الرسائل إلى مركز التواصل ثم تُعالج كأي عميل أو عرض أو طلب." }),
       byId.whatsapp ? whatsappCard(byId.whatsapp, reload) : null,
       byId.telegram ? telegramCard(byId.telegram, reload, pending) : null,
       payload.bot ? botCard(payload.bot, reload) : null,
