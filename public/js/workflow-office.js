@@ -2864,7 +2864,9 @@
   }
 
   async function cancelFollowUpAction(button) {
-    if (!confirm("إلغاء موعد المتابعة؟")) return;
+    const { confirmDialog } = await import("/os/core/ui.js");
+    const ok = await confirmDialog({ title: "إلغاء موعد المتابعة؟", text: "سيُلغى الموعد والتذكيرات المرتبطة به.", confirmLabel: "إلغاء الموعد", cancelLabel: "تراجع", danger: true });
+    if (!ok) return;
     setUiBusy(button, true);
     try {
       await opportunityLifecycleAction("cancel_followup", activeWorkflowDetail, {});

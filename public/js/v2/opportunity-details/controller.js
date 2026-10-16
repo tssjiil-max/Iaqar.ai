@@ -94,7 +94,18 @@ async function runDeviceContactSave(fromEditor) {
     showContactSaveStatus(result.message, result.ok);
     return;
   }
-  window.alert(result.message);
+  if (result.message) showToast(result.message);
+}
+
+/** Shared #toast (styled by /os/feedback.css); always hides again. */
+function showToast(message) {
+  const node = document.getElementById("toast");
+  if (!node) return;
+  node.textContent = message;
+  node.hidden = false;
+  node.classList.add("show");
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => node.classList.remove("show"), 2800);
 }
 
 function closeEditor(options = {}) {
@@ -120,12 +131,7 @@ async function submitEditor(editorKey, formData) {
     }
     state.record = result.reloaded || state.record;
     state.hydrated = true;
-    const toast = document.getElementById("toast");
-    if (toast) {
-      toast.textContent = "تم الحفظ";
-      toast.classList.add("show");
-      toast.hidden = false;
-    }
+    showToast("تم الحفظ");
     window.dispatchEvent(new CustomEvent("iaqar:operations-refresh"));
     window.dispatchEvent(new CustomEvent("iaqar:bank-refresh"));
     closeEditor({ restoreFocus: false });

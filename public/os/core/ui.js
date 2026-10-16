@@ -10,8 +10,11 @@ let toastTimer = null;
 
 export function toast(message, tone = "") {
   document.querySelector(".os-toast")?.remove();
-  const el = h("div", { class: `os-toast ${tone}`, role: "status", "aria-live": "polite" },
-    ic(tone === "bad" ? "alert" : tone === "ok" ? "check-circle" : "info"), h("span", { text: message }));
+  // Errors interrupt (role=alert); confirmations and info wait politely (role=status).
+  const urgent = tone === "bad";
+  const el = h("div", { class: `os-toast ${tone}`.trim(), role: urgent ? "alert" : "status", "aria-live": urgent ? "assertive" : "polite" },
+    h("span", { class: "os-feedback-icon", "aria-hidden": "true" }, ic(urgent ? "alert" : tone === "ok" ? "check-circle" : "info")),
+    h("span", { text: message }));
   document.body.append(el);
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.remove(), tone === "bad" ? 6000 : 3200);
@@ -78,21 +81,45 @@ export function closeAllSheets() {
 }
 
 /** Short confirmation for deletions and important actions only. */
-export function confirmDialog({ title, text = "", confirmLabel = "تأكيد", danger = false }) {
+export function confirmDialog({ title, text = "", confirmLabel = "تأكيد", cancelLabel = "إلغاء", danger = false }) {
   return new Promise((resolve) => {
-    const done = (value) => { overlay.remove(); resolve(value); };
+    const returnFocus = document.activeElement;
+    const id = `os-dlg-${Math.random().toString(36).slice(2, 9)}`;
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", onKey, true);
+      overlay.remove();
+      if (returnFocus?.isConnected) returnFocus.focus?.({ preventScroll: true });
+      resolve(value);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") { event.stopPropagation(); done(false); return; }
+      if (event.key !== "Tab") return;
+      // Keep keyboard focus inside the dialog while it is open.
+      const buttons = [...overlay.querySelectorAll("button")];
+      const i = buttons.indexOf(document.activeElement);
+      const next = event.shiftKey ? (i <= 0 ? buttons.length - 1 : i - 1) : (i === buttons.length - 1 ? 0 : i + 1);
+      event.preventDefault();
+      buttons[next]?.focus();
+    };
+    const confirmBtn = btn(confirmLabel, { kind: danger ? "danger" : "primary", onClick: () => done(true) });
+    const cancelBtn = btn(cancelLabel, { kind: "secondary", onClick: () => done(false) });
     const overlay = h("div", { class: "os-overlay center", onClick: (event) => { if (event.target === overlay) done(false); } },
-      h("div", { class: "os-dialog", role: "alertdialog", "aria-modal": "true", "aria-label": title },
-        h("h2", { class: "os-h2", text: title }),
-        text ? h("p", { class: "os-sub", style: { margin: "8px 0 14px" }, text }) : null,
-        h("div", { class: "os-btn-row" },
-          btn(confirmLabel, { kind: danger ? "danger" : "primary", onClick: () => done(true) }),
-          btn("إلغاء", { kind: "secondary", onClick: () => done(false) })
-        )
+      h("div", { class: `os-dialog${danger ? " danger" : ""}`, role: "alertdialog", "aria-modal": "true", "aria-labelledby": `${id}-t`, "aria-describedby": text ? `${id}-d` : null },
+        h("div", { class: "os-dialog-head" },
+          h("span", { class: "os-feedback-icon", "aria-hidden": "true" }, ic(danger ? "alert" : "info")),
+          h("div", {},
+            h("h2", { class: "os-h2", id: `${id}-t`, text: title }),
+            text ? h("p", { class: "os-dialog-text", id: `${id}-d`, text }) : null)),
+        h("div", { class: "os-btn-row" }, confirmBtn, cancelBtn)
       )
     );
     document.body.append(overlay);
-    overlay.querySelector("button")?.focus();
+    document.addEventListener("keydown", onKey, true);
+    // A destructive action never starts with focus on the destructive button.
+    (danger ? cancelBtn : confirmBtn).focus();
   });
 }
 

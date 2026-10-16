@@ -3,6 +3,7 @@
  * Accessible only from Office Settings → العروض والطلبات.
  */
 
+import { confirmDialog } from "../os/core/ui.js";
 import {
   BANK_PAGE_SIZE,
   LIFECYCLE,
@@ -1709,9 +1710,11 @@ function wireSuitableOfficesHandlers(opportunityId, record, bundle = {}) {
       ["PENDING", "ACCEPTED"].includes(String(row.status || "").toUpperCase())
     );
     if (activeAccepted.length) {
-      const proceed = confirm(
-        "يوجد طلب تعاون نشط أو مقبول لهذه الفرصة. هل تريد الإرسال لمكتب إضافي؟"
-      );
+      const proceed = await confirmDialog({
+        title: "الإرسال لمكتب إضافي؟",
+        text: "يوجد طلب تعاون نشط أو مقبول لهذه الفرصة. هل تريد الإرسال لمكتب إضافي؟",
+        confirmLabel: "إرسال"
+      });
       if (!proceed) return;
     }
     const message = $("bankSuitableShareMessage")?.value || "";
@@ -3270,7 +3273,11 @@ async function createShareRequest({ opportunityIds, targetOfficeId, scopeType, m
   }
 
   const officeName = await resolveOfficeShareLabel(targetOfficeId);
-  if (!confirm(`تأكيد إرسال الفرصة إلى مكتب ${officeName}؟\n\nلن تُشارك بيانات المالك أو العميل أو أرقامهم.`)) {
+  if (!(await confirmDialog({
+    title: `تأكيد إرسال الفرصة إلى مكتب ${officeName}؟`,
+    text: "لن تُشارك بيانات المالك أو العميل أو أرقامهم.",
+    confirmLabel: "إرسال"
+  }))) {
     return;
   }
 
@@ -3734,7 +3741,7 @@ async function runInboxDeviceContactSave(article, fromEditor) {
     status.classList.toggle("is-fail", Boolean(result.message) && !result.ok);
     return;
   }
-  window.alert(result.message);
+  if (result.message) toast(result.message);
 }
 
 async function submitInboxEditor(article, editorKey, formData) {

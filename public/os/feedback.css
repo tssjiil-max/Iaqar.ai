@@ -1,0 +1,48 @@
+/* iAqar system feedback — the ONE design for every confirmation dialog and toast on the platform.
+   Loaded by the office app (index/r/s/scout-inbox) and by legacy.html, so a deletion, save or error
+   message looks the same wherever it appears. Same language as the approved office cards: white
+   surface, soft frame, pastel icon chip, navy text. Tone lives in the chip (never solid slabs).
+   Self-contained: every token has a fallback, so pages that do not load os.css render identically. */
+
+.os-overlay { position: fixed; inset: 0; background: rgb(8 47 58 / 38%); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.os-overlay.center { align-items: center; }
+
+.os-feedback-icon { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--tone-bg); color: var(--tone-ink); --ico: currentColor; }
+.os-feedback-icon svg { width: 23px; height: 23px; color: inherit; display: block; }
+
+/* Confirmation dialog */
+.os-dialog { --tone-bg: #edf7fb; --tone-ink: var(--brand-primary, #03677a); box-sizing: border-box; direction: rtl; text-align: start; background: #fff; border: 1px solid #d9e8ef; border-radius: 20px; max-width: 420px; width: calc(100% - 32px); max-height: calc(100dvh - 32px); overflow: auto; margin: auto; padding: 20px 18px 18px; box-shadow: 0 18px 44px rgb(8 47 58 / 16%); font-family: var(--font, "Office Tajawal", Tajawal, Tahoma, sans-serif); color: var(--navy, #101733); }
+.os-dialog.danger { --tone-bg: #fdecec; --tone-ink: var(--bad, #b03a3a); }
+.os-dialog-head { display: flex; align-items: flex-start; gap: 12px; }
+.os-dialog-head .os-h2 { margin: 0; font-size: 1.12rem; font-weight: 700; line-height: 1.5; color: inherit; overflow-wrap: anywhere; }
+.os-dialog-text { margin: 6px 0 0; color: var(--muted, #586b80); line-height: 1.7; overflow-wrap: anywhere; }
+.os-dialog .os-btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.os-dialog .os-btn { flex: 1 1 140px; box-sizing: border-box; min-height: 46px; border-radius: 12px; padding: 8px 18px; font: inherit; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+.os-dialog .os-btn.primary { background: var(--brand-primary, #03677a); color: #fff; border: 1px solid var(--brand-primary, #03677a); }
+.os-dialog .os-btn.secondary { background: #fff; color: var(--brand-primary, #03677a); border: 1px solid #c9dde2; }
+.os-dialog .os-btn.danger { background: #fff; color: var(--bad, #b03a3a); border: 1px solid #f2c7c7; }
+.os-dialog .os-btn:focus-visible { outline: 3px solid #9bcad2; outline-offset: 2px; }
+
+/* Toast — office app (.os-toast) and legacy pages (#toast.toast) share one look. */
+.os-toast, #toast.toast { --tone-bg: #edf7fb; --tone-ink: var(--brand-primary, #03677a); box-sizing: border-box; direction: rtl; position: fixed; inset-inline: 16px; margin: 0 auto; max-width: 520px; z-index: 100; background: #fff; color: var(--navy, #101733); border: 1px solid #d9e8ef; border-radius: 16px; box-shadow: 0 12px 32px rgb(8 47 58 / 14%); font-family: var(--font, "Office Tajawal", Tajawal, Tahoma, sans-serif); font-weight: 600; font-size: .93rem; line-height: 1.6; text-align: start; display: flex; gap: 10px; align-items: center; }
+.os-toast { bottom: calc(16px + env(safe-area-inset-bottom)); padding: 10px 14px 10px 12px; animation: os-toast-in .18s ease-out; }
+.os-toast .os-feedback-icon { width: 34px; height: 34px; border-radius: 10px; }
+.os-toast .os-feedback-icon svg { width: 20px; height: 20px; }
+.os-toast > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.os-toast.ok, #toast.toast[data-tone="ok"] { --tone-bg: #e3f9ef; --tone-ink: #0c7d59; }
+.os-toast.bad, #toast.toast[data-tone="bad"] { --tone-bg: #fdecec; --tone-ink: var(--bad, #b03a3a); border-color: #f3cfcf; }
+.os-toast.warn { --tone-bg: #fff1db; --tone-ink: #96571a; }
+/* Keep feedback above the fixed office bottom navigation instead of covering it. */
+body:has(.ref-bottom) .os-toast { bottom: calc(86px + env(safe-area-inset-bottom)); }
+
+/* Legacy: the element keeps its id, role, text writers and show/hide class; only the look changes.
+   The writers set textContent, so the tone chip is drawn with ::before (an SVG mask in currentColor). */
+#toast.toast { top: calc(env(safe-area-inset-top, 0px) + 58px); left: 16px; right: 16px; transform: translateY(-8px); width: auto; padding: 10px 14px 10px 12px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+#toast.toast.show { opacity: 1; transform: none; }
+#toast.toast::before { content: ""; flex: none; width: 34px; height: 34px; border-radius: 10px; background: var(--tone-icon) center / 20px 20px no-repeat, var(--tone-bg); }
+#toast.toast { --tone-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2303677a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5M12 8h.01'/%3E%3C/svg%3E"); }
+#toast.toast[data-tone="ok"] { --tone-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230c7d59' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m8.5 12 2.5 2.5 4.5-5'/%3E%3C/svg%3E"); }
+#toast.toast[data-tone="bad"] { --tone-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b03a3a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4 3 20h18L12 4z'/%3E%3Cpath d='M12 10v4M12 17h.01'/%3E%3C/svg%3E"); }
+
+@keyframes os-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .os-toast { animation: none; } #toast.toast { transition: none; } }
