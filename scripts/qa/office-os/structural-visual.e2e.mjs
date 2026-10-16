@@ -24,9 +24,9 @@ try{
   for(const [name,route,user=OWNER_A]of screens.filter(([name])=>!process.env.SCREEN||new RegExp(process.env.SCREEN).test(name))){
    const ctx=await browser.newContext({viewport:{width,height:900},locale:'ar-SA',reducedMotion:'reduce'});
    if(user)await ctx.addInitScript(([u,o])=>{localStorage.setItem('harness.uid',u);localStorage.setItem('iaqar.officeId',o)},[user,OFFICE_A]);
-   if(variant==='before')await ctx.route('**/os/**',async route=>{
+   if(variant==='before'||process.env.SOURCE_REF)await ctx.route('**/os/**',async route=>{
     const pathname=new URL(route.request().url()).pathname;
-    if(!originals.has(pathname)){try{originals.set(pathname,execFileSync('git',['show',`d61f38e:public${pathname}`],{encoding:'utf8',stdio:['ignore','pipe','ignore']}))}catch{originals.set(pathname,null)}}
+    if(!originals.has(pathname)){try{originals.set(pathname,execFileSync('git',['show',`${process.env.SOURCE_REF||'d61f38e'}:public${pathname}`],{encoding:'utf8',stdio:['ignore','pipe','ignore']}))}catch{originals.set(pathname,null)}}
     const body=originals.get(pathname);if(body!==null)await route.fulfill({contentType:pathname.endsWith('.css')?'text/css':'text/javascript',body});else await route.continue();
    });
    const page=await ctx.newPage();page.on('pageerror',e=>errors.push(`${name}/${width}: ${e.message}`));
@@ -36,7 +36,7 @@ try{
    const metrics=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,headers:document.querySelectorAll('[data-ui="page-header"]').length,headings:document.querySelectorAll('.os-page-head').length,surfaces:document.querySelectorAll('[data-ui="surface"]').length,cards:document.querySelectorAll('.os-card').length,tiles:document.querySelectorAll('[data-ui="navigation-tile"]').length,rtl:document.documentElement.dir}));
    results.push({name,route,width,...metrics});
    await page.screenshot({path:`${out}/${name}-${width}.png`,fullPage:true});
-   if(variant==='after'){
+   if(variant!=='before'&&!process.env.SOURCE_REF){
     assert.ok(metrics.overflow<=1,`${name}/${width} overflow ${metrics.overflow}`);
     assert.equal(metrics.rtl,'rtl');
     assert.equal(metrics.headers,metrics.headings,`${name} all page heads use shared composition`);

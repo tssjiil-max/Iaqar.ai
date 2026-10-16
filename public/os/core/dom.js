@@ -47,13 +47,22 @@ export function btn(label, { kind = "primary", iconName = "", chevron = false, b
 }
 
 export function field(label, control, { hint = "", error = "", optional = false } = {}) {
-  const wrap = h("label", { class: `os-field${error ? " invalid" : ""}` },
+  const wrap = h("label", { class: `os-field${error && !(error instanceof Node) ? " invalid" : ""}`, 'data-ui': 'form-field' },
     h("span", {}, label, optional ? h("small", { text: " (اختياري)" }) : null),
     control,
-    hint ? h("small", { text: hint }) : null,
-    h("span", { class: "os-error", role: "alert", text: error || "" })
+    hint instanceof Node ? hint : hint ? h("small", { class: 'os-field-note', text: hint }) : null,
+    error instanceof Node ? error : h("span", { class: "os-error", role: "alert", text: error || "" })
   );
   return wrap;
+}
+
+/** Layout only: keep the original controls, names, values and event handlers. */
+export function formGrid(...fields) {
+  return h('div', { class: 'os-form-grid', 'data-ui': 'form-grid' }, ...fields);
+}
+
+export function actionBar(...actions) {
+  return controlGroup('div', { class: 'os-action-bar', 'aria-label': 'الإجراءات' }, ...actions);
 }
 
 export function setFieldError(root, name, message) {
@@ -114,7 +123,8 @@ export function surface(tag = 'section', props = {}, ...children) {
 
 /** Shared semantic section: same title/icon/description hierarchy across office tools. */
 export function officeSection({ title, iconName = 'office', description = '', className = '', attrs = {}, count = null }, ...children) {
-  return surface('section', { ...attrs, class: `os-office-section ${className}`.trim(), 'aria-label': title },
+  const tone = ({ office: 'blue', shield: 'gold', offers: 'green', search: 'purple', photos: 'purple', link: 'purple', pin: 'green', bell: 'gold' })[iconName] || 'blue';
+  return surface('section', { ...attrs, class: `os-office-section tone-${tone} ${className}`.trim(), 'aria-label': title },
     h('header', { class: 'os-office-section-head' },
       h('span', { class: 'os-page-icon', 'aria-hidden': 'true' }, ic(iconName)),
       h('div', { class: 'os-office-section-copy' },
@@ -166,5 +176,8 @@ export function feedback(props = {}, ...children) {
 export function comparisonTable({ label, columns, rows, className = 'os-compare' }) {
   return h('table', { class: className, 'data-ui': 'comparison-table', 'aria-label': label },
     h('thead', {}, h('tr', {}, columns.map(text => h('th', { scope: 'col', text })))),
-    h('tbody', {}, rows.map(cells => h('tr', {}, cells.map(cell => h('td', {}, cell))))));
+    h('tbody', {}, rows.map(row => {
+      const cells = Array.isArray(row) ? row : row.cells;
+      return h('tr', Array.isArray(row) ? {} : row.attrs || {}, cells.map(cell => h('td', {}, cell)));
+    })));
 }

@@ -426,7 +426,7 @@ try {
   check("a search result opens its record", page.url().includes("#/record/opp_seed_offer"));
   await page.goto(`${h.origin}/#/search`);
   await page.locator("[data-search-input]").fill("زززز لا يوجد");
-  await page.locator(".os-empty").waitFor();
+  await page.locator("[data-search-results] .os-empty", { hasText: "لا توجد نتائج" }).waitFor();
   check("search says clearly when nothing matches", (await page.locator(".os-empty").innerText()).includes("لا توجد نتائج"));
 
   // — audit trail

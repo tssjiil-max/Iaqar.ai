@@ -7,7 +7,7 @@ test("shared office sections preserve RTL structure, group identity and existing
   const previous = new Map(["window", "document", "Node"].map((key) => [key, globalThis[key]]));
   for (const key of previous.keys()) globalThis[key] = dom.window[key];
   try {
-    const { h, officeSection } = await import("../public/os/core/dom.js");
+    const { h, officeSection, field, formGrid, actionBar } = await import("../public/os/core/dom.js");
     let opened = 0;
     const action = h("button", { type: "button", onClick: () => { opened++; } }, "فتح النتيجة");
     const section = officeSection(
@@ -27,6 +27,19 @@ test("shared office sections preserve RTL structure, group identity and existing
     const withoutCount = officeSection({ title: "الوسطاء", iconName: "users" }, h("span", { text: "عضو" }));
     assert.equal(withoutCount.querySelector(".os-center-count"), null);
     assert.equal(withoutCount.querySelector(".os-office-section-body").textContent, "عضو");
+    const phone = h("input", { name: "phone", value: "0501111111" });
+    const error = h("small", { role: "alert", "data-error": "phone" });
+    const hint = h("small", { role: "status" });
+    const form = h("form", {}, formGrid(field("رقم الجوال", phone, { error, hint })), actionBar(action));
+    document.getElementById("app").append(form);
+    assert.equal(phone.labels[0].textContent, "رقم الجوال");
+    error.textContent = "رقم غير صحيح";
+    hint.textContent = "جارٍ التحقق";
+    assert.equal(form.querySelector('[data-error="phone"]'), error);
+    assert.equal(form.querySelector('[role="status"]'), hint);
+    assert.equal(new dom.window.FormData(form).get("phone"), "0501111111");
+    action.click();
+    assert.equal(opened, 2, "Moving original controls into layout slots preserves their handlers");
   } finally {
     for (const [key, value] of previous) {
       if (value === undefined) delete globalThis[key];

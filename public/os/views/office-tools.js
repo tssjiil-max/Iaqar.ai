@@ -4,7 +4,7 @@
  * profile and records; nothing is sent anywhere by these screens.
  */
 
-import { h, ic, clear, append, emptyState, pageHeader, surface, controlGroup, loadingState } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, officeSection, field, formGrid, comparisonTable, controlGroup, loadingState } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe } from "../core/state.js";
@@ -143,12 +143,9 @@ function renderCalculator(container) {
   append(container, pageHead("الحاسبة"),
     h("p", { class: "os-sub os-tool-intro", text: "حساب تقديري للسعي والضريبة. النِّسب قابلة للتعديل، والأرقام النهائية تُعتمد من الجهات الرسمية." }),
     tabs,
-    surface("section", { class: "os-card os-form" },
-      h("label", { class: "os-field" }, amountLabel, amount, error),
-      h("div", { class: "os-row2" },
-        h("label", { class: "os-field" }, h("span", { text: "نسبة السعي %" }), commission),
-        h("label", { class: "os-field" }, h("span", { text: "ضريبة القيمة المضافة %" }), vat)),
-      transferField),
+    officeSection({ title: "بيانات الحساب", iconName: "calculator" },
+      formGrid(field(amountLabel, amount, { error }),
+        field("نسبة السعي %", commission), field("ضريبة القيمة المضافة %", vat), transferField)),
     result);
   draw();
   return null;
@@ -157,7 +154,7 @@ function renderCalculator(container) {
 // -------------------------------------------------------------------- السوق
 
 function renderMarket(container) {
-  const body = h("div", { "data-tool-market": "" });
+  const body = h("div", { class: "os-office-sections os-market-layout", "data-tool-market": "" });
   const stat = (label, value, id) => h("div", { class: "os-market-stat", "data-market-stat": id }, h("b", { text: String(value) }), h("small", { text: label }));
   const draw = () => {
     clear(body);
@@ -170,20 +167,21 @@ function renderMarket(container) {
     }
     append(body,
       surface("section", { class: "os-card os-market-stats" }, stat("سجل نشط", snap.total, "total"), stat("عرض", snap.offers, "offers"), stat("طلب", snap.requests, "requests")),
-      surface("section", { class: "os-card" }, sectionTitle("متوسط الأسعار حسب النوع", "متوسط سعر العروض ومتوسط ميزانية الطلبات"),
-        h("div", { class: "os-market-table", role: "table" },
-          h("div", { class: "os-market-row head", role: "row" }, h("span", { text: "النوع" }), h("span", { text: "العروض" }), h("span", { text: "الطلبات" })),
-          snap.byType.map((row) => h("div", { class: "os-market-row", role: "row", "data-market-type": row.key },
+      officeSection({ title: "متوسط الأسعار حسب النوع", iconName: "chart-up", className: "os-market-prices",
+        description: "متوسط سعر العروض ومتوسط ميزانية الطلبات" },
+        comparisonTable({ label: "متوسط الأسعار حسب النوع", className: "os-data-table", columns: ["النوع", "العروض", "الطلبات"],
+          rows: snap.byType.map(row => ({ attrs: { "data-market-type": row.key }, cells: [
             h("span", {}, h("b", { text: row.propertyType }), h("small", { text: row.txLabel })),
             h("span", {}, h("b", { text: row.avgOffer ? formatPrice(row.avgOffer) : "—" }), h("small", { text: `${row.offers} عرض` })),
-            h("span", {}, h("b", { text: row.avgBudget ? formatPrice(row.avgBudget) : "—" }), h("small", { text: `${row.requests} طلب` })))))),
-      surface("section", { class: "os-card" }, sectionTitle("طلبات بلا عرض مطابق", "أحياء فيها طلب لدى مكتبك ولا يوجد عرض نشط من النوع نفسه"),
+            h("span", {}, h("b", { text: row.avgBudget ? formatPrice(row.avgBudget) : "—" }), h("small", { text: `${row.requests} طلب` }))
+          ] })) })),
+      officeSection({ title: "طلبات بلا عرض مطابق", iconName: "search", description: "أحياء فيها طلب لدى مكتبك ولا يوجد عرض نشط من النوع نفسه" },
         snap.gaps.length
           ? h("ul", { class: "os-list os-market-gaps" }, snap.gaps.slice(0, 12).map((gap) => h("li", { "data-market-gap": gap.key }, ic("pin"),
             h("span", {}, h("b", { text: `${gap.propertyType} · حي ${gap.district}` }),
               h("small", { text: [`${gap.txLabel}`, `${gap.requests} طلب`, gap.avgBudget ? `متوسط الميزانية ${formatPrice(gap.avgBudget)}` : ""].filter(Boolean).join(" · ") })))))
           : h("p", { class: "os-sub", text: "كل الطلبات النشطة لها عرض من النوع نفسه في الحي نفسه." })),
-      surface("section", { class: "os-card" }, sectionTitle("الأحياء الأكثر نشاطًا"),
+      officeSection({ title: "الأحياء الأكثر نشاطًا", iconName: "pin" },
         h("ul", { class: "os-list os-market-districts" }, snap.byDistrict.slice(0, 10).map((d) => h("li", {}, ic("pin"),
           h("span", {}, h("b", { text: [d.city, `حي ${d.district}`].filter(Boolean).join(" - ") }), h("small", { text: `${d.offers} عرض · ${d.requests} طلب` })))))));
   };
