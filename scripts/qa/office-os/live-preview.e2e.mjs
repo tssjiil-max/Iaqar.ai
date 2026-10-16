@@ -127,9 +127,11 @@ try {
     await p0.getByRole("button", { name: /لدي عقار/ }).click();
     await p0.locator('[name="smartText"]').fill(smartText);
     await p0.locator("[data-smart-analyze]").click();
-    await p0.locator("[data-smart-review]").waitFor();
-    const filled = { title: await p0.locator("h1.os-page-title").textContent(), type: await p0.locator('[name="propertyType"]').inputValue(), district: await p0.locator('[name="district"]').inputValue(), urgent: await p0.locator('[data-validity-option="yes"]').getAttribute("aria-pressed"), oldLabel: await p0.getByText("على راحتي").count() };
-    check("live: «تعبئة ذكية» in the browser — moved to «أبحث عن عقار», fields filled, «غير مستعجل» label", filled.title === "أبحث عن عقار" && filled.type === "عمارة" && filled.district === "شوران، الهجرة، الرانوناء" && filled.urgent === "true" && filled.oldLabel === 0, JSON.stringify(filled));
+    // «أبحث عن عقار» is the guest search (owner decision 2026-10-16): the text moves with the visitor and is read at once.
+    await p0.locator("[data-guest-search-form]").waitFor();
+    await p0.waitForFunction(() => document.querySelector("[name=propertyType]")?.value === "عمارة");
+    const filled = { title: await p0.locator("h1.os-page-title").textContent(), type: await p0.locator('[name="propertyType"]').inputValue(), district: await p0.locator('[name="district"]').inputValue(), text: await p0.locator('textarea[name="description"]').inputValue(), notice: await p0.locator("[data-kind-notice]").count(), phoneBeforeChoice: await p0.locator('input[name="contactPhone"]').count() };
+    check("live: «تعبئة ذكية» in the browser — request moved to «أبحث عن عقار» with its text, read at once, no phone before a choice", filled.title === "أبحث عن عقار" && filled.type === "عمارة" && filled.district === "شوران" && filled.text === smartText && filled.notice === 1 && filled.phoneBeforeChoice === 0, JSON.stringify(filled));
     await shot(p0, "00-smart-fill-review");
     await ctx0.close();
   }
