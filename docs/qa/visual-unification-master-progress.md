@@ -51,6 +51,22 @@ Local-run note: this sandbox cannot install npm packages. `worker/node_modules/w
 
 Old greens/reds in status lines: legacy `--success #388E3C` + `#087064`; negotiation/access-gate `#056647/#af2535`; admin `#e8f7f2/#9e3434`; completion `#fff0f0/#8a2222`. All → office tokens: success `#23764B` on `#E8F5EE`, danger `#B03A3A` on `#FBECEC`. Values only. Checked admin/complete/legacy entry at 320/390/1440 (9/9, 0 console errors) and reviewed at 390.
 
+## Other fixes this round
+
+- `1286a94` legacy toast kept ≤320px (CI caught: opportunity-followup test "toast does not obscure appointment control"; test now asserts intent, not the old colour).
+- `a5cadb9` «مستندات» step label clipped at 351–389px (pre-existing; full sweep 537/539 → fixed).
+- `78bef22` merged parallel Staging work (guest public search #237, d94c6a5). Conflict in record-form.js resolved keeping both. **Found and fixed a regression that came with that work**: `#/search` (office «البحث») showed brokers the guest form; completion 95/96 on pure staging → 110/110.
+
+## BLOCKER (owner decision needed) — public «أبحث عن عقار» path
+
+CI run 38951990908 on 78bef22: unit+worker ✅, Firestore rules ✅, browser job ❌ — 10 failures, all `public-request-form`, `public-request-smart-review`, `public-form-sent` at 320/360/375/390.
+Cause: staging commit 6002482 (guest public search) changed `renderPublicOffice` so the client path renders `publicSearchForm(office)` instead of the request intake form. That is an intentional **product** change from the parallel work, not a visual one. The same failure exists on their branch gate (38948163081) and both Staging deploys since (9adae47, d94c6a5) failed, so it is not live.
+Not changed here. Needs the owner to choose: keep the request intake form on «أبحث عن عقار», or adopt guest search there (then the tests/screens for the request path must be updated by whoever owns that feature).
+
+## Coordination note
+
+Another agent pushes to the Staging branch in parallel. Before merging PR #235: fetch Staging, merge, re-run completion + public-search + feedback suites. A conflicted PR gets no CI.
+
 ## Open
 
 - In-page status lines: colours now unified (61b0058). Their layout (text-only line vs. banner) still differs between legacy and office; only change with a visual reason.
