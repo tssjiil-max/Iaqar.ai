@@ -1,0 +1,47 @@
+name: Public product tour - Staging Hosting only
+on:
+  push:
+    branches: [codex/public-product-tour-20261011]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: iaqar-unified-staging
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/codex/public-product-tour-20261011'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - run: npm test
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - name: Verify tour on four screen sizes
+        run: node scripts/qa/public-tour.e2e.mjs
+      - name: Publish only Staging Hosting
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: node scripts/deploy-public-tour-staging.mjs
+      - name: Verify published tour
+        env:
+          TOUR_BASE: https://iaqar-ai-staging--staging-9c4b0k7h.web.app
+          OUT_DIR: /tmp/iaqar-public-tour-live
+        run: node scripts/qa/public-tour.e2e.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-tour-qa
+          path: |
+            /tmp/iaqar-public-tour-qa
+            /tmp/iaqar-public-tour-live
+          if-no-files-found: warn

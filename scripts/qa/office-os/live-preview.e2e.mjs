@@ -164,7 +164,7 @@ try {
   ownerCtx.on("page", (p) => { p.waitForLoadState().then(() => { if (p.url().startsWith("https://wa.me")) setTimeout(() => p.close().catch(() => {}), 300); }).catch(() => {}); });
   const page = await ownerCtx.newPage();
   page.setDefaultTimeout(30000);
-  await page.goto(`${PREVIEW_URL}/`);
+  await page.goto(`${PREVIEW_URL}/#/office`);
   await page.fill('input[name="phone"]', owner.phone);
   await page.fill('input[name="password"]', owner.password);
   await page.getByRole("button", { name: "دخول المكتب" }).click();
@@ -326,7 +326,7 @@ try {
   try {
     const anon = await (await browser.newContext(mobile)).newPage();
     anon.setDefaultTimeout(30000);
-    await anon.goto(`${PREVIEW_URL}/`);
+    await anon.goto(`${PREVIEW_URL}/#/office`);
     await anon.locator("[data-broker-signup]").waitFor();
     await anon.locator("[data-broker-signup]").click();
     await anon.locator("[data-broker-form]").waitFor();

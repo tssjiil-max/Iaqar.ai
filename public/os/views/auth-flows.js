@@ -1,5 +1,6 @@
 /** «نسيت كلمة المرور» and «تسجيل وسيط جديد» inside Office OS (pre-login). */
 
+import { track } from "../../tour/metrics.js";
 import { h, ic } from "../core/dom.js";
 import { requestPasswordReset, submitBrokerApplication } from "../core/auth-flows.js";
 import { APPLY_SUCCESS, resetMessage, validateBrokerApplication } from "../domain/auth-flows-domain.js";
@@ -34,6 +35,8 @@ export function renderForgotPassword(root, { onBack } = {}) {
 }
 
 export function renderBrokerApplication(root, { onBack } = {}) {
+  const fromTour = new URLSearchParams(location.search).get("tour") === "1";
+  if (fromTour) track("registration_start");
   const input = (name, attrs = {}) => h("input", { class: "os-input", name, required: true, ...attrs });
   const fields = {
     brokerName: input("brokerName", { maxlength: "80", autocomplete: "name" }),
@@ -81,6 +84,7 @@ export function renderBrokerApplication(root, { onBack } = {}) {
       form.querySelector(".os-auth-field.invalid input")?.focus({ preventScroll: false });
     } });
     if (ok) {
+      if (fromTour) track("registration_complete");
       form.reset();
       showFieldErrors(form, {});
       status.className = "os-alert ok"; status.textContent = APPLY_SUCCESS; status.hidden = false;
