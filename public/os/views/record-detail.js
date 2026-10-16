@@ -13,7 +13,8 @@ import { runAction } from "../core/ui.js";
 import { MISSING_LABELS, RECORD_KIND, recordView } from "../domain/records-domain.js";
 import { JOURNEY_STATUS_LABEL, STAGE_LABEL, isJourneyOpen } from "../domain/journey-domain.js";
 import { buildWhatsAppUrl, formatDateTime } from "../domain/format-domain.js";
-import { archiveRecordFlow, pauseRecordFlow, removeRecordFlow, restoreRecordFlow } from "./record-actions.js";
+import { archiveRecordFlow, pauseRecordFlow, releaseReservationFlow, removeRecordFlow, reserveRecordFlow, restoreRecordFlow } from "./record-actions.js";
+import { LISTING_STATUS_LABEL, listingStatus } from "../domain/direct-match-domain.js";
 import { imageGallery } from "./record-images.js";
 import { ANSWER, STATE, answerOptions, validityView } from "../domain/validity-domain.js";
 import { recordScoutRow } from "./scout.js";
@@ -98,6 +99,15 @@ export function renderRecordDetail(container, { recordId }) {
       view.state === "ARCHIVED" ? act("إعادة للنشطة", "restore", "soft", "restore", (e) => restoreRecordFlow(record, { button: e.currentTarget })) : null,
       view.state !== "DELETED" ? act("حذف", "trash", "danger", "delete", (e) => removeRecordFlow(record, { button: e.currentTarget, onDone: () => go("repo") })) : null
     );
+    // Official reservation: offers only, managers only (the server enforces both, and refuses any automated call).
+    const listing = view.kind === RECORD_KIND.OFFER ? listingStatus(record, { recordId: view.id }) : "";
+    const reserved = listing === "RESERVED";
+    const reservation = view.kind === RECORD_KIND.OFFER && view.state === "ACTIVE" ? h("div", { class: "os-record-reservation", "data-record-reservation": listing },
+      h("span", { class: `os-badge ${reserved ? "muted" : listing === "NEGOTIATING" ? "late" : listing === "AVAILABLE" ? "ok" : "bad"}`, "data-listing-status": listing, text: LISTING_STATUS_LABEL[listing] || "" }),
+      session.isManager && ["AVAILABLE", "NEGOTIATING", "RESERVED"].includes(listing)
+        ? act(reserved ? "إلغاء الحجز الرسمي" : "حجز رسمي", reserved ? "x" : "check-circle", reserved ? "secondary" : "soft", reserved ? "release" : "reserve",
+          (e) => (reserved ? releaseReservationFlow : reserveRecordFlow)(record, { button: e.currentTarget }))
+        : null) : null;
     append(container, surface("div", { class: "os-card" },
       h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "6px" } },
         h("span", { class: `os-badge${isRequest ? "" : " ok"}`, text: `${view.kindLabel} · ${view.purposeLabel}` }),
@@ -123,7 +133,8 @@ export function renderRecordDetail(container, { recordId }) {
       // «بوت المكتب»: is this person on the bot, and the link to give him (hidden where the bot is not available).
       // …but a changed mobile is a different person to the bot, so the row is rebuilt then.
       isExternalBroker(record) ? null : (botRow = botRow && botRowFor === String(view.contactPhone || "") ? botRow : ((botRowFor = String(view.contactPhone || "")), partyBotRow(record, { who: isRequest ? "العميل" : "المالك" }))),
-      h("div", { style: { marginTop: "12px" } }, actions)
+      h("div", { style: { marginTop: "12px" } }, actions),
+      reservation
     ));
     append(container, externalCooperationPanel(record));
     // «ابحث عن مشتري» / «ابحث عن عقار»: one press, everything read from this record.

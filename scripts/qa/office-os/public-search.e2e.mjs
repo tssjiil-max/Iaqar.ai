@@ -1,24 +1,64 @@
+// Guest journey in a real browser: write → see matches → choose → consent → WhatsApp handoff.
+//   node scripts/qa/office-os/public-search.e2e.mjs      (WIDTHS=390 narrows; OUT_DIR for screenshots)
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { chromium } from '@playwright/test';
 import { startOfficeOsHarness, OFFICE_A } from './server.mjs';
-const h=await startOfficeOsHarness();
-const browser=await chromium.launch({executablePath:chromium.executablePath()});
+const WIDTHS = process.env.WIDTHS ? process.env.WIDTHS.split(',').map(Number) : [320, 360, 390, 430, 768, 1024, 1440];
+const OUT = process.env.OUT_DIR || '/tmp/iaqar-public-search';
+fs.mkdirSync(OUT, { recursive: true });
+const h = await startOfficeOsHarness();
+const browser = await chromium.launch({ executablePath: chromium.executablePath() });
+const offer = { officeId: OFFICE_A, opportunityKind: 'OFFER', purpose: 'SALE', transactionType: 'sale', propertyType: 'شقة', city: 'الرياض', district: 'الملقا', priceOrBudget: 500000, salePrice: 500000, advertiserRole: 'OWNER', contactPhone: '0553331234', contactName: 'مالك لا يظهر', lifecycleStatus: 'ACTIVE', publicSearchVisible: true, rooms: 4, version: 1 };
+const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
 try {
- h.store.seed(`offices/${OFFICE_A}/opportunities/public-qa`,{officeId:OFFICE_A,opportunityKind:'OFFER',purpose:'SALE',transactionType:'sale',propertyType:'شقة',city:'الرياض',district:'الملقا',priceOrBudget:500000,salePrice:500000,advertiserRole:'OWNER',contactPhone:'0553331234',lifecycleStatus:'ACTIVE',publicSearchVisible:true,rooms:4,version:1});
- for(const width of [320,390,1024]){
-  const page=await browser.newPage({viewport:{width,height:844}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(`${h.origin}/?view=search`);await page.locator('[data-guest-search-form]').waitFor();
-  assert.equal(await page.locator('[data-login-form]').count(),0);
-  await page.locator('textarea[name=description]').fill('مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف');
-  await page.locator('[data-guest-analyze]').click();await page.waitForFunction(()=>document.querySelector('[name=price]').value==='550000');
-  assert.equal(await page.locator('[name=propertyType]').inputValue(),'شقة');
-  await page.locator('[name=contactName]').fill('عميل تجربة');await page.locator('[name=contactPhone]').fill('0557000222');await page.locator('[name=channel]').selectOption('whatsapp');
-  await page.locator('[name=consentProcessing]').check();await page.locator('[name=consentContact]').check();await page.locator('[data-guest-search]').click();
-  await page.locator('[data-search-result]').waitFor();assert.equal(await page.locator('[data-search-result]').count(),1);
-  assert.ok(await page.getByText('الإرسال الآلي لهذه القناة غير مفعّل حاليًا',{exact:false}).count());
-  assert.equal(await page.evaluate(()=>document.documentElement.dir),'rtl');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  await page.screenshot({path:`/tmp/iaqar-public-search-${width}.png`,fullPage:true});assert.deepEqual(errors,[]);await page.close();
+ for (const width of WIDTHS) {
+  // Fresh offer per width, so the «others interested» check is about this run only.
+  const id = `public-qa-${width}`;
+  h.store.seed(`offices/${OFFICE_A}/opportunities/${id}`, offer);
+  for (const other of WIDTHS) if (other !== width) h.store.patch(`offices/${OFFICE_A}/opportunities/public-qa-${other}`, { publicSearchVisible: false });
+  h.store.patch(`offices/${OFFICE_A}/opportunities/${id}`, { publicSearchVisible: true });
+  const run = async (client, phone) => {
+   const ctx = await browser.newContext({ viewport: { width, height: 844 }, locale: 'ar-SA' });
+   const page = await ctx.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+   await page.goto(`${h.origin}/?view=search`); await page.locator('[data-guest-search-form]').waitFor();
+   assert.equal(await page.locator('[data-login-form]').count(), 0, 'no login before searching');
+   assert.equal(await page.locator('[name=contactPhone]').count(), 0, 'no phone asked before a choice');
+   await page.locator('textarea[name=description]').fill('مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف');
+   await page.locator('[data-guest-analyze]').click(); await page.waitForFunction(() => document.querySelector('[name=price]').value === '550000');
+   assert.equal(await page.locator('[name=propertyType]').inputValue(), 'شقة');
+   await page.locator('[data-guest-search]').click();
+   await page.locator('[data-search-result]').first().waitFor();
+   assert.equal(await page.locator('[data-search-result]').count(), 1);
+   assert.ok(!(await page.locator('[data-guest-results]').innerText()).includes('0553331234'), 'owner phone never shown');
+   assert.equal(await page.locator('[data-status-label]').first().innerText(), 'متاح');
+   const notice = await page.locator('[data-search-result] [data-interest-notice]').count();
+   if (client === 'first') await page.screenshot({ path: path.join(OUT, `${width}-1-results.png`), fullPage: true });
+   await page.locator('[data-choose-result]').first().click();
+   await page.locator('[data-guest-select-form]').waitFor();
+   await page.locator('[name=contactName]').fill(client === 'first' ? 'عميل أول' : 'عميل ثان');
+   await page.locator('[name=contactPhone]').fill(phone);
+   await page.locator('[name=consentProcessing]').check(); await page.locator('[name=consentContact]').check();
+   if (client === 'first') await page.screenshot({ path: path.join(OUT, `${width}-2-choose.png`) });
+   await page.locator('[data-guest-select]').click();
+   const link = page.locator('[data-whatsapp-handoff]'); await link.waitFor();
+   const href = new URL(await link.getAttribute('href'));
+   assert.equal(href.hostname, 'wa.me'); assert.equal(href.pathname, '/966501111111', 'the office number');
+   assert.match(href.searchParams.get('text'), new RegExp(`${OFFICE_A}:${id}`));
+   assert.equal(await page.locator('[data-contact-state]').getAttribute('data-contact-state'), 'OPEN_WHATSAPP');
+   assert.ok((await page.locator('[data-guest-outcome]').innerText()).includes('يعتمده المكتب'));
+   if (client === 'first') await page.screenshot({ path: path.join(OUT, `${width}-3-handoff.png`) });
+   assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl');
+   assert.ok(await noOverflow(page), `no horizontal scroll at ${width}`);
+   assert.deepEqual(errors, []);
+   await ctx.close();
+   return notice;
+  };
+  assert.equal(await run('first', '0557000222'), 0, 'no interest notice without real interest');
+  assert.equal(await run('second', '0557000333'), 1, 'the next client sees real interest from another client');
+  console.log(`✔ ${width}px guest journey`);
  }
- const page=await browser.newPage();await page.goto(`${h.origin}/m/sultan`);await page.locator('[data-guest-search-form]').waitFor();assert.equal(await page.locator('[name=scope]').inputValue(),'office');await page.close();
- console.log('Guest search: 3 responsive end-to-end journeys and office-default routing passed.');
-} finally {await browser.close();h.server.close();}
+ const page = await browser.newPage(); await page.goto(`${h.origin}/m/sultan`); await page.locator('[data-guest-search-form]').waitFor(); assert.equal(await page.locator('[name=scope]').inputValue(), 'office'); await page.close();
+ console.log(`Guest search: ${WIDTHS.length} widths × 2 clients end-to-end and office-default routing passed.`);
+} finally { await browser.close(); h.server.close(); }

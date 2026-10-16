@@ -63,23 +63,36 @@ test('Telegram starts from an expiring guest link, sends through the real adapte
  } finally {globalThis.fetch=original;}
 });
 
-test('guest UI extracts criteria, requires contact and renders real results without a login session',async()=>{
+test('guest UI: search without contact, choose a result, consent in the sheet, then the WhatsApp handoff',async()=>{
  const {JSDOM}=await import('jsdom');
  const dom=new JSDOM('<!doctype html><html dir="rtl"><body><div id="root"></div></body></html>',{url:'https://worker.test/?view=search'});
- const globals=['window','document','Node'];const previous=Object.fromEntries(globals.map(k=>[k,globalThis[k]]));for(const k of globals)globalThis[k]=dom.window[k];
+ const globals=['window','document','Node','requestAnimationFrame'];const previous=Object.fromEntries(globals.map(k=>[k,globalThis[k]]));for(const k of globals)globalThis[k]=k==='requestAnimationFrame'?(fn)=>setTimeout(fn,0):dom.window[k];
  dom.window.IAQAR={workerBase:'https://worker.test'};dom.window.HTMLElement.prototype.scrollIntoView=function(){};
  const fetchDouble=globalThis.fetch;globalThis.fetch=async(url,options)=>String(url).startsWith('https://worker.test/os/')?h.worker.fetch(new Request(String(url),options),h.env,{waitUntil(){}}):fetchDouble(url,options);
+ const until=async(test)=>{for(let i=0;i<200&&!test();i++)await new Promise(resolve=>setTimeout(resolve,5));};
  try{
   const {publicSearchForm}=await import('../public/os/views/public-search.js');const root=document.querySelector('#root');root.append(publicSearchForm({id:OFFICE_A,city:'الرياض'}));
   assert.equal(root.querySelector('[name=scope]').value,'office');
+  assert.equal(root.querySelector('[name=contactPhone]'),null,'no phone is asked before a choice');
   root.querySelector('[name=description]').value='مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف';
   root.querySelector('[data-guest-analyze]').click();
-  for(let i=0;i<100&&!root.querySelector('[name=price]').value;i++)await new Promise(resolve=>setTimeout(resolve,5));
+  await until(()=>root.querySelector('[name=price]').value);
   assert.equal(root.querySelector('[name=price]').value,'550000');assert.equal(root.querySelector('[name=propertyType]').value,'شقة');
-  root.querySelector('[name=contactName]').value='عميل واجهة';root.querySelector('[name=contactPhone]').value='0557000333';root.querySelector('[name=channel]').value='whatsapp';root.querySelector('[name=consentProcessing]').checked=true;root.querySelector('[name=consentContact]').checked=true;
   root.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
-  for(let i=0;i<100&&!root.querySelector('[data-search-result]');i++)await new Promise(resolve=>setTimeout(resolve,5));
-  assert.equal(root.querySelectorAll('[data-search-result]').length,10);assert.ok(root.textContent.includes('الإرسال الآلي لهذه القناة غير مفعّل'));assert.ok(!root.textContent.includes('0551234567'));
+  await until(()=>root.querySelector('[data-search-result]'));
+  assert.equal(root.querySelectorAll('[data-search-result]').length,10);assert.ok(!root.textContent.includes('0551234567'));
+  assert.ok(root.querySelector('[data-status-label]').textContent.length>0,'each result shows its status');
+  root.querySelector('[data-choose-result]').click();
+  const sheet=document.querySelector('[data-guest-select-form]');assert.ok(sheet,'choosing opens the contact sheet');
+  sheet.querySelector('[name=contactName]').value='عميل واجهة';sheet.querySelector('[name=contactPhone]').value='0557000333';
+  sheet.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
+  assert.equal(document.querySelector('[data-whatsapp-handoff]'),null,'no handoff without both consents');
+  sheet.querySelector('[name=consentProcessing]').checked=true;sheet.querySelector('[name=consentContact]').checked=true;
+  sheet.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
+  await until(()=>document.querySelector('[data-whatsapp-handoff]'));
+  const href=new URL(document.querySelector('[data-whatsapp-handoff]').getAttribute('href'));
+  assert.equal(href.hostname,'wa.me');assert.equal(href.pathname,'/966501111111');
+  assert.ok(document.querySelector('[data-guest-outcome]').textContent.includes('لم نرسل شيئًا نيابة عنك'));
  }finally{globalThis.fetch=fetchDouble;for(const k of globals)if(previous[k]===undefined)delete globalThis[k];else globalThis[k]=previous[k];dom.window.close();}
 });
 
