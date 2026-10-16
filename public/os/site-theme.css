@@ -85,6 +85,8 @@ button:focus-visible,a:focus-visible{outline:3px solid #099fb4;outline-offset:3p
 .os-app .os-follow-tab{font-size:13px;line-height:1.5}
 .os-app .os-follow-tab span{white-space:normal;overflow-wrap:anywhere;text-align:center}
 @media(max-width:350px){.os-app .ref-path{padding-inline:6px}.os-app .ref-steps{gap:1px}.os-app .ref-steps>.ref-step small{white-space:normal;overflow-wrap:anywhere;max-width:100%}}
+/* 351–389px: six equal columns leave «مستندات» 3px short (clipped at 360). Columns size to their label instead; the strip still fits. */
+@media(min-width:351px) and (max-width:389px){.os-app .ref-steps{gap:2px;grid-template-columns:repeat(6,minmax(max-content,1fr))}}
 
 /* Align the room's sticky action bar with the shared shell padding. */
 .os-session-app{--gutter:10px;max-width:560px;padding-bottom:12px}
