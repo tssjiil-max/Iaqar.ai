@@ -56,8 +56,11 @@ export async function loadShell(options = {}) {
     bootSettingsModule = true,
     firebase = null,
     officeRuntime = null,
-    fetch: fetchStub = null
+    fetch: suppliedFetch = null
   } = options;
+
+  // Unit DOM fixtures never inherit the native network transport.
+  const fetchStub = suppliedFetch || (async () => Response.json({ ok: false, error: "network_disabled_in_shell_test" }, { status: 503 }));
 
   // External <script src> tags point at the Firebase CDN and the hosting-injected config;
   // jsdom does not fetch them, and their failure notices are noise for these assertions.

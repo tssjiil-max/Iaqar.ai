@@ -1,3 +1,4 @@
+import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue } from "./whatsapp-agent-service.js";
 /**
  * /os/* routes — the office operating system API.
  * Office routes: Firebase ID token → office membership (Worker-verified) → service.
@@ -46,6 +47,12 @@ const PUBLIC_ROUTES = Object.freeze({
 });
 
 const OFFICE_ROUTES = Object.freeze({
+  "/os/whatsapp-agent/status": (ctx, b, actor) => whatsappAgentStatus(ctx, { officeId: ctx.officeId, actor }),
+  "/os/whatsapp-agent/settings": (ctx, b, actor) => configureWhatsAppAgent(ctx, { officeId: ctx.officeId, actor, enabled: b.enabled }),
+  "/os/whatsapp-agent/run": (ctx, b, actor) => {
+    if (!actor.isManager) throw ctx.deps.appError("forbidden", 403, "لمدير المكتب فقط");
+    return drainWhatsAppQueue(ctx, { officeId: ctx.officeId });
+  },
   "/os/records/cooperation": (ctx, b, actor) => reviewExternalCooperation(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), input: b }),
   // «تعبئة ذكية» / «إضافة سريعة»: analysis only — the record is saved later through /os/records/save after review.
   "/os/smart-fill": (ctx, b, actor) => analyzeOfficeText(ctx, { officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", multi: b.multi !== false, ip: actor.uid }),
