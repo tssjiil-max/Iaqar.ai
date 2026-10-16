@@ -100,3 +100,10 @@ test("negotiation: within the recorded mandate is still not acceptance; outside 
   assert.equal(mandateDecision({ floor: 480000 }, 0), MANDATE.INVALID);
   assert.ok(!Object.values(MANDATE).some((v) => /ACCEPT/.test(v)), "silence or a number is never acceptance");
 });
+
+test("the office AI assistant refuses official reservation, like price acceptance and closing", async () => {
+  const { toolGate } = await import("../public/os/domain/agent-domain.js");
+  for (const name of ["reserve_listing", "accept_price", "set_final_price", "close_deal"]) {
+    assert.deepEqual(toolGate(name), { allowed: false, category: "FORBIDDEN", reason: "forbidden" }, name);
+  }
+});
