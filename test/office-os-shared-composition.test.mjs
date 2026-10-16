@@ -56,3 +56,8 @@ test('empty states use office icon and copy slots and retain their original acti
  setup();const action=dom.h('button',{text:'إضافة عرض'});const empty=dom.emptyState('offers','لا توجد عروض','أضف العرض الأول',action);
  assert.equal(empty.dataset.ui,'empty-state');assert.ok(empty.querySelector('.os-state-icon svg'));assert.equal(empty.querySelector('.os-state-actions').firstChild,action);assert.equal(empty.querySelector('h3').textContent,'لا توجد عروض');
 });
+test('feedback keeps prose and duplicate record actions inside one shrinkable content slot',()=>{
+ setup();const originalIcon=dom.ic('alert');const actions=[1,2,3].map(n=>dom.h('button',{},`عرض شقة في العزيزية ${n}`));
+ const box=dom.feedback({class:'os-alert warn'},originalIcon,'قد يكون السجل موجودًا بالفعل',...actions);
+ const copy=box.querySelector('.os-feedback-copy');assert.ok(copy);assert.equal(box.children.length,2);assert.equal(box.querySelector('.os-feedback-icon svg'),originalIcon);assert.deepEqual([...copy.querySelectorAll('button')],actions);
+});

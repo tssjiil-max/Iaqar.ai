@@ -144,9 +144,11 @@ export function loadingState(props = {}) {
 export function feedback(props = {}, ...children) {
   const { text, ...attrs } = props;
   const tone = String(props.class || '');
+  const hasIcon = children[0] instanceof Node && children[0].nodeName.toLowerCase() === 'svg';
+  const glyph = hasIcon ? children[0] : ic(tone.includes('bad') || tone.includes('warn') ? 'alert' : 'info');
   return h('div', { ...attrs, class: `${tone} os-feedback`.trim(), 'data-ui': 'feedback', role: props.role || (tone.includes('bad') ? 'alert' : 'status') },
-    h('span', { class: 'os-feedback-icon', 'aria-hidden': 'true' }, ic(tone.includes('bad') || tone.includes('warn') ? 'alert' : 'info')),
-    text ? h('span', { class: 'os-feedback-copy', text }) : null, ...children);
+    h('span', { class: 'os-feedback-icon', 'aria-hidden': 'true' }, glyph),
+    h('div', { class: 'os-feedback-copy' }, text || null, ...(hasIcon ? children.slice(1) : children)));
 }
 
 /** Shared comparison grid; accepts existing cell nodes and keeps column order in RTL. */

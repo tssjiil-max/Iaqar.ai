@@ -26,7 +26,7 @@ function cardView(card, redraw) {
     l.price ? `${l.kind === "REQUEST" ? "الميزانية" : "السعر"}: ${formatNumber(l.price)}` : "",
     l.city || "", l.area ? `${formatNumber(l.area)} م²` : "", l.urgent === true ? "مستعجل" : l.urgent === false ? "غير مستعجل" : ""
   ].filter(Boolean);
-  return h("article", { class: `os-card os-quick-card${card.saved ? " is-saved" : ""}`, "data-quick-card": String(card.index) },
+  return surface("article", { class: `os-card os-quick-card${card.saved ? " is-saved" : ""}`, "data-quick-card": String(card.index) },
     h("div", { class: "os-quick-card-head" },
       h("span", { class: "os-quick-num", text: String(card.index + 1) }),
       h("b", { text: listingTitle(l) })),
