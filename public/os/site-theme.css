@@ -198,3 +198,13 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
  .os-office-sections>.os-office-section:last-child:nth-child(odd){grid-column:1/-1}
  .os-office-settings-actions{max-width:340px;margin-inline-start:auto}
 }
+
+/* Office search groups share their heading and surface composition with settings. */
+.os-office-section-title{display:flex;flex-wrap:wrap;align-items:center;gap:10px;min-width:0}
+.os-office-section-title .os-h2{min-width:0;overflow-wrap:anywhere}
+.os-center-group.os-office-section{margin-block:14px}
+.os-center-group .os-office-section-body>.os-center-list{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.os-center-group .os-center-row{min-width:0}
+@media(min-width:1024px){
+ .os-center-group .os-office-section-body>.os-center-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
