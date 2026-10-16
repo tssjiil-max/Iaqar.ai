@@ -6,7 +6,7 @@
  * All read the office's own data (member-read by the rules); changes go through the Worker.
  */
 
-import { h, ic, clear, append, emptyState, pageHeader, surface, officeSection, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, emptyState, pageHeader, surface, officeSection, field, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { state, subscribe } from "../core/state.js";
@@ -89,15 +89,18 @@ export function renderInbox(container) {
 export function renderSearch(container, { query = "" } = {}) {
   const input = h("input", { class: "os-input", type: "search", inputmode: "search", autocomplete: "off", placeholder: "اسم، حي، نوع عقار، رقم جوال، سعر، مرجع…", "aria-label": "البحث الشامل", "data-search-input": "", value: query });
   const results = h("div", { "data-search-results": "" });
-  append(container, pageHead("البحث الشامل"), h("div", { class: "os-search" }, ic("search"), input), results);
+  append(container, pageHead("البحث الشامل"),
+    officeSection({ title: "ابحث في مكتبك", iconName: "search", description: "العروض والطلبات والمهام والصفقات والمستندات والرسائل." },
+      field("كلمة البحث", input, { hint: "اكتب اسمًا أو حيًا أو رقم جوال أو مرجعًا." })), results);
   const extra = { closed: [], documents: [], messages: [] };
   const mine = () => state.tasks.filter((task) => visibleToActor(task, { uid: session.user?.uid, isManager: session.isManager, officeId: session.officeId }));
 
   const draw = () => {
     clear(results);
     const found = searchOffice({ query: input.value, records: state.records, tasks: mine(), ...extra });
-    if (!found.ready) return append(results, h("p", { class: "os-sub", "data-search-hint": "", text: `اكتب ${MIN_QUERY} أحرف على الأقل. البحث يشمل العروض والطلبات والصفقات الجارية والمغلقة ومستندات المكتبة ورسائل مركز التواصل.` }));
-    if (!found.total) return append(results, emptyState("search", "لا توجد نتائج", `لم نجد ما يطابق «${found.query}». جرّب كلمة أقل أو تهجئة أخرى.`));
+    if (!found.ready) return append(results, surface("section", { "data-search-hint": "" },
+      emptyState("search", "ابدأ البحث", `اكتب ${MIN_QUERY} أحرف على الأقل لعرض النتائج من بيانات مكتبك.`)));
+    if (!found.total) return append(results, surface("section", {}, emptyState("search", "لا توجد نتائج", `لم نجد ما يطابق «${found.query}». جرّب كلمة أقل أو تهجئة أخرى.`)));
     append(results, h("p", { class: "os-sub", "data-search-total": String(found.total), text: `النتائج: ${found.total}` }));
     for (const group of found.groups) {
       append(results, officeSection({ title: group.label, iconName: "search", className: "os-center-group", count: group.count, attrs: { "data-search-group": group.id } },

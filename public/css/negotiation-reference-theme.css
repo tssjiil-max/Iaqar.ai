@@ -10,12 +10,12 @@
   --color-text: #0c1244;
   --color-text-muted: #6f7b93;
   --color-border: #e8f2fc;
-  --color-success: #056647;
+  --color-success: #23764B;
   --color-warning: #1f3c68;
-  --color-danger: #af2535;
+  --color-danger: #B03A3A;
   --color-info: #014188;
-  --color-success-soft: #d9f5e9;
-  --color-danger-soft: #ffe2e6;
+  --color-success-soft: #E8F5EE;
+  --color-danger-soft: #FBECEC;
   --color-warning-soft: #e2e9f3;
   --shadow-card: 0 8px 24px rgba(23, 88, 156, .08);
   --radius-card: 18px;

@@ -1,0 +1,10 @@
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_8rmwluomyfx","officeId":"office-alpha","at":"2026-10-16T06:45:19.182Z"}
+PASS mobile external بيع: opp_intake_8rmwluomyfx
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_uzxr845qist","officeId":"office-alpha","at":"2026-10-16T06:45:20.610Z"}
+PASS mobile external إيجار: opp_intake_uzxr845qist
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_ifyqwylnqo","officeId":"office-alpha","at":"2026-10-16T06:45:21.923Z"}
+PASS mobile external شراء: opp_intake_ifyqwylnqo
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_hudoy8ii2m8","officeId":"office-alpha","at":"2026-10-16T06:45:22.963Z"}
+PASS mobile external استئجار: opp_intake_hudoy8ii2m8
+PASS manager browser review and record metadata
+PASS legacy owner default, mobile overflow, no extra membership, no page errors

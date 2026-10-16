@@ -11,7 +11,9 @@ export async function resolveActor(deps, request, env, officeId) {
   return {
     uid: String(identity.uid || ""),
     role,
-    isManager: MANAGER_ROLES.has(role)
+    isManager: MANAGER_ROLES.has(role),
+    // Resolved from a signed-in person's token. Server-side automation never goes through here.
+    kind: "human"
   };
 }
 

@@ -81,16 +81,17 @@ try {
   await page.locator('[data-path="owner"]').click();
   await page.locator('[name="smartText"]').fill(REQUEST);
   await page.locator("[data-smart-analyze]").click();
-  await page.locator("[data-smart-review]").waitFor();
+  // «أبحث عن عقار» is the guest search: the pasted text moves with the visitor and is read at once.
+  await page.locator("[data-guest-search-form]").waitFor();
   assert.equal(await page.locator("h1.os-page-title").textContent(), "أبحث عن عقار");
   assert.match(await page.locator("[data-kind-notice]").first().textContent(), /أبحث عن عقار/);
-  assert.equal(await val("propertyType"), "عمارة");
-  assert.equal(await val("district"), "شوران، الهجرة، الرانوناء");
+  assert.equal(await page.locator('textarea[name="description"]').inputValue(), REQUEST, "the visitor's text is kept as written");
+  await page.waitForFunction(() => document.querySelector('[name=propertyType]')?.value === "عمارة");
   assert.equal((await val("price")).replace(/\D/g, ""), "2000000");
-  assert.equal(await page.getByRole("button", { name: "شراء", exact: true }).getAttribute("aria-pressed"), "true");
-  assert.equal(await page.locator('[data-validity-option="yes"]').getAttribute("aria-pressed"), "true");
-  assert.equal(await page.locator('[data-missing="المدينة"]').count(), 1, "city not written → marked, not invented");
-  pass("public: the spec example → request, عمارة, 3 districts, 2,000,000, شراء, مستعجل; city marked as missing (office city only suggested)");
+  assert.equal(await val("purpose"), "PURCHASE");
+  assert.equal(await val("district"), "شوران", "first named district fills the search; the others stay in the text");
+  assert.equal(await page.locator('[name="contactPhone"]').count(), 0, "no phone before a choice");
+  pass("public: a request pasted on «لدي عقار» → «أبحث عن عقار» with the same text, read at once: عمارة, شوران, 2,000,000, شراء");
   await page.screenshot({ path: `${out}/03-public-request-review.png`, fullPage: true });
   await page.setViewportSize({ width: 320, height: 720 });
   await noOverflow(page, "public request 320");
@@ -99,15 +100,17 @@ try {
 
   // ---------- public page: not real estate → kept, manual offered
   await page.goto(`${h.origin}/o/sultan`);
+  // «أبحث عن عقار» is the guest search (owner decision 2026-10-16); same guarantees, its own controls.
   await page.locator('[data-path="client"]').click();
-  await page.locator('[name="smartText"]').fill("السلام عليكم كيف الحال");
-  await page.locator("[data-smart-analyze]").click();
-  await page.locator("[data-go-manual]").waitFor();
-  assert.equal(await page.locator('[name="contactPhone"]').isVisible(), false);
-  await page.locator("[data-go-manual]").click();
-  assert.equal(await page.locator('[name="contactPhone"]').isVisible(), true);
-  await page.locator('[data-fill-mode="smart"]').click();
-  assert.equal(await page.locator('[name="smartText"]').inputValue(), "السلام عليكم كيف الحال");
+  await page.locator('textarea[name="description"]').fill("السلام عليكم كيف الحال");
+  await page.locator("[data-guest-analyze]").click();
+  await page.locator('[data-guest-search-form] .os-alert.bad').waitFor();
+  assert.ok((await page.locator('[data-guest-search-form] .os-alert.bad').innerText()).includes("أدخل المواصفات يدويًا"), "clear message");
+  assert.equal(await page.locator('[name="price"]').inputValue(), "", "nothing filled");
+  assert.equal(await page.locator('[name="propertyType"]').inputValue(), "", "nothing filled");
+  assert.equal(await page.locator('details[data-search-criteria]').getAttribute("open"), "", "manual criteria opened, one press away");
+  assert.equal(await page.locator('[name="contactPhone"]').count(), 0, "no phone asked before a choice");
+  assert.equal(await page.locator('textarea[name="description"]').inputValue(), "السلام عليكم كيف الحال", "text kept");
   pass("public: non-real-estate text → clear message, nothing filled, text kept, manual one press away");
 
   // ---------- office: «إضافة سريعة» with three ads

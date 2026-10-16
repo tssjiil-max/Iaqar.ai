@@ -4,7 +4,7 @@
  */
 
 import { botAskLine } from "./bot-settings.js";
-import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback, comparisonTable } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, surface, controlGroup, loadingState, feedback, comparisonTable, officeSection } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { api } from "../core/runtime.js";
 import { session } from "../core/session.js";
@@ -129,8 +129,10 @@ export function renderReview(container, { matchId }) {
         h("div", { style: { marginTop: "10px" } }, compareTable(offer, request))
       ),
       h("div", { class: "os-grid-2" },
-        reasons.length ? surface("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("check-circle"), "أسباب التوافق"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, reasons.map((r) => h("li", { class: "good" }, ic("check"), r)))) : null,
-        warnings.length ? surface("div", { class: "os-card" }, h("h3", { class: "os-h2" }, ic("alert"), "نقاط الاختلاف"), h("ul", { class: "os-list", style: { marginTop: "8px" } }, warnings.map((w) => h("li", { class: "warn" }, ic("alert"), w)))) : null
+        reasons.length ? officeSection({ title: "أسباب التوافق", iconName: "check-circle" },
+      h("ul", { class: "os-list", style: { marginTop: "8px" } }, reasons.map((r) => h("li", { class: "good" }, ic("check"), r)))) : null,
+        warnings.length ? officeSection({ title: "نقاط الاختلاف", iconName: "alert" },
+      h("ul", { class: "os-list", style: { marginTop: "8px" } }, warnings.map((w) => h("li", { class: "warn" }, ic("alert"), w)))) : null
       ),
       infoReplies,
       decided || superseded

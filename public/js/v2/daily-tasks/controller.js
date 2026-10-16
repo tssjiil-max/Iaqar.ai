@@ -189,7 +189,7 @@ function notify(message) {
     }, 3200);
     return;
   }
-  window.alert(message);
+  import("/os/core/ui.js").then(({ toast }) => toast(message)).catch(() => {});
 }
 
 function setExecState(button, next) {
@@ -880,7 +880,11 @@ async function runBrokerNegotiationAction(task, panel, action, button) {
     await updateAgreement(task, button.closest("[data-cv2-exec-task]"), button);
     return;
   }
-  if (action === "no_agreement" && !window.confirm("إنهاء هذه المطابقة دون اتفاق؟ سيبقى العرض والطلب متاحين لمطابقات أخرى.")) return;
+  if (action === "no_agreement") {
+    const { confirmDialog } = await import("/os/core/ui.js");
+    const ok = await confirmDialog({ title: "إنهاء هذه المطابقة دون اتفاق؟", text: "سيبقى العرض والطلب متاحين لمطابقات أخرى.", confirmLabel: "إنهاء المطابقة", cancelLabel: "تراجع", danger: true });
+    if (!ok) return;
+  }
   setExecState(button, "working");
   const preset = String(panel?.querySelector("[data-broker-preset]")?.value || "").trim();
   const note = String(panel?.querySelector("[data-broker-note]")?.value || "").trim();

@@ -1,0 +1,21 @@
+✔ the agent status stays accessible in the expandable office status panel
+✔ the agent is shown as off before the manager switches it on (never «يعمل» by default) — OFF
+✔ there are seeded decisions waiting — 5
+✔ no horizontal scroll: 01-home-card — 0px
+✔ «تحتاج تدخلك» comes first — NEEDS_YOU
+✔ home «تحتاج تدخلك» = the cards in that lane — 5 vs 5
+✔ home «بانتظار رد/يتابعها» = the cards in that lane — 0 vs 0
+✔ every card that needs the broker says why — 5/5
+✔ no card is listed twice across lanes
+✔ no horizontal scroll: 02-tasks-lanes — 0px
+✔ the home card opens Daily Tasks filtered on «تحتاج تدخلك» — NEEDS_YOU,NEEDS_YOU,NEEDS_YOU,NEEDS_YOU,NEEDS_YOU
+✔ no horizontal scroll: 03-tasks-needs-you — 0px
+✔ switched on: without a model key it says it works by rules, not «يعمل» — SETUP
+✔ no horizontal scroll: 04-settings — 0px
+✔ the office manager answers from the office's data with cards to open — عندك 5 معاملات تحتاج تدخلك، هذي أهمها:
+✔ a binding decision is refused in the chat
+✔ no horizontal scroll: 05-chat — 0px
+✔ no horizontal scroll: 06-home-320 — 0px
+✔ no browser console errors
+
+19/19 agent checks passed

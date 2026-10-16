@@ -1,0 +1,36 @@
+✔ office home has the «التعاون» card
+✔ the card shows a light summary only — 1 نشط · 2 بانتظار الرد
+✔ no horizontal scroll: 01-office-card — 0px
+✔ page title and subtitle
+✔ only three states: نشط · بانتظار رد · السجل
+✔ A (a party) sees its cooperation with the third office as نشط
+✔ card shows office, property · district, and whose turn it is
+✔ no horizontal scroll: 02-community-a — 0px
+✔ A's request goes to one office (REQUEST once)
+✔ B sees the request as «مطلوب منك الآن»
+✔ B never sees A's cooperation with the third office
+✔ no contact data on cards
+✔ no horizontal scroll: 03-community-b-incoming — 0px
+✔ accept (double click) creates one accepted cooperation, same id
+✔ accepted cooperation is under نشط for B
+✔ not suitable ends that cooperation (history), nothing else changes
+✔ two brokers by default: وسيط العرض + وسيط الطلب
+✔ default agreement is 50% / 50%
+✔ «وسيط مُحيل» is nowhere
+✔ no horizontal scroll: 04-details — 0px
+✔ a total other than 100 cannot be saved
+✔ agreement saved with who and when
+✔ participating broker comes from A's own office
+✔ third-broker shares must also total 100
+✔ third broker added as «وسيط مشارك»
+✔ at three brokers: «تم الوصول للحد الأعلى للتعاون», no add button
+✔ no horizontal scroll: 05-three-brokers — 0px
+✔ a fourth broker is refused by the service
+✔ an office that is not a party is refused (403)
+✔ B (has something to do) sees the cooperation task in Daily Tasks
+✔ A (only waiting) gets no informational cooperation task
+✔ no horizontal scroll: 06-b-daily-tasks — 0px
+✔ declined cooperation is in السجل
+✔ no browser console errors
+
+34/34 cooperation checks passed

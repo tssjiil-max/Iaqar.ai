@@ -2,6 +2,7 @@
  * Office library UI — organized contract folders per office.
  */
 
+import { confirmDialog } from "../os/core/ui.js";
 import {
   buildLibraryItem,
   countLibraryItemsByCategory,
@@ -526,7 +527,7 @@ function bindLibraryActions(root) {
     if (deleteId) {
       const runtime = officeRuntime();
       if (!runtime?.db) return;
-      if (!window.confirm("حذف هذا الملف من المكتبة؟")) return;
+      if (!(await confirmDialog({ title: "حذف هذا الملف من المكتبة؟", text: "لا يمكن التراجع عن الحذف.", confirmLabel: "حذف", danger: true }))) return;
       await runtime.db.collection("offices").doc(officeId())
         .collection("library").doc(deleteId).delete();
       setStatus("تم حذف الملف", "is-done");

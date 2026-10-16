@@ -1,0 +1,200 @@
+{
+  "results": [
+    {
+      "file": "complete.html",
+      "width": 320,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "admin/index.html",
+      "width": 320,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "scout-inbox.html",
+      "width": 320,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "legacy.html",
+      "width": 320,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "complete.html",
+      "width": 360,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "admin/index.html",
+      "width": 360,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "scout-inbox.html",
+      "width": 360,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "legacy.html",
+      "width": 360,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "complete.html",
+      "width": 390,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "admin/index.html",
+      "width": 390,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "scout-inbox.html",
+      "width": 390,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "legacy.html",
+      "width": 390,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "complete.html",
+      "width": 430,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "admin/index.html",
+      "width": 430,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "scout-inbox.html",
+      "width": 430,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "legacy.html",
+      "width": 430,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "complete.html",
+      "width": 768,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "admin/index.html",
+      "width": 768,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "scout-inbox.html",
+      "width": 768,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "legacy.html",
+      "width": 768,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "complete.html",
+      "width": 1024,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "admin/index.html",
+      "width": 1024,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "scout-inbox.html",
+      "width": 1024,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "legacy.html",
+      "width": 1024,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "complete.html",
+      "width": 1440,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "admin/index.html",
+      "width": 1440,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    },
+    {
+      "file": "scout-inbox.html",
+      "width": 1440,
+      "overflow": 0,
+      "headers": 1,
+      "rtl": "rtl"
+    },
+    {
+      "file": "legacy.html",
+      "width": 1440,
+      "overflow": 0,
+      "headers": 2,
+      "rtl": "rtl"
+    }
+  ]
+}

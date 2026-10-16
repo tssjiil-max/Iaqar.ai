@@ -314,16 +314,10 @@ details.os-more[open] > summary svg { transform: rotate(180deg); }
 details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); transition: transform .2s; }
 
 /* ---------- Sheet / dialog / toast ---------- */
-.os-overlay { position: fixed; inset: 0; background: rgba(8, 47, 58, .38); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
 .os-sheet { background: var(--bg); width: 100%; max-width: 760px; max-height: 92vh; overflow: auto; border-radius: 22px 22px 0 0; padding: 10px var(--gutter) 22px; box-shadow: var(--shadow-strong); }
 .os-sheet-grip { width: 44px; height: 5px; border-radius: 3px; background: var(--line-strong); margin: 2px auto 10px; }
 .os-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.os-dialog { background: #fff; border-radius: 20px; max-width: 420px; width: calc(100% - 32px); margin: auto; padding: 18px; box-shadow: var(--shadow-strong); }
-.os-overlay.center { align-items: center; }
-.os-toast { position: fixed; inset-inline: 16px; bottom: 18px; z-index: 80; margin: 0 auto; max-width: 520px; background: var(--navy); color: #fff; border-radius: 14px; padding: 12px 14px; box-shadow: var(--shadow-strong); font-weight: var(--fw-semi); font-size: var(--fs-sm); line-height: 1.6; display: flex; gap: 8px; align-items: center; }
-.os-toast svg { width: 24px; height: 24px; flex: none; }
-.os-toast.bad { background: var(--bad); }
-.os-toast.ok { background: #0f7c4c; }
+/* Confirmation dialogs and toasts: see os/feedback.css (single source for every surface). */
 
 .os-menu { display: grid; gap: 6px; }
 .os-menu button, .os-menu a { min-height: 50px; border: 0; background: var(--surface); border-radius: 14px; display: flex; align-items: center; gap: 10px; padding: 0 14px; font-weight: 600; color: var(--navy); text-decoration: none; box-shadow: var(--shadow); }
@@ -1148,3 +1142,12 @@ details.os-more > summary svg { width: 18px; height: 18px; color: var(--ico); tr
 /* Keyboard focus: one ring everywhere. */
 .os-btn:focus-visible, .os-chip:focus-visible, .os-seg button:focus-visible, .os-option:focus-visible, .os-back:focus-visible, .os-icon-btn:focus-visible { outline: 3px solid var(--brand-soft); outline-offset: 2px; }
 
+
+/* Checkboxes and radios: one native control size and brand tint on every office surface.
+   :where() keeps specificity at zero, so component rules (.os-pref-row, .os-office-check, …) still win. */
+:where(.os-app, .os-session-app, .os-sheet, .os-dialog) input:where([type="checkbox"], [type="radio"]) {
+  width: 22px; height: 22px; flex: none; accent-color: var(--brand-primary, #03677A); cursor: pointer;
+}
+:where(.os-app, .os-session-app, .os-sheet, .os-dialog) input:where([type="checkbox"], [type="radio"]):focus-visible {
+  outline: 3px solid #9bcad2; outline-offset: 2px;
+}

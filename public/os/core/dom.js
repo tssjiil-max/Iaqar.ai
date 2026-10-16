@@ -47,13 +47,22 @@ export function btn(label, { kind = "primary", iconName = "", chevron = false, b
 }
 
 export function field(label, control, { hint = "", error = "", optional = false } = {}) {
-  const wrap = h("label", { class: `os-field${error ? " invalid" : ""}` },
+  const wrap = h("label", { class: `os-field${error && !(error instanceof Node) ? " invalid" : ""}`, 'data-ui': 'form-field' },
     h("span", {}, label, optional ? h("small", { text: " (اختياري)" }) : null),
     control,
-    hint ? h("small", { text: hint }) : null,
-    h("span", { class: "os-error", role: "alert", text: error || "" })
+    hint instanceof Node ? hint : hint ? h("small", { class: 'os-field-note', text: hint }) : null,
+    error instanceof Node ? error : h("span", { class: "os-error", role: "alert", text: error || "" })
   );
   return wrap;
+}
+
+/** Layout only: keep the original controls, names, values and event handlers. */
+export function formGrid(...fields) {
+  return h('div', { class: 'os-form-grid', 'data-ui': 'form-grid' }, ...fields);
+}
+
+export function actionBar(...actions) {
+  return controlGroup('div', { class: 'os-action-bar', 'aria-label': 'الإجراءات' }, ...actions);
 }
 
 export function setFieldError(root, name, message) {
@@ -113,19 +122,28 @@ export function surface(tag = 'section', props = {}, ...children) {
 }
 
 /** Shared semantic section: same title/icon/description hierarchy across office tools. */
-export function officeSection({ title, iconName = 'office', description = '', className = '', attrs = {}, count = null }, ...children) {
-  return surface('section', { ...attrs, class: `os-office-section ${className}`.trim(), 'aria-label': title },
+export function officeSection({ title, iconName = 'office', description = '', className = '', attrs = {}, count = null, accessory = null }, ...children) {
+  const tone = ({ office: 'blue', shield: 'gold', offers: 'green', search: 'purple', photos: 'purple', link: 'purple', pin: 'green', bell: 'gold' })[iconName] || 'blue';
+  return surface('section', { ...attrs, class: `os-office-section tone-${tone} ${className}`.trim(), 'aria-label': attrs['aria-label'] || title },
     h('header', { class: 'os-office-section-head' },
       h('span', { class: 'os-page-icon', 'aria-hidden': 'true' }, ic(iconName)),
       h('div', { class: 'os-office-section-copy' },
-        h('div', { class: 'os-office-section-title' }, h('h2', { class: 'os-h2', text: title }), count === null ? null : h('span', { class: 'os-center-count', text: String(count) })),
+        h('div', { class: 'os-office-section-title' }, h('h2', { class: 'os-h2', text: title }), count === null ? null : h('span', { class: 'os-center-count', text: String(count) }), accessory),
         description ? h('p', { class: 'os-sub', text: description }) : null)),
     h('div', { class: 'os-office-section-body' }, ...children));
 }
 
 /** The same icon / title / supporting line hierarchy used by office tool tiles. */
-export function navigationTile({ title, hint = '', iconName = 'office', tone = 'blue', attrs = {}, onClick }) {
-  return h('button', { ...attrs, type: 'button', class: `os-set-row ref-reference-tool ref-office-tool tone-${tone}`, 'data-ui': 'navigation-tile', onClick },
+export function navigationTile({ title, hint = '', iconName = 'office', tone = 'blue', attrs = {}, onClick, href = '' }) {
+  // Links keep native browser navigation; action tiles remain buttons.
+  // Both variants share the same semantic content slots and visual geometry.
+  const isLink = Boolean(href);
+  return h(isLink ? 'a' : 'button', {
+    ...attrs,
+    ...(isLink ? { href } : { type: 'button', onClick }),
+    class: `os-set-row ref-reference-tool ref-office-tool tone-${tone} ${attrs.class || ''}`.trim(),
+    'data-ui': 'navigation-tile'
+  },
     h('span', { class: 'ref-reference-icon os-set-icon', 'aria-hidden': 'true' }, ic(iconName)),
     h('span', { class: 'ref-reference-copy os-set-text' }, h('strong', { text: title }), hint ? h('small', { text: hint }) : null),
     ic('chev-left'));
@@ -166,5 +184,8 @@ export function feedback(props = {}, ...children) {
 export function comparisonTable({ label, columns, rows, className = 'os-compare' }) {
   return h('table', { class: className, 'data-ui': 'comparison-table', 'aria-label': label },
     h('thead', {}, h('tr', {}, columns.map(text => h('th', { scope: 'col', text })))),
-    h('tbody', {}, rows.map(cells => h('tr', {}, cells.map(cell => h('td', {}, cell))))));
+    h('tbody', {}, rows.map(row => {
+      const cells = Array.isArray(row) ? row : row.cells;
+      return h('tr', Array.isArray(row) ? {} : row.attrs || {}, cells.map(cell => h('td', {}, cell)));
+    })));
 }

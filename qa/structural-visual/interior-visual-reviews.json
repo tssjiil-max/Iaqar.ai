@@ -1,0 +1,53 @@
+{
+  "sourceCommit": "730d299b2b26e399434b317493760a7051f3b29b",
+  "reviews": [
+    {
+      "name": "settings-profile",
+      "width": 390,
+      "reviewer": "Codex visual inspection",
+      "status": "selected-comparison-reviewed; full release acceptance still incomplete",
+      "beforeSha256": "5d07871c9e3d66f77006db7f48b4af774a1f608ff161779de62c150388d0d2a3",
+      "afterSha256": "fa2fe03030dd99151114d6b51c0e23e23cef64e4ed93943baaa768b4862da3d5"
+    },
+    {
+      "name": "market",
+      "width": 390,
+      "reviewer": "Codex visual inspection",
+      "status": "selected-comparison-reviewed; full release acceptance still incomplete",
+      "beforeSha256": "316baf4fe3f7ed26813ec19c55d7a67b6d2c794906ee843ddc746aa5376c0de6",
+      "afterSha256": "5818595e91828993a73e25168993a8aea6ddf9784fe44a1b279f2e3622062e0c"
+    },
+    {
+      "name": "new-offer-manual",
+      "width": 390,
+      "reviewer": "Codex visual inspection",
+      "status": "selected-comparison-reviewed; full release acceptance still incomplete",
+      "beforeSha256": "ca36457f509ab43fdf5654225d60f1fbbb14db55a91baf1681552d6fb9ed9b3d",
+      "afterSha256": "94d08d6d6b0572819b37ffe4ad0ad552c4797c48ccd14d6264c003747878cd80"
+    },
+    {
+      "name": "session",
+      "width": 390,
+      "reviewer": "Codex visual inspection",
+      "status": "selected-comparison-reviewed; full release acceptance still incomplete",
+      "beforeSha256": "a2b6a3dd44e9279c813090cf50306c4449e2138bb03d4b51ec374736fe2883a7",
+      "afterSha256": "672df3356a2898be8c521920635230b42f3a3983e7d299beb1d87c643a18bd13"
+    },
+    {
+      "name": "public-request-manual",
+      "width": 1440,
+      "reviewer": "Codex visual inspection",
+      "status": "selected-comparison-reviewed; full release acceptance still incomplete",
+      "beforeSha256": "8746a80937229a800e3a48967189783991ba122ec19e20acfa7ab0f13e510151",
+      "afterSha256": "8067ff5019d0d5c1df411929e98ce732c5eef15637d8daf77b31cc8fb0a74ae1"
+    },
+    {
+      "name": "scout-new",
+      "width": 390,
+      "reviewer": "Codex visual inspection",
+      "status": "selected-comparison-reviewed; full release acceptance still incomplete",
+      "beforeSha256": "1e961a76795a9c8ab03209b97072470a579fb13251a7d6e179f4ab506e9b1c83",
+      "afterSha256": "1cf3541cc13251d8dbcf6ae440f5c44ee7a0721ea6ee1f8cbba5eef8f0e140d8"
+    }
+  ]
+}

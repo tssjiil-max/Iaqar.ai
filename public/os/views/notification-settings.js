@@ -1,7 +1,7 @@
 /** «الإشعارات» — which kinds of notifications this office / this account receives. */
 
 import { brokerAlertsCard } from "./bot-settings.js";
-import { h, ic, clear, append, pageHeader, surface, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, pageHeader, officeSection, actionBar, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { runAction } from "../core/ui.js";
@@ -25,15 +25,15 @@ export function renderNotificationSettings(container) {
     const save = h("button", { type: "button", class: "os-btn primary block", "data-pref-save": "" }, ic("check"), "حفظ تفضيلات الإشعارات");
     save.addEventListener("click", () => runAction(save, async () => {
       const result = await saveNotificationPrefs(Object.fromEntries(Object.entries(boxes).map(([k, el]) => [k, el.checked])));
-      status.className = "os-alert ok";
-      status.textContent = result.scope === "office" ? "تم حفظ تفضيلات الإشعارات لهذا المكتب" : "تم الحفظ لحسابك فقط. يطبّق مدير المكتب تفضيلات المكتب على الإشعارات.";
+      status.className = "os-alert ok os-feedback";
+      status.querySelector(".os-feedback-copy").textContent = result.scope === "office" ? "تم حفظ تفضيلات الإشعارات لهذا المكتب" : "تم الحفظ لحسابك فقط. يطبّق مدير المكتب تفضيلات المكتب على الإشعارات.";
       status.hidden = false;
-    }, { success: "تم الحفظ", onError: () => { status.className = "os-alert bad"; status.textContent = "تعذر حفظ تفضيلات الإشعارات"; status.hidden = false; } }));
+    }, { success: "تم الحفظ", onError: () => { status.className = "os-alert bad os-feedback"; status.querySelector(".os-feedback-copy").textContent = "تعذر حفظ تفضيلات الإشعارات"; status.hidden = false; } }));
     append(body,
-      surface("div", { class: "os-card" },
-        h("p", { class: "os-sub", text: "تُحفظ لهذا المكتب ولحسابك، ولا تصل إشعارات هذا المكتب إلى أي مكتب آخر. إيقاف نوع هنا يمنع إرساله من الخادم أيضًا." }),
+      officeSection({ title: "أنواع الإشعارات", iconName: "bell",
+        description: "تُحفظ لهذا المكتب ولحسابك. إيقاف النوع هنا يمنع إرساله من الخادم أيضًا." },
         h("div", { class: "os-pref-list" }, rows)),
-      status, save,
+      status, actionBar(save),
       brokerAlertsCard());
   }).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر قراءة تفضيلات الإشعارات لهذا المكتب" })); });
   return null;

@@ -1,6 +1,6 @@
 /** تفاصيل التعاون: الوسطاء (وسيط العرض · وسيط الطلب · وسيط مشارك) واتفاق نسب العمولة. */
 
-import { h, ic, append, clear, surface, loadingState } from "../core/dom.js";
+import { h, ic, append, clear, surface, loadingState, officeSection } from "../core/dom.js";
 import { session } from "../core/session.js";
 import { listMembers } from "../core/live.js";
 import { runAction, openSheet } from "../core/ui.js";
@@ -55,7 +55,8 @@ export function openCooperationDetails(view, { onChanged } = {}) {
       h("li", { "data-broker-role": row.role },
         ic(row.role === BROKER_ROLE.PARTICIPATING_BROKER ? "user" : "broker"),
         h("span", {}, h("b", { text: row.label }), h("small", { text: [officeLabel(view, row.officeId), row.name].filter(Boolean).join(" · ") })))));
-    return surface("section", { class: "os-card" }, h("h3", { class: "os-h2", text: `الوسطاء (${cooperationBrokerCount(record)} من ${HARD_MAX_BROKERS_PER_COOPERATION})` }), list);
+    return officeSection({ title: `الوسطاء (${cooperationBrokerCount(record)} من ${HARD_MAX_BROKERS_PER_COOPERATION})`, iconName: 'broker' },
+      list);
   }
 
   function commissionSection() {
@@ -66,7 +67,9 @@ export function openCooperationDetails(view, { onChanged } = {}) {
     const note = current.agreed
       ? `آخر اتفاق: ${record.commissionAgreementUpdatedAt ? formatDateTime(record.commissionAgreementUpdatedAt) : ""}`.trim()
       : "نسب مبدئية قابلة للتعديل والاتفاق بين الطرفين، وليست حكمًا ملزمًا.";
-    const section = surface("section", { class: "os-card" }, h("h3", { class: "os-h2", text: "اتفاق التعاون" }), h("div", { class: "os-shares" }, rows), h("p", { class: "os-field-note", text: note }));
+    const section = officeSection({ title: "اتفاق التعاون", iconName: 'broker' },
+      h("div", { class: "os-shares" }, rows),
+      h("p", { class: "os-field-note", text: note }));
     if (view.active) {
       const edit = h("button", { type: "button", class: "os-btn secondary", "data-edit-commission": "" }, ic("edit"), "تعديل النسب");
       edit.addEventListener("click", () => {
@@ -79,9 +82,10 @@ export function openCooperationDetails(view, { onChanged } = {}) {
           Object.assign(record, valid, { commissionAgreementUpdatedAt: new Date().toISOString(), commissionAgreementUpdatedBy: session.user?.uid || "" });
           redraw(); onChanged?.();
         }, { success: "تم حفظ اتفاق التعاون" }));
-        clear(section); append(section, h("h3", { class: "os-h2", text: "اتفاق التعاون" }), editor.box, error, save);
+        const content = section.querySelector(".os-office-section-body");
+        clear(content); append(content, editor.box, error, save);
       });
-      section.append(edit);
+      section.querySelector(".os-office-section-body").append(edit);
     }
     return section;
   }

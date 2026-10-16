@@ -2,6 +2,7 @@
  * استيراد إعلان — واجهة المستخدم والحفظ الفعلي في العروض والطلبات.
  */
 
+import { confirmDialog } from "../os/core/ui.js";
 import {
   ATTACHMENT_ACCEPT,
   createExtractionAdapter,
@@ -819,7 +820,7 @@ async function onDuplicateUpdate() {
 }
 
 async function onDuplicateSaveNew() {
-  const confirmed = window.confirm("هل تريد حفظ هذا الإعلان كفرصة جديدة رغم وجود فرصة مشابهة؟");
+  const confirmed = await confirmDialog({ title: "حفظ كفرصة جديدة؟", text: "توجد فرصة مشابهة. هل تريد حفظ هذا الإعلان كفرصة جديدة رغم ذلك؟", confirmLabel: "حفظ كفرصة جديدة" });
   if (!confirmed) return;
   closeDuplicateOverlay();
   await finalizeImportSave({ forceNew: true });

@@ -3,20 +3,38 @@ import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import { chromium } from 'playwright';
 import { startOfficeOsHarness, OFFICE_A, OWNER_A, BROKER_A2 } from './server.mjs';
-import { seedStates } from './seed.mjs';
+import { seedStates, callWorker } from './seed.mjs';
 const variant=process.env.VARIANT||'after';
 const out=`qa/structural-visual/${variant}`;fs.mkdirSync(out,{recursive:true});
 const harness=await startOfficeOsHarness();const seed=await seedStates(harness);
+let scoutDetails=null;
+if(process.env.SCOUT_DETAILS){
+ await callWorker(harness,'/os/scout/settings',{officeId:OFFICE_A,settings:{enabled:true,city:'الرياض'}});
+ const search=await callWorker(harness,'/os/scout/search',{officeId:OFFICE_A,requestKey:'visual-scout-search',search:{mode:'GENERAL',seek:'OFFER',tx:'sale',city:'الرياض',districts:'الملقا',propertyTypes:['شقة']}});
+ await callWorker(harness,'/os/scout/feed',{officeId:OFFICE_A,text:'للبيع شقة في حي الملقا بالرياض مساحة 240 متر السعر مليون و200 ألف للتواصل 0559000222'});
+ const find=harness.store.list(`offices/${OFFICE_A}/scoutOpportunities`).find(f=>f.surface==='SHOWN');
+ assert.ok(search.taskId&&find?.id,'scout detail fixtures must exist through the Worker API');
+ scoutDetails={task:search.taskId,find:find.id};
+}
 const screens=[
  ['office','office'],['tasks','tasks'],['repository','repo'],['task',`task/${seed.reviewTaskId}`],
  ['record',`record/${seed.review.offerId}`],['record-edit',`record/${seed.review.offerId}/edit`],['new-offer','record/new?kind=OFFER'],['new-request','record/new?kind=REQUEST'],['quick-add','quick-add'],
  ['review',`review/${seed.review.matchId}`],['journey',`journey/${seed.negotiation.journeyId}`],['viewing',`journey/${seed.viewingResult.journeyId}`],['deal',`deal/${seed.negotiation.journeyId}`],['session',`session/${seed.negotiation.journeyId}`],
  ['scout','scout'],['scout-new','scout/new'],['agent','agent'],['agent-try','agent/try'],['library','library'],['search','search'],['inbox','inbox'],['audit','audit'],['community','community'],
+ ['search-results','search?q=الملقا'],['search-empty','search?q=ززززلايوجد'],
+ ['new-offer-manual','record/new?kind=OFFER'],['new-request-manual','record/new?kind=REQUEST'],
  ...['calculator','forms','guide','services','market'].map(n=>[n,`tools/${n}`]),
  ['settings','settings'],...['profile','link','channels','cooperation','agent','scout','notifications','brokers'].map(n=>[`settings-${n}`,`settings/${n}`]),
  ['missing-record','record/missing-record'],['missing-review','review/missing-match'],['missing-journey','journey/missing-journey'],['missing-scout','scout/opp/so_missing0000'],
- ['broker-settings','settings/profile',BROKER_A2],['login','',false],['register','register',false],['public','/m/sultan',false],['public-owner','/m/sultan?kind=owner',false]
+ ['broker-settings','settings/profile',BROKER_A2],['login','',false],['register','register',false],['public','/m/sultan',false],['public-owner','/m/sultan?kind=owner',false],
+ ['public-owner-manual','/m/sultan',false],['public-request-manual','/m/sultan',false]
 ];
+if(scoutDetails)screens.push(['scout-find',`scout/opp/${scoutDetails.find}`],['scout-task',`scout/task/${scoutDetails.task}`]);
+if(process.env.PARTY_PAGES){
+ const links=(await callWorker(harness,'/os/session/links',{officeId:OFFICE_A,journeyId:seed.negotiation.journeyId})).links;
+ const token=url=>String(url).split('#')[1];
+ screens.push(['party-owner',`/s#${token(links.owner.url)}`,false],['party-client',`/s#${token(links.client.url)}`,false],['party-reply',`/r#${seed.negotiation.ownerReplyToken}`,false]);
+}
 const originals=new Map();
 const browser=await chromium.launch();const results=[],errors=[];
 try{
@@ -24,19 +42,26 @@ try{
   for(const [name,route,user=OWNER_A]of screens.filter(([name])=>!process.env.SCREEN||new RegExp(process.env.SCREEN).test(name))){
    const ctx=await browser.newContext({viewport:{width,height:900},locale:'ar-SA',reducedMotion:'reduce'});
    if(user)await ctx.addInitScript(([u,o])=>{localStorage.setItem('harness.uid',u);localStorage.setItem('iaqar.officeId',o)},[user,OFFICE_A]);
-   if(variant==='before')await ctx.route('**/os/**',async route=>{
+   if(variant==='before'||process.env.SOURCE_REF)await ctx.route('**/os/**',async route=>{
     const pathname=new URL(route.request().url()).pathname;
-    if(!originals.has(pathname)){try{originals.set(pathname,execFileSync('git',['show',`d61f38e:public${pathname}`],{encoding:'utf8',stdio:['ignore','pipe','ignore']}))}catch{originals.set(pathname,null)}}
+    if(!originals.has(pathname)){try{originals.set(pathname,execFileSync('git',['show',`${process.env.SOURCE_REF||'d61f38e'}:public${pathname}`],{encoding:'utf8',stdio:['ignore','pipe','ignore']}))}catch{originals.set(pathname,null)}}
     const body=originals.get(pathname);if(body!==null)await route.fulfill({contentType:pathname.endsWith('.css')?'text/css':'text/javascript',body});else await route.continue();
    });
    const page=await ctx.newPage();page.on('pageerror',e=>errors.push(`${name}/${width}: ${e.message}`));
    await page.goto(harness.origin+(route.startsWith('/')?route:`/#/${route}`));
    await page.locator('.os-app').waitFor();await page.waitForTimeout(300);await page.evaluate(()=>document.fonts.ready);
-   if(name==='public-owner'){await page.getByRole('button',{name:/لدي عقار/}).click();await page.locator('textarea').first().waitFor();}
+   if(name==='public-owner'||name==='public-owner-manual'){await page.getByRole('button',{name:/لدي عقار/}).click();await page.locator('textarea').first().waitFor();}
+   if(name==='public-request-manual'){await page.getByRole('button',{name:/أبحث عن عقار/}).click();await page.locator('textarea').first().waitFor();}
+   if(name.endsWith('-manual')){await page.locator('[data-fill-mode="manual"]').click();await page.locator('input[name="propertyType"]').waitFor({state:'visible'});}
+   if(name==='search-results')await page.locator('[data-search-group]').first().waitFor();
+   if(name==='search-empty')await page.locator('.os-empty',{hasText:'لا توجد نتائج'}).waitFor();
+   if(name==='scout-find')await page.locator('[data-find-why]').waitFor();
+   if(name==='scout-task')await page.locator('[data-task-status]').waitFor();
+   if(name==='party-owner'||name==='party-client')await page.locator('[data-room-part="property"]').waitFor();
    const metrics=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,headers:document.querySelectorAll('[data-ui="page-header"]').length,headings:document.querySelectorAll('.os-page-head').length,surfaces:document.querySelectorAll('[data-ui="surface"]').length,cards:document.querySelectorAll('.os-card').length,tiles:document.querySelectorAll('[data-ui="navigation-tile"]').length,rtl:document.documentElement.dir}));
    results.push({name,route,width,...metrics});
    await page.screenshot({path:`${out}/${name}-${width}.png`,fullPage:true});
-   if(variant==='after'){
+   if(variant!=='before'&&!process.env.SOURCE_REF){
     assert.ok(metrics.overflow<=1,`${name}/${width} overflow ${metrics.overflow}`);
     assert.equal(metrics.rtl,'rtl');
     assert.equal(metrics.headers,metrics.headings,`${name} all page heads use shared composition`);

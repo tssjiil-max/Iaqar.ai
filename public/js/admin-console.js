@@ -1,3 +1,4 @@
+import { h, officeSection, field, formGrid, actionBar, emptyState, loadingState } from "../os/core/dom.js";
 import { AdminApi, MAIN_VIEWS, OFFICE_TABS, formatDate, suggestOfficeId } from "./admin-api.js";
 
 const state = {
@@ -45,6 +46,26 @@ function escapeHtml(value) {
 }
 
 
+// Escaped record markup remains in its original body; sections use the same
+// composition as office settings. Moving controls preserves IDs and handlers.
+function renderSection(title, markup, iconName = "office") {
+  const body = h("div", { class: "os-admin-content" });
+  body.innerHTML = markup;
+  els.viewRoot.replaceChildren(officeSection({ title, iconName }, body));
+}
+function adminControl(label, tag, attrs) {
+  const control = h(tag, attrs);
+  return field(label, control);
+}
+function labelControl(control, label) {
+  const slot = document.createComment("form-field");
+  control.replaceWith(slot);
+  slot.replaceWith(field(label, control));
+}
+function adminAction(label, id, danger = false) {
+  return h("button", { id, type: "button", class: `btn ${danger ? "danger" : "secondary"}` }, label);
+}
+
 function renderMainNav() {
   els.mainNav.innerHTML = MAIN_VIEWS.map((item) =>
     `<button type="button" data-view="${item.id}" class="${state.view === item.id ? "active" : ""}">${item.label}</button>`
@@ -61,10 +82,7 @@ function renderMainNav() {
 async function renderOverview() {
   const payload = await api.overview();
   const o = payload.overview || {};
-  els.viewRoot.innerHTML = `
-    <div class="card">
-      <h2>نظرة عامة</h2>
-      <div class="grid">
+  renderSection("نظرة عامة", `<div class="grid">
         ${stat("إجمالي المكاتب", o.totalOffices)}
         ${stat("طلبات بانتظار الاعتماد", o.pendingApprovals)}
         ${stat("المكاتب المعتمدة", o.approvedOffices)}
@@ -74,8 +92,7 @@ async function renderOverview() {
         ${stat("تراخيص منتهية", o.expiredLicenses)}
         ${stat("نشطة آخر 7 أيام", o.activeLast7Days)}
         ${stat("غير نشطة آخر 30 يوم", o.inactiveLast30Days)}
-      </div>
-    </div>`;
+      </div>`);
 }
 
 function stat(label, value) {
@@ -137,7 +154,8 @@ function renderOfficeItem(item) {
 }
 
 async function renderOffices() {
-  els.viewRoot.innerHTML = `<div class="card"><h2>إدارة المكاتب</h2>${officeTabsHtml()}${officeToolbarHtml()}<div id="officeList"><p>جارٍ التحميل...</p></div></div>`;
+  renderSection("إدارة المكاتب", `${officeTabsHtml()}${officeToolbarHtml()}<div id="officeList"></div>`);
+  document.getElementById("officeList").replaceChildren(loadingState());
   const listNode = document.getElementById("officeList");
   els.viewRoot.querySelectorAll("[data-tab]").forEach((button) => {
     button.onclick = () => {
@@ -147,6 +165,8 @@ async function renderOffices() {
   });
   const searchInput = document.getElementById("officeSearch");
   const sortSelect = document.getElementById("officeSort");
+  labelControl(searchInput, "البحث عن مكتب");
+  labelControl(sortSelect, "ترتيب المكاتب");
   searchInput.onchange = () => { state.search = searchInput.value; renderOffices(); };
   sortSelect.onchange = () => { state.sort = sortSelect.value; renderOffices(); };
 
@@ -159,7 +179,8 @@ async function renderOffices() {
   const items = Array.isArray(payload.items) ? payload.items : [];
   listNode.innerHTML = items.length
     ? items.map(renderOfficeItem).join("")
-    : "<p>لا توجد سجلات في هذا القسم.</p>";
+    : "";
+  if (!items.length) listNode.append(emptyState("office", "لا توجد سجلات في هذا القسم.", "جرّب تبويبًا آخر أو غيّر البحث."));
 
   listNode.querySelectorAll("[data-approve],[data-reject]").forEach((button) => {
     button.onclick = async () => {
@@ -204,11 +225,8 @@ async function openOfficeDetail(officeId) {
   const act = activity.activity || {};
   const notes = Array.isArray(detail.notes) ? detail.notes : [];
   const audit = Array.isArray(detail.audit) ? detail.audit : [];
-  els.viewRoot.innerHTML = `
-    <div class="card">
-      <button class="btn secondary" id="backToOffices" type="button">← رجوع إلى المكاتب</button>
-      <h2>${escapeHtml(office.officeName || officeId)}</h2>
-      <div class="meta">
+  const identity = h("div");
+  identity.innerHTML = `      <div class="meta">
         رمز المكتب: ${escapeHtml(officeId)}<br>
         المرخص له: ${escapeHtml(office.brokerName || "")}<br>
         الجوال: ${escapeHtml(office.phone || "")} · فال: ${escapeHtml(office.licenseNumber || "")}<br>
@@ -219,33 +237,34 @@ async function openOfficeDetail(officeId) {
         آخر نشاط: ${formatDate(act.lastActivityAt || office.lastActivityAt)}<br>
         الحساب: ${escapeHtml(office.accountStatus)} · النشاط: ${escapeHtml(act.activityLevel || "غير نشط")}
       </div>
-      <div class="toolbar" style="margin-top:12px">
-        <input id="suspendReason" placeholder="سبب الإيقاف (مطلوب للإيقاف)">
-        <div class="row-actions">
-          <button class="btn danger" id="suspendBtn" type="button">إيقاف المكتب</button>
-          <button class="btn secondary" id="reactivateBtn" type="button">إعادة التفعيل</button>
-        </div>
-        <select id="subscriptionStatus">
-          <option value="trial">تجريبي</option>
-          <option value="active">نشط</option>
-          <option value="expiring">ينتهي قريبًا</option>
-          <option value="expired">منتهي</option>
-          <option value="none">بدون</option>
-        </select>
-        <input id="subscriptionExpiresAt" type="date">
-        <button class="btn secondary" id="saveSubscriptionBtn" type="button">حفظ الاشتراك</button>
-        <input id="licenseExpiresAt" type="date">
-        <button class="btn secondary" id="saveLicenseBtn" type="button">حفظ الترخيص</button>
-        <textarea id="adminNote" placeholder="ملاحظة إدارية"></textarea>
-        <button class="btn secondary" id="saveNoteBtn" type="button">إضافة ملاحظة</button>
-      </div>
-      <h2>النشاط</h2>
-      <div class="meta">${renderActivityLines(act)}</div>
-      <h2>الملاحظات الإدارية</h2>
-      ${notes.length ? notes.map((note) => `<div class="list-item"><div class="meta">${escapeHtml(note.note)}<br>${formatDate(note.createdAt)}</div></div>`).join("") : "<p>لا توجد ملاحظات.</p>"}
-      <h2>السجل الإداري</h2>
-      ${audit.length ? audit.map((row) => `<div class="list-item"><div class="meta">${escapeHtml(row.action)} · ${formatDate(row.performedAt)}<br>${escapeHtml(row.reason || "")}</div></div>`).join("") : "<p>لا توجد أحداث.</p>"}
-    </div>`;
+`;
+  const subscriptionStatus = h("select", { id: "subscriptionStatus" },
+    ...[["trial", "تجريبي"], ["active", "نشط"], ["expiring", "ينتهي قريبًا"], ["expired", "منتهي"], ["none", "بدون"]]
+      .map(([value, label]) => h("option", { value }, label)));
+  const history = h("div");
+  history.innerHTML = notes.map((note) => `<div class="list-item"><div class="meta">${escapeHtml(note.note)}<br>${formatDate(note.createdAt)}</div></div>`).join("");
+  if (!notes.length) history.append(emptyState("clipboard", "لا توجد ملاحظات.", ""));
+  const auditList = h("div");
+  auditList.innerHTML = audit.map((row) => `<div class="list-item"><div class="meta">${escapeHtml(row.action)} · ${formatDate(row.performedAt)}<br>${escapeHtml(row.reason || "")}</div></div>`).join("");
+  if (!audit.length) auditList.append(emptyState("clipboard", "لا توجد أحداث.", ""));
+  const activityBody = h("div", { class: "meta" });
+  activityBody.innerHTML = renderActivityLines(act);
+  els.viewRoot.replaceChildren(
+    actionBar(adminAction("رجوع إلى المكاتب", "backToOffices")),
+    h("div", { class: "os-office-sections os-admin-sections" },
+      officeSection({ title: office.officeName || officeId, iconName: "office" }, identity,
+        adminControl("سبب الإيقاف", "input", { id: "suspendReason", placeholder: "سبب الإيقاف (مطلوب للإيقاف)" }),
+        actionBar(adminAction("إيقاف المكتب", "suspendBtn", true), adminAction("إعادة التفعيل", "reactivateBtn"))),
+      officeSection({ title: "الاشتراك والترخيص", iconName: "shield" },
+        formGrid(field("حالة الاشتراك", subscriptionStatus), adminControl("انتهاء الاشتراك", "input", { id: "subscriptionExpiresAt", type: "date" })),
+        actionBar(adminAction("حفظ الاشتراك", "saveSubscriptionBtn")),
+        adminControl("انتهاء الترخيص", "input", { id: "licenseExpiresAt", type: "date" }),
+        actionBar(adminAction("حفظ الترخيص", "saveLicenseBtn"))),
+      officeSection({ title: "النشاط", iconName: "clipboard" }, activityBody),
+      officeSection({ title: "الملاحظات الإدارية", iconName: "clipboard" }, history,
+        adminControl("ملاحظة إدارية", "textarea", { id: "adminNote", placeholder: "ملاحظة إدارية" }),
+        actionBar(adminAction("إضافة ملاحظة", "saveNoteBtn"))),
+      officeSection({ title: "السجل الإداري", iconName: "clipboard" }, auditList)));
   document.getElementById("backToOffices").onclick = () => {
     state.view = "offices";
     renderMainNav();
@@ -299,13 +318,15 @@ function renderActivityLines(act) {
 }
 
 async function renderActivityView() {
-  els.viewRoot.innerHTML = `<div class="card"><h2>نشاط المكاتب</h2>
+  renderSection("نشاط المكاتب", `
     <div class="toolbar">
       <input id="activityOfficeId" placeholder="رمز المكتب" value="${escapeHtml(state.activityOfficeId)}">
       <button class="btn" id="loadActivityBtn" type="button">عرض النشاط</button>
     </div>
     <div id="activityPanel"><p>أدخل رمز مكتب لعرض نشاطه.</p></div>
-  </div>`;
+  `, "clipboard");
+  const activityInput = document.getElementById("activityOfficeId");
+  labelControl(activityInput, "رمز المكتب");
   const load = async () => {
     const officeId = document.getElementById("activityOfficeId").value.trim();
     if (!officeId) return;
@@ -320,13 +341,13 @@ async function renderActivityView() {
 async function renderBillingView() {
   const payload = await api.offices({ tab: "all", sort: "subscription_expiry_asc", limit: 100 });
   const items = (payload.items || []).filter((row) => row.recordType === "office");
-  els.viewRoot.innerHTML = `<div class="card"><h2>الاشتراكات والتراخيص</h2>
+  renderSection("الاشتراكات والتراخيص", `
     ${items.map((row) => `<div class="list-item"><h3>${escapeHtml(row.officeName || row.officeId)}</h3>
       <div class="meta">الاشتراك: ${escapeHtml(row.subscriptionStatus)} · ينتهي: ${formatDate(row.subscriptionExpiresAt)}<br>
       الترخيص: ${escapeHtml(row.licenseStatus)} · ينتهي: ${formatDate(row.licenseExpiresAt)}</div>
       <button class="btn secondary" data-detail="${escapeHtml(row.officeId)}">إدارة</button>
     </div>`).join("") || "<p>لا توجد مكاتب.</p>"}
-  </div>`;
+  `, "shield");
   els.viewRoot.querySelectorAll("[data-detail]").forEach((button) => {
     button.onclick = () => openOfficeDetail(button.dataset.detail);
   });
@@ -335,7 +356,7 @@ async function renderBillingView() {
 async function renderAuditView() {
   const payload = await api.auditLog({ limit: 100 });
   const items = Array.isArray(payload.items) ? payload.items : [];
-  els.viewRoot.innerHTML = `<div class="card"><h2>السجل الإداري</h2>
+  renderSection("السجل الإداري", `
     ${items.map((row) => `<div class="list-item"><div class="meta">
       <strong>${escapeHtml(row.action)}</strong><br>
       المكتب: ${escapeHtml(row.officeId || "—")}<br>
@@ -343,7 +364,7 @@ async function renderAuditView() {
       الوقت: ${formatDate(row.performedAt)}<br>
       ${escapeHtml(row.reason || "")}
     </div></div>`).join("") || "<p>لا توجد أحداث إدارية.</p>"}
-  </div>`;
+  `, "clipboard");
 }
 
 async function renderView() {

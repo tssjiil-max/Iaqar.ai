@@ -140,5 +140,9 @@ test("the repository screen has no section tabs; kind and «بلا مطابقة�
   const detail = fs.readFileSync(path.join(ROOT, "public/os/views/record-detail.js"), "utf8");
   for (const name of ["edit", "pause", "resume", "archive", "restore", "delete"]) assert.match(detail, new RegExp(`"${name}"`), `record action: ${name}`);
   const actions = fs.readFileSync(path.join(ROOT, "public/os/views/record-actions.js"), "utf8");
-  assert.equal((actions.match(/await confirmDialog\(/g) || []).length, 3, "pause, archive and delete each ask for confirmation");
+  // Every destructive or binding step asks first: pause, archive, delete, and official reservation / its release.
+  for (const flow of ["pauseRecordFlow", "archiveRecordFlow", "removeRecordFlow", "reserveRecordFlow", "releaseReservationFlow"]) {
+    const body = actions.slice(actions.indexOf(`function ${flow}(`), actions.indexOf("\n}\n", actions.indexOf(`function ${flow}(`)));
+    assert.match(body, /await confirmDialog\(/, `${flow} asks for confirmation`);
+  }
 });

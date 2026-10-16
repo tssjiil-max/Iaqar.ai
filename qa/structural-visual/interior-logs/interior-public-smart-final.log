@@ -1,0 +1,15 @@
+PASS public: offer ad analysed into the existing fields (type, district, city, price, area, rooms, features, purpose); no name/phone invented
+PASS public: «مستعجل | غير مستعجل», urgency separated from the duration
+PASS public: switching smart ↔ manual keeps the text and every edited field
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_7qu9ohev8fr","officeId":"office-alpha","at":"2026-10-16T06:50:47.181Z"}
+PASS public: confirmed offer saved through the normal path (one district on the record, the other kept in the description)
+PASS public: the spec example → request, عمارة, 3 districts, 2,000,000, شراء, مستعجل; city marked as missing (office city only suggested)
+PASS public: non-real-estate text → clear message, nothing filled, text kept, manual one press away
+PASS office: three pasted ads → three cards; one excluded; nothing saved before review
+PASS office: card reviewed and saved once; source, role and original text kept; external broker waits for the office review (no mandate assumed)
+PASS office: a missing phone is shown next to its field — nothing saved without the basics
+PASS office: an ad already in the office shows «يشبه سجلًا موجودًا»
+PASS security: another office refused, unknown office 404, size limit 413, pasted «instructions» are only data, public analysis rate-limited
+PASS no page errors
+
+12 smart-fill checks passed

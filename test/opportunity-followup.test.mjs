@@ -236,9 +236,12 @@ test("WhatsApp open does not mark message sent", () => {
 });
 
 test("toast does not obscure appointment control", () => {
+  // The legacy toast's look now lives in the shared feedback stylesheet; what matters here is
+  // that it stays a narrow (≤320px) announcement and remains a polite live region.
   const html = readRepo("public", "legacy.html");
-  assert.ok(html.includes("max-width:min(calc(100% - 32px), 320px)"));
-  assert.ok(html.includes("background:#087064"));
+  const feedback = readRepo("public", "os", "feedback.css");
+  assert.ok(html.includes('href="/os/feedback.css"'));
+  assert.ok(/#toast\.toast \{[^}]*max-width: min\(calc\(100% - 32px\), 320px\)/.test(feedback));
   assert.ok(html.includes("aria-live=\"polite\""));
 });
 

@@ -91,7 +91,7 @@
       --text:#19231F;
       --muted:#79847F;
       --line:#DEE7E2;
-      --success:#388E3C;
+      --success:#23764B; /* office --ok: one success colour on every surface */
       --shadow:0 9px 26px rgba(0,63,52,.08);
       --radius-xl:24px;
       --radius-lg:20px;
@@ -2118,29 +2118,7 @@
       font-size:12px;
     }
 
-    .toast {
-      position:fixed;
-      top:calc(env(safe-area-inset-top, 0px) + 58px);
-      left:50%;
-      transform:translate(-50%,-8px);
-      z-index:100;
-      width:auto;
-      max-width:min(calc(100% - 32px), 320px);
-      padding:8px 14px;
-      border-radius:12px;
-      background:#087064;
-      color:#fff;
-      text-align:center;
-      font-weight:700;
-      font-size:13px;
-      line-height:1.45;
-      opacity:0;
-      pointer-events:none;
-      transition:opacity .2s ease, transform .2s ease;
-      box-shadow:0 8px 20px rgba(0,0,0,.16);
-    }
-
-    .toast.show { opacity:1; transform:translate(-50%,0); }
+    /* Toast look: /os/feedback.css (shared with the office app). */
 
 
     /* إعدادات المكتب: تظهر فقط عند الضغط على صورة المكتب */
@@ -4618,7 +4596,7 @@
     color:#70817c;
   }
   .bank-detail .section-status.is-error { color:#a33a3a; }
-  .bank-detail .section-status.is-done { color:#087064; }
+  .bank-detail .section-status.is-done { color:var(--success); }
   .bank-detail .bank-note {
     font-size:12px;
     color:#70817c;
@@ -5749,6 +5727,7 @@
   <link rel="stylesheet" href="css/negotiation-reference-theme.css">
   <link rel="stylesheet" href="css/journey-reference-theme.css">
   <link rel="stylesheet" href="/os/site-theme.css">
+  <link rel="stylesheet" href="/os/feedback.css">
 </head>
 <body class="office-standalone">
   <script>
@@ -6778,6 +6757,19 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  <script>
+    // Tone for the shared toast design: writers here only set text, so tag errors/successes for the chip colour.
+    (function () {
+      var el = document.getElementById("toast");
+      if (!el || !window.MutationObserver) return;
+      var BAD = /^(\s)*(تعذر|تعذّر|فشل|خطأ|لا يمكن|غير مسموح|انتهت الجلسة|لا توجد صلاحية)/;
+      var OK = /^(\s)*(تم|تمت|حُفظ|تم الحفظ|نُسخ)/;
+      new MutationObserver(function () {
+        var text = el.textContent || "";
+        el.setAttribute("data-tone", BAD.test(text) ? "bad" : OK.test(text) ? "ok" : "");
+      }).observe(el, { childList: true, characterData: true, subtree: true });
+    })();
+  </script>
   <!-- ربط Firebase دون أي تغيير مرئي في الواجهة -->
   <script>
     (function () {

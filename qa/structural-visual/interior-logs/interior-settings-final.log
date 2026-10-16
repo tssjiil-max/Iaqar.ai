@@ -1,0 +1,65 @@
+✔ hub lists the eight settings pages, and «الباحث عن الفرص» after «مدير المكتب الذكي» where it is available
+✔ settings hub has no link to the old app
+✔ no horizontal scroll: 01-hub — 0px
+✔ profile form is pre-filled from the office
+✔ invalid phone is refused and nothing is written
+✔ a name held by another office is refused
+✔ no horizontal scroll: 02-profile-name-taken — 0px
+✔ office profile saved (name, key, phone, whatsapp, specialties) — ["sale","rent","purchase"]
+✔ other office fields are untouched (slug, owner)
+✔ public office mirror updated
+✔ the new name is claimed by this office
+✔ no horizontal scroll: 03-profile-saved — 0px
+✔ office link shows /m/<slug>
+✔ short link saved through the Worker
+✔ WhatsApp share uses the immutable versioned /s link — http://127.0.0.1:34659/s/sultan-new/1enz6kd-mvalnoxo
+✔ no horizontal scroll: 04-link — 0px
+✔ cooperation shows the three modes, approval-per-request by default
+✔ cooperation mode saved; contact never exposed automatically
+✔ public mirror carries the cooperation mode
+✔ no horizontal scroll: 05-cooperation — 0px
+✔ no photo yet → default mark, no remove button
+✔ a non-image file is refused with a clear message
+✔ preview shows before saving; nothing stored yet
+✔ photo stored as a small square JPEG on the office — 3787 chars
+✔ no horizontal scroll: 07-photo — 0px
+✔ photo survives reload in settings
+✔ avatar shows in the office card and the image is loaded (not broken)
+✔ no horizontal scroll: 08-office-avatar — 0px
+✔ preview image is a 1200×630 rectangular JPEG under 300KB at the immutable office/version key — 32852 bytes · office-share/office-alpha/otea79.jpg
+✔ link page shows the current preview image
+✔ published share URL is /s/<slug>/<version> — http://127.0.0.1:34659/s/sultan-new/otea79
+✔ forced refresh creates a new share URL and a new image while preserving the old image
+[iaqar-whatsapp] request failed {
+  requestId: 'bd288b53-14ab-4677-a2fe-9a0c22abe597',
+  code: 'media_storage_unavailable',
+  message: 'تخزين الوسائط غير مفعّل'
+}
+✔ when the upload fails the page says why (status code), not silence
+✔ crawler gets this office's title, description (مرخص), type and url
+✔ og:image points to this office/version immutable JPEG
+✔ the image opens directly without login (200 image/jpeg) — 200
+✔ a person is sent on to the office page
+✔ public page footer: «مدعوم بواسطة مكاتب عقارية ذكية» + «أنشئ مكتبك العقاري» (no domain name)
+✔ the office name stays the main element (title above footer)
+✔ without a photo the link page still has a generated preview card
+✔ without a photo og:image is a new immutable JPEG fallback, never the removed-photo version
+✔ after removal the default mark returns (no avatar)
+✔ channels page shows WhatsApp connected and Telegram not connected
+✔ each channel offers its own link actions (connect · reconnect · disconnect)
+✔ channels page states ASSISTED mode and no automatic sending
+✔ channels page has no legacy link
+✔ channels page never shows a full phone number or secret
+✔ no horizontal scroll: 06-channels — 0px
+✔ brokers page is reachable and returns to the hub
+✔ the settings hub has the «الإشعارات» row
+✔ six notification kinds, all on by default
+✔ a manager saves the office default and their own preference
+✔ the saved state says it applies to the office
+✔ after reload the switch stays off
+✔ no horizontal scroll: 07-notifications — 0px
+✔ a non-manager saves only their own preference and is told so
+✔ a non-manager broker sees «لمدير المكتب فقط» and no form
+✔ no browser console errors
+
+58/58 settings checks passed

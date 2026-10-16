@@ -8,7 +8,7 @@
  * Manager-only; everything saves through core/office-profile.js.
  */
 
-import { h, ic, clear, append, navigationTile, pageHeader, surface, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, append, navigationTile, pageHeader, surface, officeSection, field, formGrid, actionBar, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { back, go } from "../core/nav.js";
 import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
@@ -63,10 +63,6 @@ export function renderSettingsHub(container) {
   return null;
 }
 
-function field(label, control, error) {
-  return h("label", { class: "os-field" }, h("span", { text: label }), control, error);
-}
-
 /** شعار المكتب أو صورة الوسيط: choose → preview → save, or remove. The whole image is kept (no crop). Falls back to the default mark when there is none. */
 function photoCard() {
   let pending = null;
@@ -101,13 +97,11 @@ function photoCard() {
   save.addEventListener("click", () => runAction(save, async () => { await saveBrokerPhoto(pending); pending = null; draw(); ensureShareCard(); }, { success: "تم حفظ الصورة" }));
   remove.addEventListener("click", () => runAction(remove, async () => { await saveBrokerPhoto(""); draw(); ensureShareCard(); }, { success: "تم حذف الصورة" }));
   draw();
-  return surface("section", { class: "os-card os-photo-card", "data-photo-card": "" },
-    preview,
-    h("div", { class: "os-photo-copy" },
-      h("b", { text: "شعار المكتب أو صورة الوسيط" }),
-      h("small", { text: "تظهر كاملة في بطاقة المكتب دون قص. بدونها يبقى الشعار الافتراضي." }),
-      controlGroup("div", { class: "os-btn-row" }, choose, save, remove),
-      message, file));
+  return officeSection({ title: "شعار المكتب أو صورة الوسيط", iconName: "photos",
+      description: "تظهر كاملة في بطاقة المكتب دون قص. بدونها يبقى الشعار الافتراضي.",
+      className: "os-profile-photo", attrs: { "data-photo-card": "" } },
+    h("div", { class: "os-photo-card" }, preview,
+      h("div", { class: "os-photo-copy" }, actionBar(choose, save, remove), message, file)));
 }
 
 export function renderOfficeProfile(container) {
@@ -144,14 +138,17 @@ export function renderOfficeProfile(container) {
     } catch (_) { if (mine === check) availability.textContent = ""; }
   });
   const save = h("button", { type: "submit", class: "os-btn primary block" }, ic("check"), "حفظ بيانات المكتب");
-  const form = h("form", { class: "os-form os-card", novalidate: true },
-    field("اسم المكتب", nameInput, errors.officeName), availability,
-    field("اسم الوسيط", brokerInput, errors.brokerName),
-    field("رقم رخصة فال", licenseInput, errors.licenseNumber),
-    field("المدينة", cityInput, errors.city),
-    field("رقم الجوال", phoneInput, errors.phone),
-    h("div", { class: "os-field" }, h("span", { text: "تخصص المكتب (اختياري)" }), specialties),
-    save);
+  const form = h("form", { class: "os-form os-profile-form", novalidate: true },
+    h("div", { class: "os-office-sections" },
+      officeSection({ title: "هوية المكتب", iconName: "office", description: "الاسم الذي يظهر للعملاء وبيانات الوسيط المسؤول." },
+        formGrid(field("اسم المكتب", nameInput, { error: errors.officeName, hint: availability }),
+          field("اسم الوسيط", brokerInput, { error: errors.brokerName }))),
+      officeSection({ title: "الترخيص والتواصل", iconName: "shield", description: "بيانات الرخصة وموقع المكتب ورقم التواصل." },
+        formGrid(field("رقم رخصة فال", licenseInput, { error: errors.licenseNumber }),
+          field("المدينة", cityInput, { error: errors.city }),
+          field("رقم الجوال", phoneInput, { error: errors.phone }))),
+      officeSection({ title: "تخصص المكتب", iconName: "offers", description: "اختر مجالات عمل المكتب. يمكنك اختيار أكثر من تخصص." }, specialties)),
+    actionBar(save));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const built = buildOfficeProfile({
@@ -245,16 +242,15 @@ export function renderLinkSettings(container) {
   }, { success: "تم حفظ معرّف الرابط" }));
 
   append(container,
-    surface("section", { class: "os-card" },
-      h("h2", { class: "os-h2" }, ic("link"), "رابط المكتب"),
-      h("p", { class: "os-sub", text: "الرابط الظاهر أدناه هو رابط المكتب الدائم. أزرار النسخ وواتساب تستخدم نسخة مشاركة محدثة تلقائيًا لمنع عرض صورة قديمة." }),
-      linkBox, controlGroup("div", { class: "os-btn-row" }, copy, share)),
-    surface("section", { class: "os-card os-form" },
-      field("معرّف الرابط القصير", slug, hint), save),
-    surface("section", { class: "os-card os-share-card" },
-      h("h2", { class: "os-h2" }, ic("shield"), "صورة معاينة الرابط"),
-      h("p", { class: "os-sub", text: "كل تحديث ينشئ صفحة مشاركة وصورة جديدة؛ رابط المكتب الدائم لا يتغير." }),
-      cardImg, cardStatus, refreshCard));
+    h("div", { class: "os-office-sections" },
+      officeSection({ title: "رابط المكتب", iconName: "link",
+        description: "رابط دائم للمكتب. النسخ والمشاركة يستخدمان معاينة محدثة تلقائيًا." },
+        field("رابط المكتب الدائم", linkBox), actionBar(copy, share)),
+      officeSection({ title: "معرّف الرابط", iconName: "edit", description: "خصّص الاسم القصير الذي يسهل مشاركته مع عملائك." },
+        field("معرّف الرابط القصير", slug, { hint }), actionBar(save)),
+      officeSection({ title: "صورة معاينة الرابط", iconName: "photos", className: "os-share-card",
+        description: "كل تحديث ينشئ صورة مشاركة جديدة مع بقاء رابط المكتب الدائم." },
+        cardImg, cardStatus, actionBar(refreshCard))));
   return null;
 }
 
@@ -282,11 +278,8 @@ export function renderCooperationSettings(container) {
     const save = h("button", { type: "button", class: "os-btn primary block" }, ic("check"), "حفظ إعداد التعاون");
     save.addEventListener("click", () => runAction(save, () => saveCooperationMode(selected), { success: "تم حفظ إعداد التعاون" }));
     append(body,
-      surface("section", { class: "os-card" },
-        h("h2", { class: "os-h2" }, ic("handshake"), "التعاون بين الوسطاء"),
-        h("p", { class: "os-sub", text: "بيانات التواصل لا تظهر تلقائيًا في أي وضع." }),
-        group),
-      save);
+      officeSection({ title: "وضع التعاون", iconName: "handshake", description: "بيانات التواصل لا تظهر تلقائيًا في أي وضع." }, group),
+      actionBar(save));
   }).catch(() => { clear(body); append(body, feedback({ class: "os-alert bad", text: "تعذر تحميل إعداد التعاون." })); });
   return null;
 }
@@ -403,7 +396,7 @@ export function renderChannelSettings(container) {
     if (byId.telegram && !byId.telegram.linkWaiting) pending.link = "";
     clear(body);
     append(body,
-      h("p", { class: "os-sub", text: "كل مكتب يربط قنواته بنفسه، والرسائل الواردة تصل إلى مكتبك فقط. القنوات وسيلة نقل: تصل الرسائل إلى مركز التواصل ثم تُعالج كأي عميل أو عرض أو طلب." }),
+      feedback({ class: "os-alert info", "data-channels-intro": "", text: "كل مكتب يربط قنواته بنفسه، والرسائل الواردة تصل إلى مكتبك فقط. القنوات وسيلة نقل: تصل الرسائل إلى مركز التواصل ثم تُعالج كأي عميل أو عرض أو طلب." }),
       byId.whatsapp ? whatsappCard(byId.whatsapp, reload) : null,
       byId.telegram ? telegramCard(byId.telegram, reload, pending) : null,
       payload.bot ? botCard(payload.bot, reload) : null,
@@ -413,9 +406,8 @@ export function renderChannelSettings(container) {
         h("span", { class: "os-set-icon" }, ic("inbox-in")),
         h("span", { class: "os-set-text" }, h("b", { text: "مركز التواصل" }), h("small", { text: "كل ما وصل من القنوات، مصنّفًا: اجتماعية، استفسار، عرض، طلب، متعلقة بصفقة" })),
         ic("chev-left")),
-      surface("section", { class: "os-card os-set-legacy" },
-        h("h2", { class: "os-h2" }, ic("shield"), "الأتمتة"),
-        h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: payload.bot?.enabled
+      officeSection({ title: "الأتمتة", iconName: "shield", className: "os-set-legacy", attrs: { class: "os-card os-set-legacy" } },
+      h("p", { class: "os-sub", "data-automation": payload.automationMode || "ASSISTED", text: payload.bot?.enabled
           ? `الوضع الحالي: ${automationLabel(payload)}. لا يُرسل شيء عبر واتساب تلقائيًا.`
           : `الوضع الحالي: ${automationLabel(payload)}. الإرسال التلقائي للعملاء غير مفعّل.` })));
     clearTimeout(timer);

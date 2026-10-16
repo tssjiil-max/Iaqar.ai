@@ -85,6 +85,8 @@ button:focus-visible,a:focus-visible{outline:3px solid #099fb4;outline-offset:3p
 .os-app .os-follow-tab{font-size:13px;line-height:1.5}
 .os-app .os-follow-tab span{white-space:normal;overflow-wrap:anywhere;text-align:center}
 @media(max-width:350px){.os-app .ref-path{padding-inline:6px}.os-app .ref-steps{gap:1px}.os-app .ref-steps>.ref-step small{white-space:normal;overflow-wrap:anywhere;max-width:100%}}
+/* 351–389px: six equal columns leave «مستندات» 3px short (clipped at 360). Columns size to their label instead; the strip still fits. */
+@media(min-width:351px) and (max-width:389px){.os-app .ref-steps{gap:2px;grid-template-columns:repeat(6,minmax(max-content,1fr))}}
 
 /* Align the room's sticky action bar with the shared shell padding. */
 .os-session-app{--gutter:10px;max-width:560px;padding-bottom:12px}
@@ -208,3 +210,151 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 @media(min-width:1024px){
  .os-center-group .os-office-section-body>.os-center-list{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Interior composition uses the same compact icon, title and body slots as office tools. */
+.os-office-section-head .os-page-icon{width:42px;height:42px;border-radius:12px;background:var(--section-tint,#e5f1ff);color:var(--section-ink,#0878df)}
+.os-office-section-head .os-page-icon svg{width:25px;height:25px;color:inherit;--ico:currentColor}
+.os-office-section.tone-purple{--section-tint:#eee7ff;--section-ink:#6331cf}
+.os-office-section.tone-green{--section-tint:#e3f9ef;--section-ink:#0c9167}
+.os-office-section.tone-gold{--section-tint:#fff1db;--section-ink:#ad7111}
+.os-office-section-title .os-h2{font-size:17px;line-height:1.5}
+.os-office-section-copy .os-sub{font-size:13px}
+.os-form-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;min-width:0}
+.os-form-grid .os-field{gap:6px}
+.os-form-grid .os-field>span:first-child{font-size:14px}
+.os-form-grid :is(input,select,textarea){font-size:16px;max-width:100%;min-width:0}
+.os-field>.os-error:empty,.os-field>.os-field-note:empty{display:none}
+.os-action-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-width:0;padding-block:4px}
+.os-action-bar>.os-btn{flex:1 1 140px;width:auto;min-width:0;overflow-wrap:anywhere}
+.os-action-bar>.os-btn[hidden]{display:none}
+.os-profile-form{gap:16px}
+.os-office-sections>.os-office-section{margin:0}
+.os-profile-form .os-office-sections{align-items:start}
+.os-profile-photo .os-photo-card{grid-template-columns:72px minmax(0,1fr);gap:14px}
+.os-profile-photo .os-avatar-preview{width:72px;height:72px}
+.os-profile-photo .os-action-bar{max-width:420px}
+.os-profile-photo .os-action-bar>.os-btn{flex-basis:140px;font-size:14px}
+.os-profile-form .os-specialties{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;background:transparent;padding:0;border:0}
+.os-profile-form .os-specialties button{min-height:44px;padding:8px;border:1px solid var(--line);border-radius:11px}
+.os-profile-form .os-specialties button[aria-pressed="false"]{background:#f4faff;color:var(--brand-dark)}
+@media(min-width:360px){.os-profile-form .os-specialties{grid-template-columns:repeat(4,minmax(0,1fr))}.os-profile-form .os-specialties button{font-size:14px}}
+@media(min-width:768px){
+ .os-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .os-profile-form .os-specialties{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .os-profile-form>.os-action-bar{justify-content:flex-end}
+ .os-profile-form>.os-action-bar>.os-btn{flex:0 1 280px}
+}
+@media(min-width:1024px){.os-app:has(.os-profile-form){max-width:1180px}.os-profile-form .os-office-sections{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.os-data-table{width:100%;table-layout:fixed;border-collapse:collapse;text-align:start;font-size:14px}
+.os-data-table th{font-weight:700;color:var(--muted);font-size:13px}
+.os-data-table :is(th,td){padding:10px 5px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere;text-align:start}
+.os-data-table td>span{display:grid;gap:4px;min-width:0}
+.os-data-table small{font-size:12px;color:var(--muted)}
+.os-market-layout{align-items:start}
+.os-market-layout>.os-market-stats{grid-column:1/-1;margin:0}
+.os-market-layout>.os-market-prices{grid-column:1/-1}
+.os-market-layout .os-office-section-body .os-list{margin:0}
+.os-record-sections>.os-office-section{margin:0}
+.os-record-form>.os-form-actions>.os-action-bar{justify-content:flex-end}
+.os-record-form>.os-form-actions .os-btn{flex:0 1 340px}
+.os-record-form :is(.os-fill,.os-intake-origin){margin-bottom:16px}
+.os-record-form .os-form[hidden]{display:none}
+@media(min-width:1024px){
+ .os-app:has(.os-record-form){max-width:1180px}
+ .os-record-sections:not([hidden]){grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+ .os-record-sections>.os-intake-origin,.os-record-sections>.os-office-section:last-of-type{grid-column:1/-1}
+}
+.os-field .os-field-error{color:var(--bad)}
+.os-field:has(.os-field-error:not(:empty)) .os-input{border-color:var(--bad)}
+.os-app.os-public-shell{max-width:560px}
+@media(min-width:1024px){.os-app.os-public-shell:has(.os-record-form){max-width:1180px}}
+@media(min-width:1024px){
+ .os-public-shell .os-record-sections:not([hidden]){grid-template-columns:minmax(0,1fr)}
+ .os-public-shell .os-record-sections>.os-office-section:nth-child(2) .os-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .os-public-shell .os-record-sections>.os-office-section:first-child .os-field{max-width:560px}
+}
+
+/* Admin interiors reuse office sections and form controls, preserving API actions. */
+.os-admin-shell{max-width:1180px}
+.os-admin-shell #viewRoot{display:grid;gap:14px}
+.os-admin-content{min-width:0}
+.os-admin-shell .os-office-section{margin:0}
+.os-admin-shell .os-office-section-body .meta{overflow-wrap:anywhere}
+.os-admin-shell .os-action-bar .btn{width:auto;flex:1;min-width:0}
+.os-admin-shell .os-field input,.os-admin-shell .os-field select,.os-admin-shell .os-field textarea{min-width:0}
+.os-admin-shell .toolbar{grid-template-columns:minmax(0,1fr)}
+@media(min-width:768px){.os-admin-shell .toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.os-admin-shell .grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Settings navigation: consistent card geometry without clipping long Arabic copy.
+   Scoped to the settings hub; other navigation tiles and handlers are untouched. */
+.os-app .os-settings-grid{direction:rtl;align-items:stretch}
+.os-app .os-settings-grid>[data-ui="navigation-tile"]{
+  box-sizing:border-box;min-width:0;height:100%;
+  align-items:stretch;justify-content:flex-start;
+  padding-block:18px 20px;gap:14px;
+}
+.os-settings-grid .ref-reference-icon{align-self:flex-start}
+.os-settings-grid .ref-reference-copy{flex:1;min-width:0;text-align:start}
+.os-settings-grid .ref-reference-copy :is(strong,small){
+  text-align:start;overflow-wrap:anywhere;word-break:normal;
+}
+.os-settings-grid>[data-ui="navigation-tile"]>.os-ico{inset-inline-end:14px}
+@media(max-width:359px){
+  .os-app .os-settings-grid>[data-ui="navigation-tile"]{padding:12px;gap:10px}
+  .os-settings-grid .ref-reference-icon{width:42px;height:42px;flex-basis:42px}
+}
+
+/* Shared official-service tiles: native links, same two-column mobile geometry
+   as office settings, with readable multiline copy and visible keyboard focus. */
+.os-app [data-tool-services].os-settings-grid{direction:rtl;align-items:stretch}
+.os-app [data-tool-services].os-settings-grid>.os-service-row{
+  box-sizing:border-box;display:flex;flex-direction:column;align-items:stretch;
+  position:relative;min-width:0;width:100%;height:100%;margin:0;
+  gap:14px;padding:18px 16px 20px;min-height:170px;
+  border:1px solid var(--brand-line);border-radius:16px;
+  background:var(--surface);box-shadow:var(--shadow);
+  color:var(--text);text-align:start;text-decoration:none;
+}
+[data-tool-services].os-settings-grid>.os-service-row .ref-reference-icon{align-self:flex-start}
+[data-tool-services].os-settings-grid>.os-service-row .ref-reference-copy{
+  min-width:0;flex:1;overflow-wrap:anywhere;text-align:start;
+}
+[data-tool-services].os-settings-grid>.os-service-row .ref-reference-copy :is(strong,small){
+  display:block;white-space:normal;overflow-wrap:anywhere;
+}
+[data-tool-services].os-settings-grid>.os-service-row>.os-ico{
+  position:absolute;inset-inline-end:14px;top:28px;width:18px;height:18px;
+}
+.os-app [data-tool-services]>.os-service-row:focus-visible{
+  outline:3px solid var(--brand-primary);outline-offset:3px;
+}
+@media(max-width:359px){
+ .os-app [data-tool-services]>.os-service-row{padding:12px;gap:10px}
+}
+
+/* Fix navigation-chevron overlap in RTL cards: reserve the trailing icon lane.
+   The text column may grow vertically but must never run beneath the chevron. */
+.os-app .os-settings-grid>[data-ui="navigation-tile"] .ref-reference-copy{
+  box-sizing:border-box;padding-inline-end:24px;
+}
+.os-app .os-settings-grid>[data-ui="navigation-tile"]>.os-ico{
+  pointer-events:none;
+}
+.os-app .os-settings-grid>[data-ui="navigation-tile"]:focus-visible{
+  outline:3px solid var(--brand-primary);outline-offset:3px;
+}
+@media(min-width:768px){
+  .os-app .os-settings-grid>[data-ui="navigation-tile"]{min-height:180px}
+}
+/* Guest search results (public «ابحث عن عقار»): same card language as the office. */
+.os-guest-search{display:grid;gap:14px}
+.os-guest-criteria{margin-top:16px}
+.os-guest-result{display:grid;gap:8px;margin-bottom:12px}
+.os-guest-result-photo{width:100%;height:180px;object-fit:cover;border-radius:12px;background:var(--brand-tint)}
+.os-guest-result-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.os-guest-result-head .os-h2{margin:0;min-width:0;overflow-wrap:anywhere}
+.os-guest-result-price{color:var(--brand-dark,#082f3a);white-space:nowrap}
+.os-guest-result-tags{display:flex;gap:6px;flex-wrap:wrap}
+.os-guest-result .os-badge{margin:0}
+.os-record-reservation{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#e3ecee)}
+.os-record-reservation .os-btn{flex:0 1 auto}
