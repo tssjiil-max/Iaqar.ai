@@ -36,3 +36,10 @@ test('duplicate record warning keeps every action visible at 320px',async({page}
  expect(bounds.length).toBe(3);expect(bounds.every(b=>b.left>=0&&b.right<=320)).toBeTruthy();
  await expect(page.locator('[data-duplicate-warning]')).toHaveScreenshot('duplicate-warning-320.png');
 });
+test('legacy access headings use the shared composition after a dynamic redraw',async({page})=>{
+ await page.setViewportSize({width:320,height:900});await page.goto(`${harness.origin}/legacy.html?legacyContent=1`);
+ await expect(page.locator('.access-brand [data-ui="page-header"]')).toBeVisible();
+ await expect(page.locator('.access-brand img')).toHaveCount(1);
+ const text=await page.locator('.access-brand p').evaluate(el=>({size:parseFloat(getComputedStyle(el).fontSize),line:parseFloat(getComputedStyle(el).lineHeight)/parseFloat(getComputedStyle(el).fontSize)}));
+ expect(text.size).toBeGreaterThanOrEqual(13);expect(text.line).toBeGreaterThanOrEqual(1.4);
+});

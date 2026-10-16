@@ -164,3 +164,14 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-state-copy{min-width:0;max-width:38ch}.os-state-copy>h3{margin:0 0 6px}.os-state-copy>.os-sub{margin:0}
 .os-state-actions{max-width:100%}
 [data-ui="comparison-table"] th{border-bottom:1px solid var(--brand-line);padding-bottom:8px}
+
+/* All settings copy fits its card at narrow phone and three-column tablet widths. */
+.os-settings-grid .ref-reference-copy{width:100%;max-width:100%;overflow-wrap:anywhere}
+.os-settings-grid .ref-reference-copy :is(strong,small){display:block;max-width:100%;overflow-wrap:anywhere;white-space:normal}
+#accessGate .access-brand :is(h1,p),#accessGate .access-card :is(h2,h3),#accessGate .access-btn-main{line-height:1.5}
+#accessGate :is(.access-brand p,.access-btn-sub,.access-note,.access-field-error,.access-required-mark,.voice-intake-status,.voice-intake-stop,.voice-intake-cancel,.voice-intake-retry,.voice-intake-manual){font-size:13px;line-height:1.5}
+#accessGate .access-brand .os-page-header{padding:0;margin:0;border:0;background:none;box-shadow:none}
+#accessGate .access-brand .os-page-icon img{width:42px;height:42px;margin:0;object-fit:contain}
+#accessGate :is(h2,.access-choice-title,.access-step-label){line-height:1.5}
+#accessGate :is(.access-choice-sub,.access-step-index,.access-step-label){font-size:13px;line-height:1.5}
+#accessGate .access-choice-action{background-color:var(--brand-primary)}

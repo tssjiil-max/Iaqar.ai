@@ -53,8 +53,7 @@ function card(view, redraw) {
 }
 
 export function renderCommunity(container) {
-  append(container, pageHeader(h("h1", { class: "os-page-title", text: "التعاون بين الوسطاء" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => go("office") }, ic("chev-right"), "رجوع"), action: h("span") }));
-  append(container, h("p", { class: "os-sub", text: "تعاون مباشر بين وسيط العرض ووسيط الطلب حتى إتمام الصفقة" }));
+  append(container, pageHeader(h("h1", { class: "os-page-title", text: "التعاون بين الوسطاء" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => go("office") }, ic("chev-right"), "رجوع"), action: h("span"), description: "تعاون مباشر بين وسيط العرض ووسيط الطلب حتى إتمام الصفقة" }));
   let rows = [];
   let ready = false;
   let tab = "active";

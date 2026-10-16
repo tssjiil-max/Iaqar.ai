@@ -1,0 +1,141 @@
+{
+  "at": "2026-10-16T02:43:59.802Z",
+  "widths": [
+    320,
+    360,
+    375,
+    390,
+    412,
+    430,
+    768,
+    1024
+  ],
+  "screens": [
+    "admin-shell",
+    "legacy-shell",
+    "settings"
+  ],
+  "results": [
+    {
+      "width": 320,
+      "screen": "admin-shell",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "legacy-shell",
+      "issues": []
+    },
+    {
+      "width": 320,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "admin-shell",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "legacy-shell",
+      "issues": []
+    },
+    {
+      "width": 360,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "admin-shell",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "legacy-shell",
+      "issues": []
+    },
+    {
+      "width": 375,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "admin-shell",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "legacy-shell",
+      "issues": []
+    },
+    {
+      "width": 390,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "admin-shell",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "legacy-shell",
+      "issues": []
+    },
+    {
+      "width": 412,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "admin-shell",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "legacy-shell",
+      "issues": []
+    },
+    {
+      "width": 430,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "admin-shell",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "legacy-shell",
+      "issues": []
+    },
+    {
+      "width": 768,
+      "screen": "settings",
+      "issues": []
+    },
+    {
+      "width": 1024,
+      "screen": "admin-shell",
+      "issues": []
+    },
+    {
+      "width": 1024,
+      "screen": "legacy-shell",
+      "issues": []
+    },
+    {
+      "width": 1024,
+      "screen": "settings",
+      "issues": []
+    }
+  ],
+  "consoleErrors": []
+}
