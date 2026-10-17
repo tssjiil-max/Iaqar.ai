@@ -6,7 +6,7 @@
  * The AI runs the journey; a person approves commitments. Nothing here reserves, accepts a price,
  * confirms a viewing or closes a deal, and nothing claims a message was sent when it was not.
  */
-import { analyzeOfficeText } from './smart-fill-service.js';
+import { analyzeGuestRequestText } from './smart-fill-service.js';
 import { kindOf, lifecycleOf, priceOf, validateRecordInput, recordFields } from '../../../public/os/domain/records-domain.js';
 import { normalizeArabicText, opportunityToMatchInput, scoreMatch } from '../matching-engine.js';
 import { validityState, STATE } from '../../../public/os/domain/validity-domain.js';
@@ -29,7 +29,7 @@ function rate(ctx,ip,action,limit=30){if(!consumePublicRateLimit(publicRateLimit
 async function publicOffice(ctx,id){const o=await ctx.store.get(['publicOffices',id]);if(!o||o.active===false)throw ctx.deps.appError('office_not_found',404,'رابط المكتب غير متاح');return {...o,id};}
 export async function analyzeGuestSearch(ctx,{officeId='',text='',ip=''}){
  rate(ctx,ip,'analyze');const id=officeIdOf(ctx,officeId);if(id)await publicOffice(ctx,id);
- return analyzeOfficeText(ctx,{officeId:id||'public-platform',text,multi:false,ip});
+ return analyzeGuestRequestText(ctx,{officeId:id||'public-platform',text,ip});
 }
 function point(v){const lat=Number(v?.lat ?? v?.latitude),lng=Number(v?.lng ?? v?.longitude);return v && Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180?{lat,lng}:null;}
 function distance(a,b){const r=x=>x*Math.PI/180;const dlat=r(b.lat-a.lat),dlng=r(b.lng-a.lng);const x=Math.sin(dlat/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dlng/2)**2;return 6371*2*Math.atan2(Math.sqrt(x),Math.sqrt(Math.max(0,1-x)));}

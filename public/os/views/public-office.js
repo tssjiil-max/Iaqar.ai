@@ -5,7 +5,7 @@ import { publicSearchForm, renderPlatformSearch } from "./public-search.js";
  * value the visitor sends; the Worker re-checks the intake belongs to that office.
  */
 
-import { h, ic, clear, field, setFieldError, clearFieldErrors, append, pageHeader, surface, officeSection, formGrid, actionBar, controlGroup, loadingState, feedback } from "../core/dom.js";
+import { h, ic, clear, field, setFieldError, clearFieldErrors, append, surface, officeSection, formGrid, actionBar, controlGroup, loadingState, feedback } from "../core/dom.js";
 import { db, workerBase } from "../core/runtime.js";
 import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
@@ -15,6 +15,7 @@ import { imagePicker } from "./record-images.js";
 import { EXTERNAL_BROKER, externalBrokerClaim } from "../domain/external-broker-domain.js";
 import { normalizeAnalysis, notesWithDistricts, splitDistrictInput } from "../domain/smart-fill-domain.js";
 import { applyListing, fillModes } from "./smart-fill.js";
+import { dataNotice, newIntakeRef, processIntake, publicReferenceOf, saveIntake } from "./public-intake.js";
 
 export function publicOfficeTarget() {
   // Guest platform search lives at /?view=search only. «#/search» is the signed-in office search
@@ -67,14 +68,19 @@ function officeHeader(office) {
     office.licenseNumber ? h("span", { class: "os-public-license", "data-office-license": "" }, ic("license"), ` رخصة فال ${office.licenseNumber}`) : null);
 }
 
-function successView(root, office, kind, { matches = 0 } = {}) {
+function successView(root, office, kind, { matches = 0, reference = "" } = {}) {
   clear(root);
-  const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب.`);
+  const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب${reference ? ` (المرجع ${reference})` : ""}.`);
   append(root, h("main", { class: "os-app os-public-page os-public-receipt", style: { maxWidth: "560px" } },
     h("p", { class: "os-public-office-name", text: office.officeName || "المكتب العقاري" }),
     surface("div", { class: "os-card os-public-done", style: { textAlign: "center" } },
       h("div", { class: "os-task-icon", style: { margin: "0 auto 8px", background: "var(--ok-tint)", color: "var(--ok)" } }, ic("check-circle")),
       h("h2", { class: "os-h2", style: { justifyContent: "center" }, text: "تم استلام بياناتك" }),
+      reference ? h("p", { class: "os-public-reference", "data-public-reference": reference }, "رقم المرجع: ", h("b", { dir: "ltr", text: reference })) : null,
+      // An offer from the public link is saved for the office's review; it is not published or described as verified.
+      kind === "owner"
+        ? h("p", { class: "os-alert info", "data-offer-review": "PENDING_REVIEW", text: `عرضك بانتظار مراجعة ${office.officeName || "المكتب"}. لا يُنشر للعملاء قبل مراجعته والتحقق من بياناته.` })
+        : null,
       h("p", { class: "os-sub", text: `شكرًا لك. سيتواصل معك ${office.brokerName || "الوسيط"} عند وجود خيار مناسب.` }),
       // How many options fit at first look (at most three) — the other side's details stay with the office.
       matches > 0 ? h("p", { class: "os-alert ok", "data-public-matches": String(matches), text: `وجدنا ${matches === 1 ? "خيارًا واحدًا مناسبًا" : matches === 2 ? "خيارين مناسبين" : "ثلاثة خيارات مناسبة"} مبدئيًا. يراجعها ${office.brokerName || "الوسيط"} ويتواصل معك بالتفاصيل وموعد المعاينة.` }) : null,
@@ -172,7 +178,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
     officeSection({ title: "التواصل والموافقة", iconName: "shield" },
       formGrid(field("الاسم الكامل", h("input", { class: "os-input", name: "contactName", autocomplete: "name", placeholder: "الاسم الأول واسم العائلة" })),
         field("رقم الجوال", h("input", { class: "os-input", name: "contactPhone", inputmode: "tel", dir: "ltr", autocomplete: "tel", placeholder: "05XXXXXXXX" }))),
-      consentBox, status, waiting, actionBar(submit),
+      consentBox, dataNotice(office), status, waiting, actionBar(submit),
       h("p", { class: "os-sub os-public-privacy", text: "لا تحتاج إنشاء حساب. تصل بياناتك إلى هذا المكتب فقط، وتراجعها قبل الإرسال." })));
   let smartUsed = false;
   // «تعبئة ذكية | تعبئة يدوية» above the same form (smart by default; switching keeps everything).
@@ -228,11 +234,11 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
     const v = check.value;
     let matchCount = 0;
     const ok = await runAction(submit, async () => {
-      const ref = submissionRef ||= db().collection("offices").doc(office.id).collection("publicIntake").doc();
+      const ref = submissionRef ||= newIntakeRef(office.id);
       // Photos first (to this intake's folder); the intake then lists exactly what was stored.
       if (!intakeStored) {
       const mediaPaths = picker && picker.count() ? await picker.commitToIntake(office.id, ref.id) : [];
-      await ref.set({
+      await saveIntake(ref, {
         officeId: office.id,
         kind,
         submitterRole: role.value,
@@ -260,31 +266,20 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
         sourceUrl: smartUsed ? sourceUrl : "",
         consentProcessing: true,
         consentWhatsapp: consentWa.checked,
-        consentAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-        status: "new",
         // «مدة العرض أو الطلب» (optional for older clients of this page): the server applies it to the record.
         validityDuration: value("validityDuration") || "",
         validityUrgent: value("validityUrgent") === "yes",
-        validityCustomDate: value("validityCustomDate") || "",
-        createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
+        validityCustomDate: value("validityCustomDate") || ""
       });
       intakeStored = true;
       }
       // Processing is retry-safe server side (already-processed intakes return duplicate).
       waiting.hidden = false;
-      const controller = typeof AbortController === "function" ? new AbortController() : null;
-      // Never an endless wait: after 20 s the visitor is told it was received; the server finishes on its own.
-      const timer = setTimeout(() => controller?.abort(), 20_000);
-      const response = await fetch(`${workerBase()}/pipeline/public-intake`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ officeId: office.id, intakeId: ref.id }), signal: controller?.signal
-      }).catch(() => null).finally(() => clearTimeout(timer));
-      waiting.hidden = true;
-      if (response && !response.ok && response.status === 429) throw new Error("تم استلام بياناتك، وسنعالجها بعد قليل.");
-      const answer = response && response.ok ? await response.json().catch(() => ({})) : {};
+      const { answer } = await processIntake(office.id, ref.id).finally(() => { waiting.hidden = true; });
       matchCount = Math.max(0, Math.min(3, Number(answer.matches || 0)));
       return true;
     }, { onError: (error) => { waiting.hidden = true; status.querySelector(".os-feedback-copy").textContent = error.message; status.hidden = false; } });
-    if (ok) successView(root, office, kind, { matches: matchCount });
+    if (ok) successView(root, office, kind, { matches: matchCount, reference: publicReferenceOf(submissionRef.id) });
   });
   return form;
 }
@@ -306,29 +301,31 @@ export async function renderPublicOffice(root, target) {
     return;
   }
   document.title = office.officeName || "المكتب العقاري";
+  // «أبحث عن عقار | لدي عقار وأريد عرضه» first; the choice swaps the form below in place (search by default).
+  const journey = h("section", { class: "os-public-journey", "data-public-journey": "client" });
+  const paths = h("div", { class: "os-paths os-paths-toggle", role: "group", "aria-label": "نوع العملية" });
   const choose = (kind, carry = null) => {
-    clear(main);
-    append(main, 
-      pageHeader(h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"), action: h("span") }),
-      h("p", { class: "os-public-office-name", text: office.officeName || "" }),
-      kind === "client" ? publicSearchForm(office, { initialText: carry?.text || "", notice: carry?.notice || "" }) : intakeForm(root, office, kind, { switchKind: choose, carry }));
-    window.scrollTo({ top: 0 });
-    // A request pasted on «لدي عقار» arrives here with its text: read it straight away.
-    if (carry?.text) main.querySelector("[data-smart-analyze], [data-guest-analyze]")?.click();
+    journey.dataset.publicJourney = kind;
+    for (const button of paths.querySelectorAll("[data-path]")) button.setAttribute("aria-pressed", String(button.dataset.path === kind));
+    clear(journey);
+    append(journey, kind === "client"
+      ? publicSearchForm(office, { initialText: carry?.text || "", notice: carry?.notice || "" })
+      : intakeForm(root, office, kind, { switchKind: choose, carry }));
+    if (carry) paths.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    // Text moved here from the other path is read straight away (a request goes straight to its results).
+    if (carry?.text) journey.querySelector("[data-smart-analyze], [data-guest-search]")?.click();
   };
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}`);
-  const path = (kind, iconName, title, sub) => h("button", { type: "button", class: "os-path-card", "data-path": kind, onClick: () => choose(kind) },
+  const path = (kind, iconName, title, sub) => h("button", { type: "button", class: "os-path-card", "data-path": kind, "aria-pressed": "false", onClick: () => { if (journey.dataset.publicJourney !== kind) choose(kind); } },
     h("span", { class: "ic" }, ic(iconName)),
     h("span", { class: "os-path-text" }, h("b", { text: title }), h("small", { text: sub })),
-    h("span", { class: "os-path-go", "aria-hidden": "true" }, ic("chev-left")));
+    h("span", { class: "os-path-go", "aria-hidden": "true" }, ic("check-circle")));
+  append(paths, path("client", "search", "أبحث عن عقار", "للشراء أو الاستئجار"), path("owner", "home", "لدي عقار وأريد عرضه", "للبيع أو الإيجار"));
   main.classList.add("os-public-page");
   append(main,
     officeHeader(office),
     h("p", { class: "os-public-tagline", text: "عقارك وطلبك في المكان الصحيح. تواصل مباشرة مع المكتب العقاري." }),
-    publicSearchForm(office),
-    h("div", { class: "os-paths" },
-      path("owner", "home", "لدي عقار", "للبيع أو الإيجار"),
-      path("client", "search", "أبحث عن عقار", "للشراء أو الاستئجار")),
+    paths, journey,
     h("p", { class: "os-public-trust", "data-public-trust": "" }, "بدون حساب · تصل بياناتك لهذا المكتب فقط · تراجعها قبل الإرسال"),
     h("p", { class: "os-public-coop", "data-coop-hint": "" }, ic("handshake"), " وسيط متعاون؟ اختر المسار ثم صفتك «وسيط عقاري متعاون»."),
     (office.phone || wa) ? h("div", { class: "os-public-contact" },
@@ -338,4 +335,5 @@ export async function renderPublicOffice(root, target) {
       h("span", { text: "مدعوم بواسطة مكاتب عقارية ذكية" }),
       h("a", { href: "/#/register", "data-create-office": "", text: "أنشئ مكتبك العقاري" }),
       h("a", { href: "/", "data-office-login": "", text: "دخول المكتب" })));
+  choose("client");
 }

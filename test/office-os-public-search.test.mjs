@@ -75,12 +75,20 @@ test('guest UI: search without contact, choose a result, consent in the sheet, t
   assert.equal(root.querySelector('[name=scope]').value,'office');
   assert.equal(root.querySelector('[name=contactPhone]'),null,'no phone is asked before a choice');
   root.querySelector('[name=description]').value='مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف';
-  root.querySelector('[data-guest-analyze]').click();
-  await until(()=>root.querySelector('[name=price]').value);
-  assert.equal(root.querySelector('[name=price]').value,'550000');assert.equal(root.querySelector('[name=propertyType]').value,'شقة');
+  // One button: the request is understood and searched in the same press.
+  assert.equal(root.querySelector('[data-guest-analyze]'),null,'no separate «افهم طلبي» step');
+  assert.equal(root.querySelector('[data-guest-search]').textContent.trim(),'ابحث عن العقارات الآن');
   root.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
   await until(()=>root.querySelector('[data-search-result]'));
+  assert.equal(root.querySelector('[name=price]').value,'550000');assert.equal(root.querySelector('[name=propertyType]').value,'شقة');
   assert.equal(root.querySelectorAll('[data-search-result]').length,10);assert.ok(!root.textContent.includes('0551234567'));
+  assert.equal(root.querySelectorAll('[data-search-result]:not([hidden])').length,3,'the closest three first');
+  assert.match(root.querySelector('[data-show-more]').textContent,/اعرض 7 نتائج أخرى/);
+  root.querySelector('[data-show-more]').click();
+  assert.equal(root.querySelectorAll('[data-search-result]:not([hidden])').length,10,'the rest on request');
+  assert.equal(root.querySelector('[data-show-more]'),null);
+  assert.ok(root.querySelector('[data-guest-request-open]'),'the office can be asked to follow the request');
+  assert.equal(root.querySelector('[name=contactPhone]'),null,'contact is asked only when the client sends or chooses');
   assert.ok(root.querySelector('[data-status-label]').textContent.length>0,'each result shows its status');
   root.querySelector('[data-choose-result]').click();
   const sheet=document.querySelector('[data-guest-select-form]');assert.ok(sheet,'choosing opens the contact sheet');

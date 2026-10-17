@@ -83,7 +83,7 @@ try {
   await page.locator("[data-smart-analyze]").click();
   // «أبحث عن عقار» is the guest search: the pasted text moves with the visitor and is read at once.
   await page.locator("[data-guest-search-form]").waitFor();
-  assert.equal(await page.locator("h1.os-page-title").textContent(), "أبحث عن عقار");
+  assert.equal(await page.locator('[data-path="client"]').getAttribute("aria-pressed"), "true", "«أبحث عن عقار» chosen in place");
   assert.match(await page.locator("[data-kind-notice]").first().textContent(), /أبحث عن عقار/);
   assert.equal(await page.locator('textarea[name="description"]').inputValue(), REQUEST, "the visitor's text is kept as written");
   await page.waitForFunction(() => document.querySelector('[name=propertyType]')?.value === "عمارة");
@@ -103,7 +103,7 @@ try {
   // «أبحث عن عقار» is the guest search (owner decision 2026-10-16); same guarantees, its own controls.
   await page.locator('[data-path="client"]').click();
   await page.locator('textarea[name="description"]').fill("السلام عليكم كيف الحال");
-  await page.locator("[data-guest-analyze]").click();
+  await page.locator("[data-guest-search]").click();
   await page.locator('[data-guest-search-form] .os-alert.bad').waitFor();
   assert.ok((await page.locator('[data-guest-search-form] .os-alert.bad').innerText()).includes("أدخل المواصفات يدويًا"), "clear message");
   assert.equal(await page.locator('[name="price"]').inputValue(), "", "nothing filled");

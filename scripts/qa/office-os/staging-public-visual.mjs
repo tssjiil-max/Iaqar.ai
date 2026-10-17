@@ -32,14 +32,15 @@ try {
       await page.screenshot({ path: path.join(out, `${width}-${name}.png`), fullPage: true });
       results.push({ width, name, ...metrics });
     };
-    const iconColors = await page.locator('[data-path="owner"] svg').evaluateAll(nodes => nodes.map(n => getComputedStyle(n).color));
+    // «أبحث عن عقار | لدي عقار وأريد عرضه»: the chosen path is filled with the brand colour, its icons white.
+    assert.equal(await page.locator('[data-path="client"]').getAttribute("aria-pressed"), "true", "search is the default path");
+    const iconColors = await page.locator('[data-path][aria-pressed="true"] svg').evaluateAll(nodes => nodes.map(n => getComputedStyle(n).color));
     assert.ok(iconColors.length === 2 && iconColors.every(c => c === "rgb(255, 255, 255)"), "primary icons must be white");
     await inspect("public-office");
     await page.locator('[data-path="owner"]').click();
     await page.locator('[data-fill-mode="manual"]').click();
     await page.locator('input[name="contactPhone"]').waitFor();
     await inspect("offer-form");
-    await page.getByRole("button", { name: "رجوع", exact: true }).click();
     await page.locator('[data-path="client"]').click();
     // «أبحث عن عقار» is the guest search: the request box first, no phone until a property is chosen.
     await page.locator('[data-guest-search-form] textarea[name="description"]').waitFor();

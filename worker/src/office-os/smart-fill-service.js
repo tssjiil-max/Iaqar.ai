@@ -90,11 +90,11 @@ export function fillListingGaps(ctx, officeId, analysis) {
   return withModel(ctx, officeId, analysis).then(normalizeAnalysis);
 }
 
-async function run(ctx, officeId, text, { multi }) {
+async function run(ctx, officeId, text, { multi, model = true }) {
   const rules = analyzeText(text, { multi });
   if (!rules.ok) throw ctx.deps.appError(rules.error || "analysis_failed", 400, rules.message || "تعذر التحليل");
-  const result = normalizeAnalysis(await withModel(ctx, officeId, rules));
-  return { ...result, aiStatus: smartFillAiStatus(ctx.env) };
+  const result = normalizeAnalysis(model ? await withModel(ctx, officeId, rules) : { ...rules, ai: "not_used" });
+  return { ...result, aiStatus: model ? smartFillAiStatus(ctx.env) : "not_used" };
 }
 
 const LINK_RE = /https:\/\/[^\s<>"']+/i;
@@ -147,4 +147,13 @@ export async function analyzePublicText(ctx, { officeId, text, ip = "" }) {
 export async function analyzeOfficeText(ctx, { officeId, text, multi = true, ip = "" }) {
   limited(ctx, "smart-fill-office", ip, officeId, OFFICE_LIMIT);
   return run(ctx, officeId, cleanInput(ctx, text), { multi: multi !== false });
+}
+
+/**
+ * A guest's search request, read by the rules only: every «ابحث عن العقارات الآن» reads the text, so this path never
+ * calls a paid model, whatever keys the Worker holds.
+ */
+export async function analyzeGuestRequestText(ctx, { officeId, text, ip = "" }) {
+  limited(ctx, "smart-fill-guest-search", ip, officeId, PUBLIC_LIMIT);
+  return run(ctx, officeId, cleanInput(ctx, text), { multi: false, model: false });
 }

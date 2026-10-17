@@ -93,19 +93,41 @@
   border-color: var(--frame-soft); box-shadow: var(--shadow);
   gap: 12px;
 }
-.os-public-page .os-path-card[data-path="owner"] {
+/* «أبحث عن عقار | لدي عقار وأريد عرضه»: one choice, the chosen path filled with the brand colour. */
+.os-public-page .os-path-card[aria-pressed="true"] {
   background: var(--brand-primary);
   border-color: var(--brand-primary);
 }
-.os-public-page .os-path-card[data-path="owner"] :is(b, small, .ic, .os-path-go) { color: #FFF; }
-.os-public-page .os-path-card[data-path="owner"] .os-ico { color: #FFF; }
-.os-public-page .os-path-card[data-path="owner"] .ic { background: rgb(255 255 255 / 12%); }
+.os-public-page .os-path-card[aria-pressed="true"] :is(b, small, .ic, .os-path-go) { color: #FFF; }
+.os-public-page .os-path-card[aria-pressed="true"] .os-ico { color: #FFF; }
+.os-public-page .os-path-card[aria-pressed="true"] .ic { background: rgb(255 255 255 / 12%); }
 .os-public-page .os-path-card .ic svg { width: 32px; height: 32px; }
 .os-public-page .os-path-go {
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--brand-tint);
 }
-.os-public-page .os-path-card[data-path="owner"] .os-path-go { background: rgb(255 255 255 / 12%); }
+.os-public-page .os-path-card[aria-pressed="true"] .os-path-go { background: rgb(255 255 255 / 12%); }
+.os-public-page .os-path-card[aria-pressed="false"] .os-path-go { visibility: hidden; }
+/* Side by side and compact, so the form the visitor chose starts above the fold on a phone. */
+.os-public-page .os-paths-toggle { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-rows: auto; gap: 10px; }
+.os-public-page .os-paths-toggle .os-path-card {
+  grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto; gap: 10px;
+  min-height: 76px; padding: 12px; border-radius: 16px; position: relative;
+}
+.os-public-page .os-paths-toggle .os-path-card .ic { width: 40px; height: 40px; border-radius: 12px; }
+.os-public-page .os-paths-toggle .os-path-card .ic svg { width: 22px; height: 22px; }
+.os-public-page .os-paths-toggle .os-path-text b { font-size: var(--fs-body, 16px); line-height: 1.35; }
+.os-public-page .os-paths-toggle .os-path-go { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; width: 22px; height: 22px; }
+.os-public-page .os-paths-toggle .os-path-go svg { width: 14px; height: 14px; }
+@media (max-width: 479px) {
+  /* Icon above the title, so «أبحث عن عقار» and «لدي عقار وأريد عرضه» keep their words together at 320px. */
+  .os-public-page .os-paths-toggle .os-path-card { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 6px; min-height: 0; padding: 10px 12px; }
+  .os-public-page .os-paths-toggle .os-path-card .ic { width: 34px; height: 34px; border-radius: 10px; }
+  .os-public-page .os-paths-toggle .os-path-card .ic svg { width: 20px; height: 20px; }
+  .os-public-page .os-paths-toggle .os-path-text b { font-size: 15px; }
+  .os-public-page .os-paths-toggle .os-path-text small { display: none; }
+}
+.os-public-journey { display: grid; gap: 14px; margin-bottom: 16px; }
 .os-public-contact { gap: 12px; }
 .os-public-done { padding: 32px 20px; }
 .os-public-done .os-task-icon { width: 72px; height: 72px; }

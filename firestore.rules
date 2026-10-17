@@ -136,6 +136,11 @@ service cloud.firestore {
           && (!("consentProcessing" in request.resource.data) || request.resource.data.consentProcessing == true)
           && (!("consentWhatsapp" in request.resource.data) || request.resource.data.consentWhatsapp is bool)
           && (!("consentAt" in request.resource.data) || request.resource.data.consentAt == request.time)
+          // «أرسل طلبي للمكتب» after a guest search (optional, checked when present).
+          && (!("contactPreference" in request.resource.data) || request.resource.data.contactPreference in ['whatsapp', 'call'])
+          && (!("publicReference" in request.resource.data) || (request.resource.data.publicReference is string && request.resource.data.publicReference.matches('IQ-[A-Z0-9]{8}')))
+          && (!("searchReferences" in request.resource.data) || (request.resource.data.searchReferences is list && request.resource.data.searchReferences.size() <= 10))
+          && (!("searchResultCount" in request.resource.data) || (request.resource.data.searchResultCount is int && request.resource.data.searchResultCount >= 0 && request.resource.data.searchResultCount <= 10))
           && request.resource.data.status == 'new';
         // القراءة للأعضاء — التحديث/الحذف عبر Worker فقط (منع تزوير processed).
         allow read: if isOfficeMember(officeId);

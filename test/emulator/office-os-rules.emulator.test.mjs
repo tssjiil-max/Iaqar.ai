@@ -93,6 +93,25 @@ test("public office page: visitors read publicOffices and submit the new office-
   await assertFails(getDoc(doc(db, "offices/office-a/publicIntake/in_1")), "visitors cannot read intakes");
 });
 
+test("«أرسل طلبي للمكتب» after a guest search: the request payload is accepted and its new fields are checked", async () => {
+  const db = anon();
+  const request = {
+    officeId: "office-a", kind: "client", submitterRole: "CLIENT", submitterCapacity: "BUYER", name: "عميل البحث", phone: "0557000444",
+    contactPreference: "call", propertyType: "شقة", district: "الملقا", city: "الرياض", purpose: "PURCHASE", transactionType: "sale",
+    amount: 550000, area: 0, rooms: 4, details: "مطلوب شقة تمليك في الملقا", searchReferences: ["office-a:pub-1"], searchResultCount: 1,
+    mediaPaths: [], imageCount: 0, hasVideo: false, source: "office_public_link", fillMethod: "GUEST_SEARCH",
+    consentProcessing: true, consentWhatsapp: false, publicReference: "IQ-AB12CD34", consentAt: serverTimestamp(), createdAt: serverTimestamp(), status: "new"
+  };
+  await assertSucceeds(setDoc(doc(db, "offices/office-a/publicIntake/gs_1"), request));
+  await assertSucceeds(setDoc(doc(db, "offices/office-a/publicIntake/gs_2"), { ...request, contactPreference: "whatsapp", searchReferences: [], searchResultCount: 0 }), "no results still sends");
+  await assertFails(setDoc(doc(db, "offices/office-a/publicIntake/gs_3"), { ...request, contactPreference: "email" }), "unknown channel");
+  await assertFails(setDoc(doc(db, "offices/office-a/publicIntake/gs_4"), { ...request, publicReference: "anything" }), "reference format");
+  await assertFails(setDoc(doc(db, "offices/office-a/publicIntake/gs_5"), { ...request, searchReferences: Array.from({ length: 11 }, (_, i) => `office-a:r${i}`) }), "at most ten shown results");
+  await assertFails(setDoc(doc(db, "offices/office-a/publicIntake/gs_6"), { ...request, name: "عميل" }), "a full name");
+  await assertFails(setDoc(doc(db, "offices/office-a/publicIntake/gs_7"), { ...request, consentProcessing: false }), "consent is required");
+  await assertFails(setDoc(doc(db, "offices/office-a/publicIntake/gs_8"), { ...request, officeId: "office-b" }), "cannot retarget another office");
+});
+
 test("assignment and deal-permission settings: managers only", async () => {
   await assertSucceeds(setDoc(doc(as("owner-a"), "offices/office-a/officeSettings/assignment"), { officeId: "office-a", defaultBrokerId: "broker-a" }, { merge: true }));
   await assertSucceeds(setDoc(doc(as("owner-a"), "offices/office-a/officeSettings/deals"), { officeId: "office-a", brokerMayClose: true }, { merge: true }));
