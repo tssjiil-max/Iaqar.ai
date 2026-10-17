@@ -387,3 +387,27 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
   .os-app .os-guide-copy { min-width: 0; overflow-wrap: anywhere; }
   .os-app .os-guide-step .os-btn { min-height: 44px; }
 }
+
+/* Interior mobile density: shared visual language, no global element overrides. */
+@media (max-width: 600px) {
+  .os-app .os-page-title { line-height: 1.35; overflow-wrap: anywhere; }
+  .os-app .os-tool-intro { margin-block: 6px 12px; }
+  .os-app [data-tool-guide], .os-app [data-tool-templates] { min-width: 0; }
+  .os-app [data-tool-templates] .os-template { min-width: 0; }
+  .os-app [data-tool-templates] .os-template-text { width: 100%; max-width: 100%; }
+  .os-app [data-tool-services].os-settings-grid > .os-service-row {
+    min-height: 0; padding: 12px; gap: 8px;
+    border-color: var(--frame-soft); box-shadow: var(--shadow);
+  }
+  .os-app [data-tool-services] .ref-reference-icon { max-width: 48px; max-height: 48px; }
+  .os-app [data-search-results] .os-center-list,
+  .os-app [data-inbox] .os-center-list { display: grid; gap: 10px; min-width: 0; }
+  .os-app [data-search-results] .os-center-row,
+  .os-app [data-inbox] .os-inbox-card {
+    min-width: 0; margin: 0; padding: 12px; overflow-wrap: anywhere;
+  }
+  .os-app [data-search-results] .os-set-text { min-width: 0; overflow-wrap: anywhere; }
+  .os-app [data-inbox] .os-inbox-head,
+  .os-app [data-inbox] .os-inbox-foot { flex-wrap: wrap; gap: 8px; }
+  .os-app [data-inbox] .os-inbox-text { overflow-wrap: anywhere; }
+}
