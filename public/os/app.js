@@ -84,6 +84,18 @@ function view() {
   return { name: "tasks", main: true, deal: true, run: (el) => renderTasks(el, { filter: query.get("filter") || "all", step: query.get("step"), lane: query.get("lane") }) };
 }
 
+// Each page wears the colour of its office tool («أدوات المكتب»), so a page is recognisable at a glance.
+const SECTION_TONES = {
+  tasks: "blue", task: "blue", inbox: "blue", audit: "blue", repo: "gold", record: "gold", "quick-add": "gold",
+  scout: "purple", search: "purple", library: "purple", review: "green", journey: "green", session: "green", deal: "green",
+  community: "green", agent: "green", settings: "teal", office: "teal",
+  "tools/guide": "blue", "tools/forms": "red", "tools/services": "gold", "tools/calculator": "blue", "tools/market": "gold"
+};
+function sectionTone() {
+  const [section = "office", id = ""] = parseHash().parts;
+  return SECTION_TONES[`${section}/${id}`] || SECTION_TONES[section] || "teal";
+}
+
 function render() {
   if (typeof cleanup === "function") { try { cleanup(); } catch (_) { /* ignore */ } }
   cleanup = null;
@@ -91,7 +103,7 @@ function render() {
   const current = view();
   // «الرجوع إلى بطاقة الصفقة» is kept only while the broker stays within a deal's pages and the tasks list.
   if (!current.deal) forgetDeal();
-  const page = h("main", { class: "os-app", "data-view": current.name });
+  const page = h("main", { class: "os-app", "data-view": current.name, "data-tone": sectionTone() });
   append(root, page);
   if (session.officeId) append(page, renderShellHeader({ active: current.name }));
   const body = h("section", { class: "os-view" });

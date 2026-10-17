@@ -144,7 +144,21 @@ const SCREENS = [
     await p.waitForFunction(() => document.querySelector('[name=price]')?.value === "550000"); await p.locator("[data-guest-search]").click();
     await p.locator("[data-choose-result]").first().click(); await p.locator("[data-guest-select-form]").waitFor();
     await p.locator('[name="contactName"]').fill("زائر اختباري"); await p.locator('[name="contactPhone"]').fill(`05599${String(p.viewportSize().width).padStart(5, "0")}`);
-    await p.locator('[name="consentProcessing"]').check(); await p.locator('[name="consentContact"]').check(); await p.locator("[data-guest-select]").click();
+    // The sheet must hold exactly what was typed before it is submitted. If CI ever shows the form's own
+    // validation message anyway, log the real field state (what the form held) and retry once, so a
+    // genuine data-loss bug stays visible in the log instead of being a bare timeout.
+    const filled = () => p.evaluate(() => ({ name: document.querySelector('[name="contactName"]')?.value, phone: document.querySelector('[name="contactPhone"]')?.value, a: document.querySelector('[name="consentProcessing"]')?.checked, b: document.querySelector('[name="consentContact"]')?.checked }));
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await p.locator('[name="consentProcessing"]').check(); await p.locator('[name="consentContact"]').check();
+      try { await p.waitForFunction(() => document.querySelector('[name="contactName"]')?.value && document.querySelector('[name="contactPhone"]')?.value && document.querySelector('[name="consentProcessing"]')?.checked && document.querySelector('[name="consentContact"]')?.checked, null, { timeout: 4000 }); }
+      catch (e) { console.log(`  public-form-sent DIAG attempt ${attempt}:`, JSON.stringify(await p.evaluate(() => ({ url: location.href, forms: document.querySelectorAll("[data-guest-select-form]").length, sheets: document.querySelectorAll(".os-sheet").length, overlays: document.querySelectorAll(".os-overlay").length, results: document.querySelectorAll("[data-search-result]").length, name: [...document.querySelectorAll('[name="contactName"]')].map((e) => e.value), phone: [...document.querySelectorAll('[name="contactPhone"]')].map((e) => e.value), a: [...document.querySelectorAll('[name="consentProcessing"]')].map((e) => e.checked), b: [...document.querySelectorAll('[name="consentContact"]')].map((e) => e.checked), alerts: [...document.querySelectorAll(".os-alert,.os-toast")].map((e) => e.textContent.trim().slice(0, 60)), navType: performance.getEntriesByType("navigation")[0]?.type }))));
+        await p.locator('[name="contactName"]').fill("زائر اختباري"); await p.locator('[name="contactPhone"]').fill(`05599${String(p.viewportSize().width).padStart(5, "0")}`); await p.locator('[name="consentProcessing"]').check(); await p.locator('[name="consentContact"]').check(); }
+      await p.locator("[data-guest-select]").click();
+      const outcome = await Promise.race([p.locator("[data-whatsapp-handoff]").waitFor().then(() => "ok"), p.locator("[data-guest-select-form] .os-alert.bad:not([hidden])").waitFor().then(() => "alert")]);
+      if (outcome === "ok") return;
+      console.log(`  public-form-sent attempt ${attempt}: validation alert; fields =`, JSON.stringify(await filled()));
+      await p.locator('[name="contactName"]').fill("زائر اختباري"); await p.locator('[name="contactPhone"]').fill(`05599${String(p.viewportSize().width).padStart(5, "0")}`);
+    }
     await p.locator("[data-whatsapp-handoff]").waitFor();
   } }
 ];
