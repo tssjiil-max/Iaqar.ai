@@ -358,3 +358,32 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-guest-result .os-badge{margin:0}
 .os-record-reservation{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#e3ecee)}
 .os-record-reservation .os-btn{flex:0 1 auto}
+
+/* Mobile interior refinement: scoped to office tools, not the public journey.
+   Reduce oversized vertical rhythm while preserving touch targets and RTL. */
+@media (max-width: 600px) {
+  .os-app [data-tool-market] { gap: 12px; min-width: 0; }
+  .os-app [data-tool-market] .os-office-section,
+  .os-app [data-tool-market] .os-card { min-width: 0; }
+  .os-app [data-tool-market] .os-market-stats {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px; padding: 12px;
+  }
+  .os-app [data-tool-market] .os-market-stat {
+    min-width: 0; padding: 8px 4px; text-align: center;
+  }
+  .os-app [data-tool-market] .os-market-stat b { font-size: clamp(1.3rem, 6vw, 1.8rem); }
+  .os-app [data-tool-market] .os-market-stat small {
+    display: block; overflow-wrap: anywhere; line-height: 1.4;
+  }
+  .os-app [data-tool-market] .os-data-table { width: 100%; table-layout: fixed; }
+  .os-app [data-tool-market] .os-data-table :is(th,td) {
+    min-width: 0; padding: 10px 5px; overflow-wrap: anywhere;
+  }
+  .os-app [data-tool-market] .os-data-table :is(th,td) :is(b,small) {
+    display: block; overflow-wrap: anywhere;
+  }
+  .os-app .os-guide-step { gap: 10px; padding: 12px; min-width: 0; }
+  .os-app .os-guide-copy { min-width: 0; overflow-wrap: anywhere; }
+  .os-app .os-guide-step .os-btn { min-height: 44px; }
+}
