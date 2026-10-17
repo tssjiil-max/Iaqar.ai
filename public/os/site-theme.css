@@ -440,7 +440,7 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
   }
   .os-app .ref-record-open { min-width: 0; width: 100%; gap: 10px; }
   .os-app .ref-record-copy { min-width: 0; overflow-wrap: anywhere; }
-  .os-app .ref-record-copy h3 { margin-block: 0 4px; line-height: 1.35; }
+  .os-app .ref-record-copy h3 { margin-block: 0 4px; line-height: 1.55; }
   .os-app .ref-record-copy p { margin-block: 4px; overflow-wrap: anywhere; }
   .os-app .ref-record-meta { flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
   .os-app .ref-record-tags { flex-wrap: wrap; gap: 5px; }
