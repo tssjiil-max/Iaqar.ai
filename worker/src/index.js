@@ -2429,6 +2429,15 @@ function publicIntakeProvenance(intake = {}) {
   const consentAt = intake.consentAt ? new Date(intake.consentAt) : null;
   if (consentAt && Number.isFinite(consentAt.getTime())) fields.consentAt = firestoreTimestamp(consentAt);
   if (typeof intake.consentWhatsapp === "boolean") fields.consentSource = firestoreString("office_public_link");
+  // «أرسل طلبي للمكتب» after a guest search: how the client asked to be contacted, the reference he was shown,
+  // and the listings he saw (references only) — so the office follows up on the same request.
+  if (["whatsapp", "call"].includes(intake.contactPreference)) fields.contactPreference = firestoreString(intake.contactPreference);
+  if (/^IQ-[A-Z0-9]{8}$/.test(String(intake.publicReference || ""))) fields.publicReference = firestoreString(intake.publicReference);
+  if (intake.fillMethod === "GUEST_SEARCH") {
+    fields.fillMethod = firestoreString("GUEST_SEARCH");
+    const shown = Array.isArray(intake.searchReferences) ? intake.searchReferences.map((value) => cleanText(value, 260)).filter((value) => /^[a-zA-Z0-9_-]{1,80}:[a-zA-Z0-9_-]{1,160}$/.test(value)).slice(0, 10) : [];
+    fields.guestSearchReferencesJson = firestoreString(JSON.stringify(shown));
+  }
   return { fields, holdMatching: capacity === "AD_RELAY" };
 }
 

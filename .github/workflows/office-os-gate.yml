@@ -115,6 +115,9 @@ jobs:
       - name: «تعبئة ذكية | تعبئة يدوية» + «إضافة سريعة» (public page and office, isolation, limits)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/smart-fill" node scripts/qa/office-os/smart-fill.e2e.mjs
+      - name: Guest journeys on the office link (search now, send request with/without results, scope, owner offer for review)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/public-search" node scripts/qa/office-os/public-search.e2e.mjs
       - name: Kapso WhatsApp Sandbox (signature, retries, office isolation, conversation, matching, room)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/kapso" node scripts/qa/office-os/kapso.e2e.mjs

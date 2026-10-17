@@ -356,6 +356,14 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-guest-result-price{color:var(--brand-dark,#082f3a);white-space:nowrap}
 .os-guest-result-tags{display:flex;gap:6px;flex-wrap:wrap}
 .os-guest-result .os-badge{margin:0}
+/* «أرسل طلبي للمكتب العقاري» after the results, and the reference a visitor keeps. */
+.os-guest-request{display:grid;gap:8px;margin-top:4px}
+.os-guest-request .os-h2{margin:0}
+.os-public-reference{margin:8px 0 0;color:var(--navy);font-size:var(--fs-desc);text-align:center}
+.os-public-reference b{font-variant-numeric:tabular-nums;letter-spacing:.04em;unicode-bidi:isolate}
+.os-public-data-notice{margin-top:4px}
+.os-public-data-notice summary{cursor:pointer;color:var(--brand-primary)}
+.os-public-data-notice ul{margin:6px 0 0;padding-inline-start:18px;display:grid;gap:4px}
 .os-record-reservation{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#e3ecee)}
 .os-record-reservation .os-btn{flex:0 1 auto}
 
