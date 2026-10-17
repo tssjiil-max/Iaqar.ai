@@ -4,7 +4,7 @@ import { createHmac } from 'node:crypto';
 import { startOfficeOsHarness, OFFICE_A, OWNER_A, OWNER_B, idTokenFor } from '../scripts/qa/office-os/server.mjs';
 const h=await startOfficeOsHarness();test.after(()=>h.server.close());
 const originalProject=h.env.FIREBASE_PROJECT_ID;
-Object.assign(h.env,{META_APP_SECRET:'local-hmac-secret',META_WEBHOOK_VERIFY_TOKEN:'local-verify',FIREBASE_PROJECT_ID:'iaqar-ai-staging',WHATSAPP_AGENT_ENABLED:'enabled',WHATSAPP_AGENT_OFFICE_IDS:OFFICE_A,WHATSAPP_AGENT_SEND:'enabled',WHATSAPP_AGENT_ALLOWED_RECIPIENTS:'966500000001',ANTHROPIC_API_KEY:'test-secret',ANTHROPIC_MODEL:'test-model',META_WHATSAPP_ACCESS_TOKEN:'test-token'});
+Object.assign(h.env,{META_APP_SECRET:'local-hmac-secret',META_WEBHOOK_VERIFY_TOKEN:'local-verify',FIREBASE_PROJECT_ID:'iaqar-ai-staging',WHATSAPP_AGENT_ENABLED:'enabled',WHATSAPP_AGENT_OFFICE_IDS:OFFICE_A,WHATSAPP_AGENT_SEND:'enabled',WHATSAPP_AGENT_ALLOWED_RECIPIENTS:'966500000001',ANTHROPIC_API_KEY:'test-secret',ANTHROPIC_MODEL:'test-model',WHATSAPP_AGENT_CLASSIFIER:'claude',META_WHATSAPP_ACCESS_TOKEN:'test-token'});
 h.store.seed('whatsapp_accounts/runtime-phone',{officeId:OFFICE_A,wabaId:'runtime-waba',status:'connected',isOnBizApp:true,platformType:'CLOUD_API',metaPhoneStatus:'CONNECTED'});
 h.store.seed(`offices/${OFFICE_A}/integrations/whatsapp`,{autoReplyEnabled:true});
 const upstream=globalThis.fetch,calls=[];let release;

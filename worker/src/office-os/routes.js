@@ -1,4 +1,4 @@
-import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue } from "./whatsapp-agent-service.js";
+import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue, listWhatsAppCases, actOnWhatsAppCase } from "./whatsapp-agent-service.js";
 /**
  * /os/* routes — the office operating system API.
  * Office routes: Firebase ID token → office membership (Worker-verified) → service.
@@ -55,6 +55,12 @@ const OFFICE_ROUTES = Object.freeze({
     if (!actor.isManager) throw ctx.deps.appError("forbidden", 403, "لمدير المكتب فقط");
     return drainWhatsAppQueue(ctx, { officeId: ctx.officeId });
   },
+  // Cases the WhatsApp agent opened (interest, offers, viewings) and the office's decisions on them.
+  "/os/whatsapp-agent/cases": (ctx, b, actor) => listWhatsAppCases(ctx, { officeId: ctx.officeId, actor }),
+  "/os/whatsapp-agent/case/action": (ctx, b, actor) => actOnWhatsAppCase(ctx, {
+    officeId: ctx.officeId, actor, caseId: text(b.caseId), action: text(b.action),
+    input: b.input && typeof b.input === "object" ? b.input : {}, requestKey: text(b.requestKey)
+  }),
   "/os/records/cooperation": (ctx, b, actor) => reviewExternalCooperation(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), input: b }),
   // «تعبئة ذكية» / «إضافة سريعة»: analysis only — the record is saved later through /os/records/save after review.
   "/os/smart-fill": (ctx, b, actor) => analyzeOfficeText(ctx, { officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", multi: b.multi !== false, ip: actor.uid }),

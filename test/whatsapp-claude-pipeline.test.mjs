@@ -17,7 +17,7 @@ function fixture() {
     async list(p) { return [...docs].filter(([k])=>k.startsWith(key(p)+'/')&&k.split('/').length===p.length+1).map(([k,d])=>({id:k.split('/').at(-1),...structuredClone(d)})); }
   };
   let at = new Date('2026-10-16T20:00:00Z');
-  const env={DEPLOYMENT_ENV:'staging',FIREBASE_PROJECT_ID:'iaqar-ai-staging',WHATSAPP_AGENT_ENABLED:'enabled',WHATSAPP_AGENT_OFFICE_IDS:'office-a',WHATSAPP_AGENT_ALLOWED_RECIPIENTS:'966500000001',WHATSAPP_AGENT_SEND:'enabled',META_WHATSAPP_ACCESS_TOKEN:'test-meta-secret',ANTHROPIC_API_KEY:'test-claude-secret',ANTHROPIC_MODEL:'test-model'};
+  const env={DEPLOYMENT_ENV:'staging',FIREBASE_PROJECT_ID:'iaqar-ai-staging',WHATSAPP_AGENT_ENABLED:'enabled',WHATSAPP_AGENT_OFFICE_IDS:'office-a',WHATSAPP_AGENT_ALLOWED_RECIPIENTS:'966500000001',WHATSAPP_AGENT_SEND:'enabled',META_WHATSAPP_ACCESS_TOKEN:'test-meta-secret',ANTHROPIC_API_KEY:'test-claude-secret',ANTHROPIC_MODEL:'test-model',WHATSAPP_AGENT_CLASSIFIER:'claude'};// Claude is opt-in; these cases cover that path.
   const calls=[];
   const ctx={store,env,now:()=>new Date(at),deps:{sha256Hex:async s=>createHash('sha256').update(s).digest('hex'),officeIdsEquivalent:(a,b)=>a===b,appError:(code,status,message)=>Object.assign(Error(message),{code,status})},fetchImpl:async(url,init)=>{calls.push({url,body:JSON.parse(init.body)});return url.includes('anthropic')?Response.json({content:[{type:'text',text:'{"intent":"purchase"}'}],usage:{input_tokens:10,output_tokens:5}}):Response.json({messages:[{id:'sent-'+calls.length}]});}};
   store.set(['whatsapp_accounts','phone-a'],{officeId:'office-a',wabaId:'waba-a',status:'connected',isOnBizApp:true,platformType:'CLOUD_API',metaPhoneStatus:'CONNECTED'});
@@ -83,7 +83,7 @@ test('confirmed customer search uses central published inventory and never leaks
  // The first job is terminal, leaving a realistic existing conversation awaiting consent.
  await f.ctx.store.set(['offices','office-a','inbox',first.id],{waQueueState:'SIMULATED'});
  await ingestWhatsAppEvents(f.ctx,payload('confirmed','موافق'));f.advance(1);await drainWhatsAppQueue(f.ctx);
- const sent=f.calls.find(c=>c.url.includes('graph.facebook'))?.body.text.body;assert.ok(sent,sent);assert.match(sent,/500000/);assert.match(sent,/office-a:offer-1/);assert.ok(!sent.includes('0551234567')&&!sent.includes('مالك سري')&&!sent.includes('معلومة سرية'));
+ const sent=f.calls.find(c=>c.url.includes('graph.facebook'))?.body.text.body;assert.ok(sent,sent);assert.match(sent,/500,000/);assert.match(sent,/office-a:offer-1/);assert.ok(!sent.includes('0551234567')&&!sent.includes('مالك سري')&&!sent.includes('معلومة سرية'));
  assert.equal((await f.ctx.store.list(['publicSearchSessions'])).length,1);
 });
 test('a reassigned phone cannot send the former office reply',async()=>{
@@ -104,5 +104,5 @@ test('retry rechecks publication before delivering previously matched inventory'
  await ingestWhatsAppEvents(f.ctx,payload('context'));const first=(await inbox(f))[0];await f.ctx.store.set(['offices','office-a','inbox',first.id],{waQueueState:'SIMULATED'});await f.ctx.store.update(['offices','office-a','whatsappConversations',first.conversationId],()=>({draft:{kind:'REQUEST',purpose:'PURCHASE',propertyType:'شقة',city:'الرياض',district:'الملقا',price:550000},awaitingConsent:true,pending:[]}));
  const normal=f.ctx.fetchImpl;let rejected=false;f.ctx.fetchImpl=async(u,i)=>{if(u.includes('graph.facebook')&&!rejected){rejected=true;return new Response('',{status:429});}return normal(u,i);};
  await ingestWhatsAppEvents(f.ctx,payload('consent','موافق'));f.advance(1);await drainWhatsAppQueue(f.ctx);await f.ctx.store.set(['offices','office-a','opportunities','pub'],{publicSearchVisible:false});f.advance(60000);await drainWhatsAppQueue(f.ctx);
- const sent=f.calls.find(c=>c.url.includes('graph.facebook'))?.body.text.body;assert.ok(sent);assert.ok(!sent.includes('500000')&&!sent.includes('office-a:pub'));assert.equal(f.calls.filter(c=>c.url.includes('anthropic')).length,1);
+ const sent=f.calls.find(c=>c.url.includes('graph.facebook'))?.body.text.body;assert.ok(sent);assert.ok(!sent.includes('500000')&&!sent.includes('500,000')&&!sent.includes('office-a:pub'));assert.equal(f.calls.filter(c=>c.url.includes('anthropic')).length,1);
 });

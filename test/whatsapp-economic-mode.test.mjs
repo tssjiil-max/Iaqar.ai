@@ -19,5 +19,7 @@ test('economic mode handles rental intent conservatively',()=>{
  assert.equal(classifyEconomicWhatsApp('مرحبا').intent,'inquiry');
 });
 test('non-economic mode still requires configured Claude',async()=>{
- await assert.rejects(()=>classifyWithClaude({env:{}},'مرحبا'),e=>e.code==='claude_not_configured');
+ await assert.rejects(()=>classifyWithClaude({env:{WHATSAPP_AGENT_CLASSIFIER:'claude'}},'مرحبا'),e=>e.code==='claude_not_configured');
+ const local=await classifyWithClaude({env:{ANTHROPIC_API_KEY:'k',ANTHROPIC_MODEL:'m'},fetchImpl:async()=>{throw Error('no network expected');}},'مرحبا');
+ assert.equal(local.simulated,true,'keys alone never enable paid calls');
 });

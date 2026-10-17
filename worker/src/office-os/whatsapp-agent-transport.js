@@ -8,6 +8,15 @@ export async function readWebhookBody(request) {
   const bytes=new Uint8Array(size);let at=0;for(const chunk of chunks){bytes.set(chunk,at);at+=chunk.byteLength;}
   return new TextDecoder().decode(bytes);
 }
+
+/**
+ * Paid model calls are opt-in. The deterministic local classifier is the default; Claude is used only when
+ * WHATSAPP_AGENT_CLASSIFIER=claude AND economic test mode is off AND its keys exist.
+ */
+export function usesPaidClassifier(env={}) {
+  return env.ECONOMIC_TEST_MODE!=='enabled'&&String(env.WHATSAPP_AGENT_CLASSIFIER||'').toLowerCase()==='claude';
+}
+
 export function classifyEconomicWhatsApp(text) {
   const value=String(text||'').trim();
   // Deterministic and deliberately conservative: no LLM and no claims of semantic understanding.
@@ -19,7 +28,7 @@ export function classifyEconomicWhatsApp(text) {
   return {intent,requiresHuman,usage:{inputTokens:0,outputTokens:0},simulated:true};
 }
 export async function classifyWithClaude(ctx, text, history = []) {
-  if(ctx.env.ECONOMIC_TEST_MODE==='enabled') return classifyEconomicWhatsApp(text);
+  if(!usesPaidClassifier(ctx.env)) return classifyEconomicWhatsApp(text);
   if (!ctx.env.ANTHROPIC_API_KEY || !ctx.env.ANTHROPIC_MODEL) throw Object.assign(Error('claude_not_configured'),{code:'claude_not_configured'});
   const response = await (ctx.fetchImpl || fetch)('https://api.anthropic.com/v1/messages', {
     method:'POST', signal:AbortSignal.timeout(15000),
@@ -35,15 +44,24 @@ export async function classifyWithClaude(ctx, text, history = []) {
   return {intent:value.intent,requiresHuman:value.requiresHuman===true,usage:{inputTokens:Number(body.usage?.input_tokens)||0,outputTokens:Number(body.usage?.output_tokens)||0}};
 }
 
-export async function sendWhatsAppReply(ctx,{phoneNumberId,to,body,callback}) {
-  // All policy gates must be evaluated immediately before entering this adapter.
+const ALLOWED_TYPES=new Set(['text','interactive','image']);
+/**
+ * One message to the Cloud API. `message` is a payload built by whatsapp-agent-domain (text, reply buttons,
+ * list, image by link). All policy gates must be evaluated immediately before entering this adapter.
+ */
+export async function sendWhatsAppMessage(ctx,{phoneNumberId,to,message,callback}) {
+  if(!message||!ALLOWED_TYPES.has(message.type))return {ok:false,error:'message_type_not_allowed'};
   try {
     const r=await (ctx.fetchImpl||fetch)(`https://graph.facebook.com/${/^v\d+\.\d+$/.test(ctx.env.META_GRAPH_VERSION||'')?ctx.env.META_GRAPH_VERSION:'v25.0'}/${encodeURIComponent(phoneNumberId)}/messages`,{
       method:'POST',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',Authorization:`Bearer ${ctx.env.META_WHATSAPP_ACCESS_TOKEN}`},
-      body:JSON.stringify({messaging_product:'whatsapp',recipient_type:'individual',to,type:'text',text:{preview_url:false,body:clean(body,4000)},biz_opaque_callback_data:callback})
+      body:JSON.stringify({messaging_product:'whatsapp',recipient_type:'individual',to,...message,...(callback?{biz_opaque_callback_data:callback}:{})})
     });
     if(!r.ok) return {ok:false,retryable:r.status===429,unknown:r.status>=500,error:r.status===401||r.status===403?'meta_auth_failed':`meta_http_${r.status}`};
     const result=await r.json();const id=clean(result.messages?.[0]?.id,200);
     return id?{ok:true,messageId:id}:{ok:false,unknown:true,error:'meta_missing_message_id'};
   }catch{return {ok:false,unknown:true,error:'meta_delivery_unknown'};}
+}
+
+export async function sendWhatsAppReply(ctx,{phoneNumberId,to,body,callback}) {
+  return sendWhatsAppMessage(ctx,{phoneNumberId,to,callback,message:{type:'text',text:{preview_url:false,body:clean(body,4000)}}});
 }
