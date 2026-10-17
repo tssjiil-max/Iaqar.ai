@@ -54,7 +54,7 @@ try {
   await visitor.goto(`${h.origin}/o/sultan`);
   await visitor.getByText("مكتب سلطان العقاري").first().waitFor();
   await shot(visitor, "01-public-office");
-  await visitor.getByRole("button", { name: /لدي عقار/ }).click();
+  await visitor.locator('[data-path="owner"]').click();
   // «تعبئة يدوية»: this journey fills the form field by field (the smart fill has its own test).
   await visitor.locator('[data-fill-mode="manual"]').click();
   await visitor.getByRole("button", { name: "بيع" }).click();

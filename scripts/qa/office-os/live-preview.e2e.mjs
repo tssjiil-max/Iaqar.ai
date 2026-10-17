@@ -124,7 +124,7 @@ try {
     const p0 = await ctx0.newPage();
     p0.setDefaultTimeout(30000);
     await p0.goto(`${PREVIEW_URL}/?office=${OFFICE}&view=public`);
-    await p0.getByRole("button", { name: /لدي عقار/ }).click();
+    await p0.locator('[data-path="owner"]').click();
     await p0.locator('[name="smartText"]').fill(smartText);
     await p0.locator("[data-smart-analyze]").click();
     // «أبحث عن عقار» is the guest search (owner decision 2026-10-16): the text moves with the visitor and is read at once.
@@ -143,7 +143,7 @@ try {
   await visitor.goto(`${PREVIEW_URL}/?office=${OFFICE}&view=public`);
   await visitor.getByText("مكتب اختبار المعاينة").first().waitFor();
   await shot(visitor, "01-public-office");
-  await visitor.getByRole("button", { name: /لدي عقار/ }).click();
+  await visitor.locator('[data-path="owner"]').click();
   // «تعبئة يدوية»: this journey fills the form field by field (the smart fill has its own test).
   await visitor.locator('[data-fill-mode="manual"]').click();
   await visitor.getByRole("button", { name: "بيع" }).click();

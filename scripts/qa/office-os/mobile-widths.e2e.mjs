@@ -40,7 +40,7 @@ await callWorker(h, "/os/session/act", { token: linkToken(negLinks.client.url), 
 const SMART_OFFER = "للبيع فيلا في حي النرجس بالرياض مساحة ٤٥٠ م٢، ٥ غرف، واجهة شمالية، السعر 2.3 مليون";
 const SMART_REQUEST = "مطلوب عمارة في شوران أو الهجرة أو الرانوناء، الميزانية مليونين، شراء، مستعجل.";
 const SCREENS = [
-  { name: "public-success", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => {
+  { name: "public-success", url: "/m/sultan", wait: '[data-path="owner"]', auth: false, act: async (p) => {
     await p.locator('[data-path="owner"]').click();
     await p.locator('[data-fill-mode="manual"]').click();
     await p.getByRole("button", { name: "بيع", exact: true }).click();
@@ -53,19 +53,19 @@ const SCREENS = [
     await p.getByRole("button", { name: "إرسال", exact: true }).click();
     await p.getByText("تم استلام بياناتك", { exact: true }).waitFor();
   } },
-  { name: "public-office", url: "/o/sultan", wait: "text=لدي عقار", auth: false },
-  { name: "public-form", url: "/o/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.getByRole("button", { name: /لدي عقار/ }).click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
+  { name: "public-office", url: "/o/sultan", wait: '[data-path="owner"]', auth: false },
+  { name: "public-form", url: "/o/sultan", wait: '[data-path="owner"]', auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('input[name="contactPhone"]').waitFor(); } },
   // The two public forms in every state a visitor meets: «تعبئة ذكية» empty and analysed, «تعبئة يدوية», the
   // cooperating-broker fields, the validation messages. Test data only; nothing is sent.
-  { name: "public-form-smart", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').waitFor(); } },
-  { name: "public-form-smart-review", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').fill(SMART_OFFER); await p.locator("[data-smart-analyze]").click(); await p.locator("[data-smart-review]").waitFor(); } },
+  { name: "public-form-smart", url: "/m/sultan", wait: '[data-path="owner"]', auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').waitFor(); } },
+  { name: "public-form-smart-review", url: "/m/sultan", wait: '[data-path="owner"]', auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[name="smartText"]').fill(SMART_OFFER); await p.locator("[data-smart-analyze]").click(); await p.locator("[data-smart-review]").waitFor(); } },
   // «أبحث عن عقار» is the guest search (owner decision 2026-10-16): request → matches → choice → consent → WhatsApp.
   { name: "public-request-form", url: "/m/sultan", wait: "[data-guest-search-form]", auth: false, act: async (p) => { await p.locator('[data-guest-search-form] textarea[name="description"]').waitFor(); } },
   { name: "public-request-smart-review", url: "/m/sultan", wait: "[data-guest-search-form]", auth: false, act: async (p) => { await p.locator('textarea[name="description"]').fill(GUEST_TEXT); await p.locator("[data-guest-analyze]").click(); await p.locator("[data-search-summary]").waitFor(); await p.waitForFunction(() => document.querySelector('[name=price]')?.value === "550000"); } },
   { name: "public-request-results", url: "/m/sultan", wait: "[data-guest-search-form]", auth: false, act: async (p) => { await p.locator('textarea[name="description"]').fill(GUEST_TEXT); await p.locator("[data-guest-analyze]").click(); await p.waitForFunction(() => document.querySelector('[name=price]')?.value === "550000"); await p.locator("[data-guest-results]").waitFor(); await p.locator("[data-search-result]").first().waitFor(); } },
   { name: "public-request-choose", url: "/m/sultan", wait: "[data-guest-search-form]", auth: false, act: async (p) => { await p.locator('textarea[name="description"]').fill(GUEST_TEXT); await p.locator("[data-guest-analyze]").click(); await p.waitForFunction(() => document.querySelector('[name=price]')?.value === "550000"); await p.locator("[data-guest-results]").waitFor(); await p.locator("[data-choose-result]").first().click(); await p.locator("[data-guest-select-form]").waitFor(); } },
-  { name: "public-form-coop-broker", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('[data-testid="submitter-capacity"]').selectOption("LICENSED_BROKER"); await p.locator('input[name="externalBrokerLicense"]').waitFor(); } },
-  { name: "public-form-errors", url: "/m/sultan", wait: "text=لدي عقار", auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.locator(".os-field.invalid").first().waitFor(); } },
+  { name: "public-form-coop-broker", url: "/m/sultan", wait: '[data-path="owner"]', auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.locator('[data-testid="submitter-capacity"]').selectOption("LICENSED_BROKER"); await p.locator('input[name="externalBrokerLicense"]').waitFor(); } },
+  { name: "public-form-errors", url: "/m/sultan", wait: '[data-path="owner"]', auth: false, act: async (p) => { await p.locator('[data-path="owner"]').click(); await p.locator('[data-fill-mode="manual"]').click(); await p.getByRole("button", { name: "إرسال", exact: true }).click(); await p.locator(".os-field.invalid").first().waitFor(); } },
   { name: "login", url: "/", wait: 'input[name="phone"]', auth: false },
   // The three standalone entrypoints outside the main hash-routed app (public/admin/index.html,
   // public/legacy.html, public/complete.html). Visual-only checks: real token/office params are
