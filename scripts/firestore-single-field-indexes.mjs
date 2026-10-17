@@ -3,7 +3,6 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 function indexSignature(index, fieldPath) {
   return JSON.stringify({
     queryScope: index.queryScope || '',
-    apiScope: index.apiScope || 'ANY_API',
     fields: (index.fields || []).map((field) => ({
       fieldPath: field.fieldPath || fieldPath,
       order: field.order || '',
@@ -11,6 +10,10 @@ function indexSignature(index, fieldPath) {
       vectorConfig: field.vectorConfig || null
     }))
   });
+}
+
+function supportsAnyApi(index) {
+  return !index.apiScope || index.apiScope === 'ANY_API';
 }
 
 export function toFirestoreFieldIndexes(fieldOverride) {
@@ -27,14 +30,19 @@ export function toFirestoreFieldIndexes(fieldOverride) {
 
 export function mergeSingleFieldIndexes(existing = [], required = [], fieldPath) {
   if (!Array.isArray(existing) || !Array.isArray(required) || !fieldPath) throw new Error('index_config_invalid');
-  const merged = clone(existing);
-  const signatures = new Set(merged.map((index) => indexSignature(index, fieldPath)));
-  for (const index of required) {
+  const merged = [];
+  const positions = new Map();
+  const addOrPreferAnyApi = (index) => {
     const signature = indexSignature(index, fieldPath);
-    if (!signatures.has(signature)) {
+    const currentPosition = positions.get(signature);
+    if (currentPosition === undefined) {
+      positions.set(signature, merged.length);
       merged.push(clone(index));
-      signatures.add(signature);
+      return;
     }
-  }
+    if (supportsAnyApi(index) && !supportsAnyApi(merged[currentPosition])) merged[currentPosition] = clone(index);
+  };
+  for (const index of existing) addOrPreferAnyApi(index);
+  for (const index of required) addOrPreferAnyApi(index);
   return merged;
 }
