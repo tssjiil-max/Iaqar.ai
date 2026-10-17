@@ -8,8 +8,17 @@ const PROJECT = 'iaqar-ai-staging';
 const DATABASE = '(default)';
 const FIELD_PATH = 'appointmentAt';
 const COLLECTION = 'matches';
-const fail = (code) => {
-  console.error(`Staging Firestore index repair failed: ${String(code).replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 100)}`);
+const EXPECTED_SERVICE_ACCOUNT = 'firebase-adminsdk-fbsvc@iaqar-ai-staging.iam.gserviceaccount.com';
+const fail = (error) => {
+  const code = typeof error === 'string' ? error : String(error?.message || error?.code || 'unknown_error');
+  const detail = typeof error === 'object' && error?.detail ? String(error.detail) : '';
+  const diagnostic = {
+    code: code.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 100),
+    ...(error?.stage ? { stage: error.stage } : {}),
+    ...(error?.status ? { httpStatus: error.status } : {}),
+    ...(detail ? { detail: detail.replace(/[\\r\\n\\t]+/g, ' ').slice(0, 400) } : {})
+  };
+  console.error(`Staging Firestore index repair failed: ${JSON.stringify(diagnostic)}`);
   process.exit(1);
 };
 
@@ -21,6 +30,8 @@ if (!override) fail('staging_field_override_missing');
 
 const { serviceAccount, invalidFields } = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, PROJECT);
 if (invalidFields.length) fail('staging_service_account_invalid');
+if (serviceAccount.client_email !== EXPECTED_SERVICE_ACCOUNT) fail('staging_service_account_identity_mismatch');
+console.log('Staging Firestore service-account identity matches the approved account; identity value hidden.');
 
 async function accessToken() {
   const assertion = createServiceAccountJwt(serviceAccount);
@@ -48,8 +59,20 @@ async function request(token, path, options = {}) {
     }
   });
   if (!response.ok) {
+    const responseText = await response.text();
+    let payload = {};
+    try { payload = JSON.parse(responseText); } catch {}
+    const rawDetail = String(payload?.error?.message || payload?.message || response.statusText || '');
     const error = new Error(`firestore_admin_${response.status}`);
     error.status = response.status;
+    error.stage = String(options.method || 'GET').toUpperCase() === 'PATCH'
+      ? 'field_patch'
+      : path.includes('/operations/') ? 'operation_poll'
+        : path.includes('/fields/') ? 'field_read' : 'firestore_admin';
+    error.detail = rawDetail
+      .replace(/Bearer\\s+[^\\s,;]+/gi, 'Bearer [redacted]')
+      .replace(/[A-Za-z0-9_-]{24,}\\.[A-Za-z0-9_-]{12,}\\.[A-Za-z0-9_-]{12,}/g, '[redacted token]')
+      .slice(0, 400);
     throw error;
   }
   return response.json();
@@ -104,5 +127,5 @@ try {
     console.log('Added Staging matches.appointmentAt collection-group index; existing field indexes were preserved.');
   }
 } catch (error) {
-  fail(error?.message || error?.code || 'unknown_error');
+  fail(error);
 }
