@@ -1,3 +1,4 @@
+import { renderEconomicTest } from './views/economic-test.js';
 /**
  * Office OS entry point.
  *   /o/<slug>, /m/<slug>, ?office=<id>&view=public → public office page (no account)
@@ -73,6 +74,7 @@ function view() {
   if (section === "scout" && id === "opp" && sub) return { name: "tool", run: (el) => renderScoutFind(el, { id: sub }) };
   if (section === "scout" && id === "task" && sub) return { name: "tool", run: (el) => renderScoutTask(el, { id: sub }) };
   if (section === "scout") return { name: "tool", run: renderScout };
+  if (section === "agent" && id === "economic") return { name: "tool", run: renderEconomicTest };
   if (section === "agent" && id === "try") return { name: "tool", run: renderAgentTry };
   if (section === "agent") return { name: "tool", run: renderAgent };
   if (section === "search") return { name: "tool", run: (el) => renderSearch(el, { query: query.get("q") || "" }) };

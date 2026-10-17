@@ -1,0 +1,26 @@
+{
+  "checks": [
+    {
+      "width": 390,
+      "rtl": true,
+      "overflow": false,
+      "intake": true,
+      "save": true,
+      "matching": true,
+      "journeyOpened": true,
+      "soldExclusion": true,
+      "availabilityReportRequiresConfirmation": true
+    },
+    {
+      "width": 1280,
+      "rtl": true,
+      "overflow": false,
+      "intake": true,
+      "save": true,
+      "matching": true,
+      "journeyOpened": true,
+      "soldExclusion": true,
+      "availabilityReportRequiresConfirmation": true
+    }
+  ]
+}

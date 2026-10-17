@@ -1,3 +1,4 @@
+import { economicContext } from './economic-policy.js';
 /**
  * صلاحية العروض والطلبات والتأكد من التوفر — Worker side (rules in public/os/domain/validity-domain.js).
  *
@@ -228,6 +229,7 @@ export async function askOwnerBeforeMatch(ctx, { officeId, offer }) {
 
 /** One sweep of one office: at most one step per record, each step once (validityAskedFor / validityNotedFor). */
 export async function sweepOfficeValidity(ctx, { officeId, limit = 50 }) {
+  ctx=economicContext(ctx,officeId);
   const now = ctx.now();
   const records = await ctx.store.list(["offices", officeId, "opportunities"], 500);
   const settings = await officeValiditySettings(ctx, officeId);

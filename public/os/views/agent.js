@@ -1,3 +1,4 @@
+import { api } from '../core/runtime.js';
 /**
  * «مدير المكتب الذكي»
  *   #/agent            the broker's conversation with the office manager (answers from the office's own data)
@@ -53,6 +54,7 @@ export function renderAgent(container) {
   // Proactive: what the office manager noticed (counts from the office's own data); pressing one only asks.
   const noticed = h("div", { class: "os-center-list", "data-agent-noticed": "" });
   append(container, head("مدير المكتب الذكي"), status, noticed, list, chips, h("div", { class: "os-agent-compose" }, input, send));
+  if (session.isManager) api("/os/economic/status",{officeId:session.officeId}).then(s=>{if(s.enabled)noticed.prepend(h("button",{type:"button",class:"os-btn secondary",text:"وضع التجارب الاقتصادية",onClick:()=>go("agent/economic")}));}).catch(()=>{});
   agentSuggestions(session.officeId).then((r) => {
     for (const s of (r.suggestions || [])) {
       append(noticed, h("button", { type: "button", class: "os-card os-center-row", "data-agent-noticed-item": s.id, onClick: () => { input.value = s.prompt; submit(); } },

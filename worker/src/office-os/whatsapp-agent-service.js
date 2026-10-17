@@ -6,6 +6,7 @@ import { classifyWithClaude, sendWhatsAppReply } from './whatsapp-agent-transpor
 import { extractFacts, mergeDraft, nextMissing, questionFor, personaFromText, PERSONA, wantsHuman, toRecordInput, summaryLines } from '../../../public/os/domain/visitor-domain.js';
 import { guestSearch } from './public-search-service.js';
 import { writeAudit } from './audit-log.js';
+import { economicModeFor } from './economic-policy.js';
 
 const clean=(v,n=120)=>String(v??'').trim().slice(0,n);
 const digits=v=>String(v||'').replace(/\D/g,'');
@@ -61,6 +62,9 @@ export async function ingestWhatsAppEvents(ctx,payload) {
   const value=change.value||{},phoneNumberId=clean(value.metadata?.phone_number_id);
   if(!phoneNumberId)continue;
   const mapping=await mappingFor(ctx,phoneNumberId,clean(entry.id));if(!mapping)continue;
+  // Economic Test Mode is strictly offline. Keep a second guard here so a
+  // misconfigured WhatsApp pilot allowlist cannot enqueue its Meta events.
+  if(economicModeFor(ctx.env,mapping.officeId))continue;
   for(const status of Array.isArray(value.statuses)?value.statuses:[]){await receiveStatus(ctx,mapping,phoneNumberId,status);statuses++;}
   const names=new Map((value.contacts||[]).map(c=>[digits(c.wa_id),clean(c.profile?.name,80)]));
   for(const message of Array.isArray(value.messages)?value.messages:[]){

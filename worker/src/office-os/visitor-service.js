@@ -1,3 +1,4 @@
+import { economicModeFor, economicContext } from './economic-policy.js';
 /**
  * «مدير المكتب الذكي» on Telegram, with people who opened an office's own bot link
  * (t.me/<bot>?start=of_<officeId>): who they are (button), what they offer or look for (their own words,
@@ -32,6 +33,7 @@ const AI_CALLS_PER_CHAT_DAY = 40;
 const visitorPath = (chatId) => ["telegramVisitors", text(chatId, 30)];
 
 async function gatesOpen(ctx, officeId) {
+  if (!ctx.preview && economicModeFor(ctx.env,officeId)) return false;
   // «جرّب مدير مكتبك»: nothing leaves the Worker, so only the office's agent switch matters.
   if (ctx.preview) return (await ctx.store.get(["offices", officeId, "agentSettings", "main"]))?.enabled === true;
   if (!botOutboundConfig(ctx.env).available) return false;
@@ -134,6 +136,7 @@ export async function handleVisitorCallback(ctx, query = {}) {
  * `asked` = the thing just asked, so a short answer («الوبرة», «35 ألف») lands in the right place.
  */
 async function understand(ctx, { officeId, doc, draft, body, asked = "" }) {
+  ctx=economicContext(ctx,officeId);
   const rules = extractFacts(body, { expectNumber: asked });
   // The shared «تعبئة ذكية» understanding fills what the chat rules missed: «مليونين»، «1.5 مليون»، several districts.
   if (!rules.price && (asked === "price" || /مليون|ملايين|الف|ألف|ميزاني|سعر|ريال/.test(body))) { const amount = amountFrom(body); if (amount) rules.price = amount; }

@@ -38,6 +38,7 @@ function brokerCard(event) {
 
 function linksCard(journey, state) {
   const jid = journey.journeyId || journey.id;
+  if (journey.economicTest === true) return feedback({ class: "os-alert warn", text: "روابط الأطراف وإرسالها متوقفة في مسار التجربة الاقتصادية." });
   const card = surface("section", { class: "os-card", "aria-label": "روابط الغرفة" },
     h("h2", { class: "os-h2", style: { marginBottom: "8px" } }, ic("link"), "روابط الطرفين"));
   if (!state.links) {

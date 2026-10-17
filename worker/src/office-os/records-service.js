@@ -216,6 +216,9 @@ export async function findCandidates(ctx, { officeId, recordId, limit = 10, allC
   const candidates = [];
   for (const row of all) {
     if (row.id === recordId || lifecycleOf(row) !== LIFECYCLE.ACTIVE) continue;
+    // Economic fixtures may search real inventory, but must never leak into a
+    // normal office request's matching results.
+    if (row.economicTest === true && record.economicTest !== true) continue;
     if (!counterpartsEligible(record, row)) continue;
     const scored = scoreMatch(source, opportunityToMatchInput(row, { id: row.id }));
     if (!scored.eligible) continue;

@@ -1,3 +1,4 @@
+import { economicModeFor } from './office-os/economic-policy.js';
 import { readWebhookBody } from "./office-os/whatsapp-agent-transport.js";
 import { whatsappAgentAvailable, ingestWhatsAppEvents, drainWhatsAppQueue } from "./office-os/whatsapp-agent-service.js";
 import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
@@ -2729,6 +2730,13 @@ async function receiveMetaWebhook(request, env, requestId) {
       if (!officeId || mapping.status !== "connected") {
         unlinked += messages.length;
         console.warn("[iaqar-whatsapp] unlinked phone number", { phoneNumberId, wabaId });
+        continue;
+      }
+
+      // The economic lab is browser/local-Worker simulation only. Keep receipt
+      // from Meta test and office numbers for the later, separately authorized phase.
+      if (economicModeFor(env, officeId)) {
+        unlinked += messages.length;
         continue;
       }
 
@@ -7475,6 +7483,7 @@ function officeOsDeps() {
     // Env-bound capabilities, resolved per request once the access token exists.
     bind: ({ env, projectId, accessToken }) => ({
       ...base,
+      economicOfficeId: economicModeFor(env,env.ECONOMIC_TEST_OFFICE_ID)?env.ECONOMIC_TEST_OFFICE_ID:"",
       listCollectionDocuments,
       firestoreFieldsToJs,
       jsToFirestoreValue,

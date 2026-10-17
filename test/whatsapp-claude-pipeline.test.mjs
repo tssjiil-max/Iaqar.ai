@@ -106,3 +106,15 @@ test('retry rechecks publication before delivering previously matched inventory'
  await ingestWhatsAppEvents(f.ctx,payload('consent','موافق'));f.advance(1);await drainWhatsAppQueue(f.ctx);await f.ctx.store.set(['offices','office-a','opportunities','pub'],{publicSearchVisible:false});f.advance(60000);await drainWhatsAppQueue(f.ctx);
  const sent=f.calls.find(c=>c.url.includes('graph.facebook'))?.body.text.body;assert.ok(sent);assert.ok(!sent.includes('500000')&&!sent.includes('office-a:pub'));assert.equal(f.calls.filter(c=>c.url.includes('anthropic')).length,1);
 });
+test('Economic Test Mode does not enroll a Meta phone; receipt waits for the separate test-number phase',async()=>{
+ const f=fixture();Object.assign(f.ctx.env,{ECONOMIC_TEST_MODE:'enabled',ECONOMIC_TEST_OFFICE_ID:'office-a',WHATSAPP_AGENT_ENABLED:'',WHATSAPP_AGENT_OFFICE_IDS:''});
+ await f.ctx.store.set(['whatsapp_accounts','phone-a'],{isOnBizApp:false});
+ assert.equal(whatsappAgentAvailable(f.ctx.env),false);
+ const result=await ingestWhatsAppEvents(f.ctx,payload('econ1','للبيع أرض في الرياض حي الملقا المساحة 500 متر السعر 500 ألف'));
+ assert.equal(result.received,0);assert.equal((await inbox(f)).length,0);assert.equal(f.calls.length,0);
+});
+test('Economic Test Mode never consumes a queued paid-model reply or launches external search',async()=>{
+ const f=fixture();Object.assign(f.ctx.env,{ECONOMIC_TEST_MODE:'enabled',ECONOMIC_TEST_OFFICE_ID:'office-a'});
+ const result=await ingestWhatsAppEvents(f.ctx,payload('cached','مطلوب شراء أرض في الرياض حي الملقا الميزانية 500 ألف'));
+ assert.equal(result.received,0);assert.equal((await inbox(f)).length,0);assert.equal(f.calls.length,0);
+});

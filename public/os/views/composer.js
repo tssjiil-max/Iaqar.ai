@@ -16,15 +16,19 @@ import { formatNumber, parseRiyadhLocal, toRiyadhLocalInput } from "../domain/fo
 
 /** Card for one prepared proposal: open WhatsApp synchronously inside the click. */
 export function proposalPreparedPanel(proposal, { onOpened } = {}) {
+  const economicTest = proposal.economicTest === true;
   const who = RECIPIENT_LABEL[proposal.recipientRole] || "";
   const status = h("span", { class: "os-badge muted", text: sendStateLabel(proposal) });
   const textArea = h("textarea", { class: "os-textarea", readonly: true, rows: "5", text: proposal.messageText, "aria-label": `رسالة ${who}` });
   const copyBtn = h("button", { type: "button", class: "os-btn secondary" }, ic("clipboard"), "نسخ الرسالة");
+  copyBtn.disabled = economicTest;
   copyBtn.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(proposal.messageText); toast("تم نسخ الرسالة", "ok"); } catch (_) { textArea.select(); }
   });
   let sendEl;
-  if (proposal.phoneMissing || !proposal.whatsappUrl) {
+  if (economicTest) {
+    sendEl = feedback({ class: "os-alert warn", text: "مقترح تجريبي للمراجعة فقط — الإرسال والنسخ والمشاركة متوقفة." });
+  } else if (proposal.phoneMissing || !proposal.whatsappUrl) {
     sendEl = feedback({ class: "os-alert warn", text: `لا يوجد رقم جوال صالح لـ${who}. انسخ الرسالة وأرسلها بطريقتك، أو صحّح الرقم في السجل.` });
   } else {
     sendEl = h("a", { class: "os-btn whatsapp block", href: proposal.whatsappUrl, target: "_blank", rel: "noopener" }, ic("whatsapp"), `إرسال عبر واتساب إلى ${who}`);
@@ -39,6 +43,7 @@ export function proposalPreparedPanel(proposal, { onOpened } = {}) {
     });
   }
   const shareBtn = h("button", { type: "button", class: "os-btn secondary", "aria-label": `مشاركة المقترح إلى ${who} عبر تطبيق آخر` }, ic("send"), "تطبيق آخر");
+  shareBtn.disabled = economicTest;
   shareBtn.addEventListener("click", async () => {
     try {
       if (!navigator.share) {
@@ -75,6 +80,7 @@ function defaultViewingInput() {
  * @param context  { offer, request, defaultKind, defaultRecipients }
  */
 export function openComposer(journey, { offer = {}, request = {}, defaultKind = "PRICE", defaultRecipients = null } = {}) {
+  const economicTest = journey.economicTest === true;
   let kind = templateOf(defaultKind) ? defaultKind : "PRICE";
   let recipients = defaultRecipients || [RECIPIENT.CLIENT, RECIPIENT.OWNER];
   const requestKey = newRequestKey();
@@ -167,7 +173,7 @@ export function openComposer(journey, { offer = {}, request = {}, defaultKind = 
       officeId: session.officeId, journeyId: journey.journeyId || journey.id, kind, recipients, fields: fieldValues(), messages, requestKey: `${requestKey}-${kind}-${recipients.join("")}`
     });
     clear(result);
-    append(result, feedback({ class: "os-alert ok", text: "تم تجهيز المقترح. أرسله عبر واتساب أو شاركه مع تطبيق آخر." }));
+    append(result, feedback({ class: economicTest ? "os-alert warn" : "os-alert ok", text: economicTest ? "تم تجهيز رد تجريبي داخل مسار الصفقة. لن يُرسل أو يُنسخ إلى أي قناة." : "تم تجهيز المقترح. أرسله عبر واتساب أو شاركه مع تطبيق آخر." }));
     for (const p of res.proposals) append(result, proposalPreparedPanel(p));
     prepareBtn.hidden = true;
     body.querySelectorAll("input, textarea:not([readonly]), .os-chip, .os-seg button").forEach((el) => { if (!result.contains(el)) el.disabled = true; });

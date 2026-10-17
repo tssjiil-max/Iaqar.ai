@@ -1,16 +1,27 @@
-# WhatsApp economic test mode (Staging only)
+# مختبر واتساب العقاري الاقتصادي
 
-This change is stacked on draft PR #238 and does **not** activate WhatsApp Cloud API or prove coexistence.
+المختبر لوحة تجريبية داخل المكتب على Staging، تستخدم محادثات محاكاة محلية مع خدمات المكتب القائمة. لا يتصل بـ Meta أو Claude/OpenAI، ولا يرسل رسائل أو تنبيهات حقيقية. لا يُنشئ CRM أو محرك مطابقة جديدًا.
 
-Set `ECONOMIC_TEST_MODE=enabled` on the **staging Worker only** alongside the existing pilot-office gates documented in `docs/whatsapp/CLAUDE_PIPELINE.md`. In this mode:
-- The classifier uses deterministic Arabic keyword rules, returns `simulated:true`, and makes no Anthropic network call. This is **not** equivalent to Claude and does not understand arbitrary free text.
-- The WhatsApp service skips Claude attempt/token accounting and **always** records an outbound reply as `SIMULATED`, even if `WHATSAPP_AGENT_SEND=enabled`.
-- Incoming events still require valid Meta signatures and the existing office ownership, allowlist, consent, coexistence, and webhook controls. Without real Meta connectivity, use local signed webhook fixtures.
-- Offer messages, sensitive financial/contract instructions, and unsupported media still go to human review through the existing flow. Do not use simulation output to promise property availability.
-- Do not add Anthropic credentials, buy credits, change Meta registration, enable production, or send real customer messages.
+## المعمارية والقيود
 
-## Validation
-Run `node --test test/whatsapp-economic-mode.test.mjs test/whatsapp-claude-pipeline.test.mjs test/whatsapp-webhook-runtime.test.mjs`, then `npm test` and `npm run check` on a full checkout. These checks have **not** been executed in this GitHub-editing session; results must be reported after running them. The new test file checks offline classification and human escalation. Before staging activation, test the full Worker pipeline in economic mode and verify no outbound Meta requests or Anthropic calls occur.
+- نقطة الدخول `الموظف الذكي > مختبر واتساب` من `/agent/economic`، مع وسم واضح لكل رسالة وطلب/عرض بأنها بيانات تجريبية.
+- الخدمة الخلفية تستخدم مخزن المكتب الحالي وSmart Fill وCentral Search وOpportunity Matching وDeal/Viewing workflow وسجل التدقيق.
+- سياق المختبر يفرغ مفاتيح مزودي الذكاء الاصطناعي والإرسال والبحث الخارجي، ويعطل الإشعارات والمطابقة التشغيلية التلقائية. البحث اليدوي يستعمل عروض المكتب المنشورة فقط ويعرض المصدر وتاريخ التحقق.
+- الحفظ يتطلب مراجعة حقول صريحة، مع منع التكرار والعزل حسب المكتب. تحديث الحالة الحساسة يتطلب مطابقة السجل المحدد وموافقة مدير المكتب.
+- مدخل Webhook الحقيقي يتجاهل مكتب المختبر حتى لو فُعّل له خطأً السماح بتكامل آخر. التشغيل التجاري/Cloud API مستقل ومؤجل.
+- لا يعمل إلا مع `DEPLOYMENT_ENV=staging`, `FIREBASE_PROJECT_ID=iaqar-ai-staging`, `ECONOMIC_TEST_MODE=enabled` و`ECONOMIC_TEST_OFFICE_ID` الصريح. لا تستخدم اسم المكتب أو رقم الهاتف لاستنتاج المعرف. لا تُضبط قيمة معرف المكتب قبل التحقق من مالكه.
 
-## Rollback
-Unset `ECONOMIC_TEST_MODE` to restore the original Claude-dependent behavior; keep the WhatsApp agent disabled until explicit authorization. No production changes.
+## التشغيل والاختبار المحلي
+
+- `node --test test/economic-test-mode.test.mjs test/whatsapp-economic-mode.test.mjs test/whatsapp-claude-pipeline.test.mjs test/whatsapp-webhook-runtime.test.mjs`
+- `node scripts/qa/office-os/economic-test.e2e.mjs`
+- `npm test`
+- `npm run check`
+
+اختبار واجهة المتصفح يستخدم Worker محليًا وFirestore داخل الذاكرة مع بيانات تركيبية؛ لا يثبت اتصال Meta أو تشغيل Staging الفعلي. اللقطات الناتجة من اختبار Playwright محلية وليست من الموقع المنشور.
+
+## حالة التحقق وحدود الإطلاق
+
+اجتازت الاختبارات المركزة 40/40، واختبار الواجهة على عرضي 390 و1280 بكسل (RTL، بلا تجاوز أفقي)، كما أكمل السيناريو التجريبي: إدخال طلب، استخراج/مراجعة، البحث عن عرض حقيقي من بيانات fixture، بدء مسار تفاوض/معاينة ومتابعة وإغلاق تجريبي. واختبر إدخال عرض، منع التكرار، التعليق بعد انتهاء التحقق، عزل المكتب، منع التأكيد الحساس، توقيع Webhook غير الصحيح ومنع رسائل Meta من دخول المختبر.
+
+لا توجد نتيجة اتصال حي بقاعدة Staging في هذا الاختبار. لا يمكن تشغيل لوحة المكتب على Staging قبل دمج سلسلة PRs ونشرها، كما لا يمكن تفعيلها قبل ضبط معرف المكتب المؤكد. لم يُرسل WhatsApp حقيقي ولم يُستخدم مفتاح AI. أهلية التعايش وحالة Meta غير مثبتتين هنا. المرحلة التالية المنفصلة بعد مراجعة المالك هي رقم Meta الاختباري، لا رقم المكتب.

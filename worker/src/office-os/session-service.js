@@ -18,6 +18,7 @@ import {
   isOpenJourney, moveText, parseTypedPrice, sessionEventCard, sessionPrices, sessionStage, sessionStageLabel
 } from "../../../public/os/domain/session-domain.js";
 import { EVENT_SOURCE, VIEWING_STATE } from "../../../public/os/domain/journey-domain.js";
+import { economicModeFor } from "./economic-policy.js";
 import {
   PHASE, PRICE_STATUS_LABEL, VIEWING_MINUTES, availableSlots, brokerBusy, checkBrokerAvailability,
   isOfferedSlot, journeyPhase, priceStatusOf
@@ -120,7 +121,7 @@ export async function sessionLinks(ctx, { actor, officeId, journeyId, replace = 
     const text = sessionInviteText({ role, url, journey });
     out[role] = {
       url,
-      whatsappUrl: buildWhatsAppUrl(record?.contactPhone || record?.advertiserPhoneNormalized || record?.phone, text),
+      whatsappUrl: economicModeFor(ctx.env, officeId) ? "" : buildWhatsAppUrl(record?.contactPhone || record?.advertiserPhoneNormalized || record?.phone, text),
       hasPhone: Boolean(localPhone(record?.contactPhone || record?.advertiserPhoneNormalized || record?.phone)),
       text,
       opened: Boolean(journey.session?.opened?.[role]),
@@ -146,6 +147,7 @@ function sessionInviteText({ role, url, journey }) {
 }
 
 export async function recordSessionHandoff(ctx, { actor, officeId, journeyId, role }) {
+  if (economicModeFor(ctx.env, officeId)) throw ctx.deps.appError("economic_outbound_disabled", 403, "تسليم الرسائل إلى واتساب متوقف في وضع التجربة");
   if (!ROLES.includes(role)) throw ctx.deps.appError("role_invalid", 400, "حدد الطرف");
   await loadOwnJourney(ctx, { actor, officeId, journeyId });
   const now = ctx.now();
