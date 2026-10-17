@@ -9,7 +9,7 @@ const WIDTHS = process.env.WIDTHS ? process.env.WIDTHS.split(',').map(Number) : 
 const OUT = process.env.OUT_DIR || '/tmp/iaqar-public-search';
 fs.mkdirSync(OUT, { recursive: true });
 const h = await startOfficeOsHarness();
-const browser = await chromium.launch({ executablePath: chromium.executablePath() });
+const browser = await chromium.launch();
 const offer = { officeId: OFFICE_A, opportunityKind: 'OFFER', purpose: 'SALE', transactionType: 'sale', propertyType: 'شقة', city: 'الرياض', district: 'الملقا', priceOrBudget: 500000, salePrice: 500000, advertiserRole: 'OWNER', contactPhone: '0553331234', contactName: 'مالك لا يظهر', lifecycleStatus: 'ACTIVE', publicSearchVisible: true, rooms: 4, version: 1 };
 const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
 try {
@@ -28,7 +28,6 @@ try {
    await page.locator('textarea[name=description]').fill('مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف');
    await page.locator('[data-guest-analyze]').click(); await page.waitForFunction(() => document.querySelector('[name=price]').value === '550000');
    assert.equal(await page.locator('[name=propertyType]').inputValue(), 'شقة');
-   await page.locator('[data-guest-search]').click();
    await page.locator('[data-search-result]').first().waitFor();
    assert.equal(await page.locator('[data-search-result]').count(), 1);
    assert.ok(!(await page.locator('[data-guest-results]').innerText()).includes('0553331234'), 'owner phone never shown');
@@ -60,5 +59,35 @@ try {
   console.log(`✔ ${width}px guest journey`);
  }
  const page = await browser.newPage(); await page.goto(`${h.origin}/m/sultan`); await page.locator('[data-guest-search-form]').waitFor(); assert.equal(await page.locator('[name=scope]').inputValue(), 'office'); await page.close();
+ // No-match request uses the existing public intake and reaches the office bank.
+ const requestPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+ await requestPage.goto(`${h.origin}/m/sultan`);
+ await requestPage.locator('[data-guest-search-form]').waitFor();
+ await requestPage.screenshot({ path: path.join(OUT, '390-office-search.png'), fullPage: true });
+ await requestPage.locator('textarea[name=description]').fill('أبحث عن فيلا للبيع في درة العقيق بالمدينة المنورة بميزانية 5 ملايين ريال');
+ await requestPage.locator('[data-guest-search]').click();
+ await requestPage.locator('[data-guest-results] .os-page-title').waitFor();
+ assert.equal(await requestPage.locator('[name=price]').inputValue(), '5000000');
+ assert.equal(await requestPage.locator('[name=propertyType]').inputValue(), 'فيلا');
+ assert.equal(await requestPage.locator('[name=city]').inputValue(), 'المدينة المنورة');
+ assert.equal(await requestPage.locator('[name=district]').inputValue(), 'درة العقيق');
+ assert.equal(await requestPage.locator('[data-search-result]').count(), 0);
+ await requestPage.locator('[data-send-office-request]').click();
+ await requestPage.locator('[name=contactName]').fill('عميل اختبار');
+ await requestPage.locator('[name=contactPhone]').fill('0557000444');
+ await requestPage.locator('[name=consentProcessing]').check();
+ await requestPage.screenshot({ path: path.join(OUT, '390-send-request.png'), fullPage: true });
+ await requestPage.locator('button[type=submit]').click();
+ await requestPage.locator('[data-intake-reference]').waitFor();
+ const ref = (await requestPage.locator('[data-intake-reference]').innerText()).split(': ').at(-1);
+ const saved = h.store.get(`offices/${OFFICE_A}/opportunities/opp_intake_${ref}`);
+ assert.ok(saved, 'request reaches the real intake pipeline and office bank');
+ assert.equal(saved.officeId, OFFICE_A);
+ assert.equal(saved.opportunityKind, 'REQUEST');
+ assert.equal(saved.propertyType, 'فيلا');
+ assert.equal(saved.budget || saved.priceOrBudget, 5000000);
+ assert.ok(await noOverflow(requestPage));
+ await requestPage.close();
+ console.log('✔ no-match villa request saved in the target office bank');
  console.log(`Guest search: ${WIDTHS.length} widths × 2 clients end-to-end and office-default routing passed.`);
 } finally { await browser.close(); h.server.close(); }

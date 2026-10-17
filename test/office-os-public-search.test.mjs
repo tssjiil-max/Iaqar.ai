@@ -78,9 +78,9 @@ test('guest UI: search without contact, choose a result, consent in the sheet, t
   root.querySelector('[data-guest-analyze]').click();
   await until(()=>root.querySelector('[name=price]').value);
   assert.equal(root.querySelector('[name=price]').value,'550000');assert.equal(root.querySelector('[name=propertyType]').value,'شقة');
-  root.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
   await until(()=>root.querySelector('[data-search-result]'));
-  assert.equal(root.querySelectorAll('[data-search-result]').length,10);assert.ok(!root.textContent.includes('0551234567'));
+  assert.equal(root.querySelector('[data-search-criteria]').open,false,'details remain collapsed after automatic search');
+  assert.equal(root.querySelectorAll('[data-search-result]').length,3);assert.ok(!root.textContent.includes('0551234567'));
   assert.ok(root.querySelector('[data-status-label]').textContent.length>0,'each result shows its status');
   root.querySelector('[data-choose-result]').click();
   const sheet=document.querySelector('[data-guest-select-form]');assert.ok(sheet,'choosing opens the contact sheet');

@@ -67,7 +67,7 @@ function officeHeader(office) {
     office.licenseNumber ? h("span", { class: "os-public-license", "data-office-license": "" }, ic("license"), ` رخصة فال ${office.licenseNumber}`) : null);
 }
 
-function successView(root, office, kind, { matches = 0 } = {}) {
+function successView(root, office, kind, { matches = 0, reference = "" } = {}) {
   clear(root);
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب.`);
   append(root, h("main", { class: "os-app os-public-page os-public-receipt", style: { maxWidth: "560px" } },
@@ -75,6 +75,7 @@ function successView(root, office, kind, { matches = 0 } = {}) {
     surface("div", { class: "os-card os-public-done", style: { textAlign: "center" } },
       h("div", { class: "os-task-icon", style: { margin: "0 auto 8px", background: "var(--ok-tint)", color: "var(--ok)" } }, ic("check-circle")),
       h("h2", { class: "os-h2", style: { justifyContent: "center" }, text: "تم استلام بياناتك" }),
+      reference ? h("p", { "data-intake-reference": "", text: `رقم الطلب: ${reference}` }) : null,
       h("p", { class: "os-sub", text: `شكرًا لك. سيتواصل معك ${office.brokerName || "الوسيط"} عند وجود خيار مناسب.` }),
       // How many options fit at first look (at most three) — the other side's details stay with the office.
       matches > 0 ? h("p", { class: "os-alert ok", "data-public-matches": String(matches), text: `وجدنا ${matches === 1 ? "خيارًا واحدًا مناسبًا" : matches === 2 ? "خيارين مناسبين" : "ثلاثة خيارات مناسبة"} مبدئيًا. يراجعها ${office.brokerName || "الوسيط"} ويتواصل معك بالتفاصيل وموعد المعاينة.` }) : null,
@@ -201,6 +202,24 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
     }
   });
   const form = h("form", { class: "os-record-form", novalidate: true }, fill.el, fields);
+  if (kind === "client" && carry?.criteria) {
+    purpose = carry.criteria.purpose || ""; hidden.value = purpose; drawPurpose();
+    capacity.value = purpose === "LEASE_REQUEST" ? "TENANT" : "BUYER";
+    for (const [key, value] of Object.entries(carry.criteria)) {
+      const control = fields.querySelector(`[name="${key}"]`);
+      if (control) control.value = value;
+    }
+    fields.querySelector('[name="notes"]').value = String(carry.text || "").slice(0, 900);
+    fill.el.hidden = true;
+    fields.hidden = false;
+    const sections = [...fields.children];
+    const details = h("details", { "data-request-review": "" }, h("summary", { text: "مراجعة مواصفات الطلب" }));
+    fields.prepend(h("p", { class: "os-search-summary", text: [carry.criteria.propertyType, carry.criteria.city, carry.criteria.district, carry.criteria.price ? `حتى ${formatNumber(carry.criteria.price)} ريال` : ""].filter(Boolean).join(" · ") }), details);
+    for (const section of sections.slice(0, 3)) details.append(section);
+    // Incomplete criteria stay visible: never invent a budget or silently save a different request.
+    details.open = !purpose || !carry.criteria.propertyType || !carry.criteria.city || !carry.criteria.district || !carry.criteria.price;
+    submit.replaceChildren(ic("send"), "إرسال الطلب للمكتب");
+  }
   let submissionRef = null;
   let intakeStored = false;
   form.addEventListener("submit", async (event) => {
@@ -218,6 +237,8 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
     const name = cleanText(input.contactName, 80);
     if (!/\S+\s+\S+/.test(name)) check.errors.contactName = "اكتب الاسم الأول واسم العائلة";
     if (Object.keys(check.errors).length) {
+      const details = form.querySelector("[data-request-review]");
+      if (details && Object.keys(check.errors).some(key => !["contactName", "contactPhone", "consentProcessing"].includes(key))) details.open = true;
       for (const [key, message] of Object.entries(check.errors)) {
         if (key === "consentProcessing") { const slot = form.querySelector('[data-error-for="consentProcessing"]'); if (slot) slot.textContent = message; consentBox.classList.add("invalid"); continue; }
         setFieldError(form, key === "kind" ? "purpose" : key, message);
@@ -284,7 +305,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       matchCount = Math.max(0, Math.min(3, Number(answer.matches || 0)));
       return true;
     }, { onError: (error) => { waiting.hidden = true; status.querySelector(".os-feedback-copy").textContent = error.message; status.hidden = false; } });
-    if (ok) successView(root, office, kind, { matches: matchCount });
+    if (ok) successView(root, office, kind, { matches: matchCount, reference: submissionRef?.id || "" });
   });
   return form;
 }
@@ -306,15 +327,21 @@ export async function renderPublicOffice(root, target) {
     return;
   }
   document.title = office.officeName || "المكتب العقاري";
+  const request = (carry) => {
+    clear(main);
+    append(main, pageHeader('أرسل طلبي للمكتب', { description: 'خطوة أخيرة للتواصل معك، بدون إنشاء حساب.', backControl: h('button', { type: 'button', class: 'os-back', onClick: () => choose('client', carry) }, 'رجوع للبحث') }),
+      intakeForm(root, office, 'client', { switchKind: choose, carry }));
+    window.scrollTo({ top: 0 });
+  };
   const choose = (kind, carry = null) => {
     clear(main);
     append(main, 
       pageHeader(h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"), action: h("span") }),
       h("p", { class: "os-public-office-name", text: office.officeName || "" }),
-      kind === "client" ? publicSearchForm(office, { initialText: carry?.text || "", notice: carry?.notice || "" }) : intakeForm(root, office, kind, { switchKind: choose, carry }));
+      kind === "client" ? publicSearchForm(office, { initialText: carry?.text || "", notice: carry?.notice || "", onRequest: request }) : intakeForm(root, office, kind, { switchKind: choose, carry }));
     window.scrollTo({ top: 0 });
     // A request pasted on «لدي عقار» arrives here with its text: read it straight away.
-    if (carry?.text) main.querySelector("[data-smart-analyze], [data-guest-analyze]")?.click();
+    if (carry?.text && !carry?.criteria) main.querySelector("[data-smart-analyze], [data-guest-analyze]")?.click();
   };
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}`);
   const path = (kind, iconName, title, sub) => h("button", { type: "button", class: "os-path-card", "data-path": kind, onClick: () => choose(kind) },
@@ -324,11 +351,9 @@ export async function renderPublicOffice(root, target) {
   main.classList.add("os-public-page");
   append(main,
     officeHeader(office),
-    h("p", { class: "os-public-tagline", text: "عقارك وطلبك في المكان الصحيح. تواصل مباشرة مع المكتب العقاري." }),
-    publicSearchForm(office),
+    publicSearchForm(office, { onRequest: request }),
     h("div", { class: "os-paths" },
-      path("owner", "home", "لدي عقار", "للبيع أو الإيجار"),
-      path("client", "search", "أبحث عن عقار", "للشراء أو الاستئجار")),
+      path("owner", "home", "عندك عقار وتبي تعرضه؟", "أرسل عرضك للمكتب · للبيع أو الإيجار")),
     h("p", { class: "os-public-trust", "data-public-trust": "" }, "بدون حساب · تصل بياناتك لهذا المكتب فقط · تراجعها قبل الإرسال"),
     h("p", { class: "os-public-coop", "data-coop-hint": "" }, ic("handshake"), " وسيط متعاون؟ اختر المسار ثم صفتك «وسيط عقاري متعاون»."),
     (office.phone || wa) ? h("div", { class: "os-public-contact" },

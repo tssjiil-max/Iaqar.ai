@@ -158,11 +158,12 @@ export function districtsFrom(raw = "") {
     const nextOk = tokens[i + 1] && !isCityWord(tokens[i + 1]) && !isStop(tokens[i + 1]);
     // «في الهجرة» — or «في شوران أو الهجرة» (a name without «ال» counts when a list of names follows it).
     const listFollows = /^(او|،|و)$/.test(norm(tokens[i + 2] || "")) && Boolean(readNameAt(tokens, i + 3));
-    const trigger = /^(حي|بحي|الحي|احياء|الاحياء|باحياء)$/.test(w) || (fi && nextOk && (/^ال/.test(norm(tokens[i + 1])) || listFollows))
+    const compoundFollows = Boolean(readNameAt(tokens, i + 1)) && /^ال/.test(norm(tokens[i + 2] || "")) && Boolean(readNameAt(tokens, i + 2));
+    const trigger = /^(حي|بحي|الحي|احياء|الاحياء|باحياء|مخطط|بمخطط)$/.test(w) || (fi && compoundFollows) || (fi && nextOk && (/^ال/.test(norm(tokens[i + 1])) || listFollows))
       || ((w === "في" || w === "فى") && tokens[i + 1] && /^(حي|احياء)$/.test(norm(tokens[i + 1])));
     if (!trigger) continue;
     let j = i + 1;
-    if (/^(حي|احياء)$/.test(norm(tokens[j] || ""))) j += 1;
+    if (/^(حي|احياء|مخطط)$/.test(norm(tokens[j] || ""))) j += 1;
     // A list: «شوران أو الهجرة أو الرانوناء»، «الملقا، النرجس والياسمين».
     for (let guard = 0; guard < 8; guard += 1) {
       const { name, next } = readName(j);
