@@ -430,3 +430,27 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
   .os-app .os-now-card .os-btn,
   .os-app .os-scout-task { min-height: 44px; }
 }
+
+/* Compact real estate inventory and task workflow, mobile only. */
+@media (max-width: 600px) {
+  .os-app .os-record-list { display: grid; gap: 10px; min-width: 0; }
+  .os-app .ref-record-card {
+    box-sizing: border-box; width: 100%; min-width: 0;
+    padding: 10px; margin: 0; overflow: hidden;
+  }
+  .os-app .ref-record-open { min-width: 0; width: 100%; gap: 10px; }
+  .os-app .ref-record-copy { min-width: 0; overflow-wrap: anywhere; }
+  .os-app .ref-record-copy h3 { margin-block: 0 4px; line-height: 1.35; }
+  .os-app .ref-record-copy p { margin-block: 4px; overflow-wrap: anywhere; }
+  .os-app .ref-record-meta { flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
+  .os-app .ref-record-tags { flex-wrap: wrap; gap: 5px; }
+  .os-app .ref-record-open { min-height: 44px; }
+  .os-app .os-task-card,
+  .os-app .ref-task-card,
+  .os-app .ref-deal-card {
+    box-sizing: border-box; min-width: 0; width: 100%;
+    padding: 12px; overflow-wrap: anywhere;
+  }
+  .os-app .os-task-card .os-btn,
+  .os-app .ref-task-card .os-btn { min-height: 44px; }
+}
