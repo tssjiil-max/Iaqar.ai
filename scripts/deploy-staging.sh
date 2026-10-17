@@ -83,6 +83,10 @@ echo "--- Staging credential + permission preflight ---"
 CURRENT_STAGE="staging-permission-preflight"
 node scripts/preflight-staging.mjs "$GAC_FILE"
 
+echo "--- Add Staging viewing-reminder Firestore index (preserve existing indexes) ---"
+CURRENT_STAGE="staging-viewing-reminder-index"
+node scripts/deploy-staging-firestore-index.mjs
+
 if [[ "${IAQAR_SKIP_INNER_TESTS:-}" == "1" ]]; then
   echo "--- Full Phase 9A test gate skipped (already run by deploy:staging:safe) ---"
 else
@@ -138,24 +142,9 @@ echo "--- Economic mode: prove GEMINI_API_KEY is absent from the staging Worker 
   esac
 )
 
-# «قنوات المكتب» — WhatsApp Embedded Signup (optional). Staging Worker only; values never reach logs.
-(
-  cd worker
-  if [[ -n "${META_APP_SECRET:-}" ]]; then
-    CURRENT_STAGE="wrangler-secret-meta-app-secret"
-    printf '%s' "$META_APP_SECRET" | tr -d '[:space:]' | npx wrangler secret put META_APP_SECRET --env staging # // pragma: allowlist secret
-    echo "::notice title=WhatsApp link (Staging)::META_APP_SECRET synced to the staging Worker (value not printed)."
-  else
-    echo "NOTE: META_APP_SECRET not set — «ربط واتساب» stays hidden on Staging."
-  fi
-  if [[ -n "${META_WEBHOOK_VERIFY_TOKEN:-}" ]]; then
-    CURRENT_STAGE="wrangler-secret-meta-verify-token"
-    printf '%s' "$META_WEBHOOK_VERIFY_TOKEN" | tr -d '\r\n' | npx wrangler secret put META_WEBHOOK_VERIFY_TOKEN --env staging # // pragma: allowlist secret
-    echo "::notice title=WhatsApp link (Staging)::META_WEBHOOK_VERIFY_TOKEN synced to the staging Worker (value not printed)."
-  else
-    echo "NOTE: META_WEBHOOK_VERIFY_TOKEN not set — the Meta webhook cannot be verified on Staging yet."
-  fi
-)
+# Meta secrets are managed directly on the Staging Worker. This deploy deliberately
+# leaves META_ACCESS_TOKEN, META_APP_SECRET and META_WEBHOOK_VERIFY_TOKEN untouched.
+echo "Meta secrets remain Cloudflare-managed; the Staging deploy will not overwrite them."
 
 # Kapso WhatsApp Sandbox (optional, Staging only). Without the webhook secret the endpoint answers 503 to everything.
 (

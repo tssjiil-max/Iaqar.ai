@@ -511,6 +511,17 @@ test("required operations indexes are documented in firestore.indexes.json", () 
   assert.ok(ops.some((item) => item.fields.some((f) => f.fieldPath === "status")));
 });
 
+test("viewing reminder index supports the matches collection-group query", () => {
+  const indexes = JSON.parse(readRepositoryFile("firestore.indexes.json"));
+  const appointmentAt = indexes.fieldOverrides.find((item) =>
+    item.collectionGroup === "matches" && item.fieldPath === "appointmentAt"
+  );
+  assert.ok(appointmentAt, "matches.appointmentAt field override is present");
+  assert.ok(appointmentAt.indexes.some((index) =>
+    index.queryScope === "COLLECTION_GROUP" && index.order === "ASCENDING"
+  ), "collection-group ascending index is present");
+});
+
 test("ownerContactNeeded resolves from nextActor when metadata is stale", () => {
   assert.equal(resolveOwnerContactNeeded(
     { livingStage: "WAITING_PROPERTY_CONFIRMATION", nextActor: "BROKER" },

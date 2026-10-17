@@ -54,6 +54,9 @@ export async function classifyWithClaude(ctx, text, history = []) {
 }
 
 const ALLOWED_TYPES=new Set(['text','interactive','image']);
+export function whatsappAccessToken(env={}) {
+  return String(env.META_WHATSAPP_ACCESS_TOKEN || env.META_ACCESS_TOKEN || '').trim();
+}
 /**
  * One message to the Cloud API. `message` is a payload built by whatsapp-agent-domain (text, reply buttons,
  * list, image by link). All policy gates must be evaluated immediately before entering this adapter.
@@ -62,9 +65,11 @@ export async function sendWhatsAppMessage(ctx,{phoneNumberId,to,message,callback
   if(!message||!ALLOWED_TYPES.has(message.type))return {ok:false,error:'message_type_not_allowed'};
   // Defence in depth: even if a caller skips its own check, economic mode never reaches the Cloud API.
   if(economicModeActive(ctx.env))return {ok:false,error:'economic_mode_no_send'};
+  const accessToken=whatsappAccessToken(ctx.env);
+  if(!accessToken)return {ok:false,error:'meta_token_missing'};
   try {
     const r=await (ctx.fetchImpl||fetch)(`https://graph.facebook.com/${/^v\d+\.\d+$/.test(ctx.env.META_GRAPH_VERSION||'')?ctx.env.META_GRAPH_VERSION:'v25.0'}/${encodeURIComponent(phoneNumberId)}/messages`,{
-      method:'POST',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',Authorization:`Bearer ${ctx.env.META_WHATSAPP_ACCESS_TOKEN}`},
+      method:'POST',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',Authorization:`Bearer ${accessToken}`},
       body:JSON.stringify({messaging_product:'whatsapp',recipient_type:'individual',to,...message,...(callback?{biz_opaque_callback_data:callback}:{})})
     });
     if(!r.ok) return {ok:false,retryable:r.status===429,unknown:r.status>=500,error:r.status===401||r.status===403?'meta_auth_failed':`meta_http_${r.status}`};

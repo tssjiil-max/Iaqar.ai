@@ -42,7 +42,7 @@ function fixture({ envPatch = {} } = {}) {
       appError: (code, status, message) => Object.assign(Error(message), { code, status }),
       persistManualPair: async ({ officeId, recordId, counterpartId }) => { paired.push({ officeId, recordId, counterpartId }); return { matchId: `m_${counterpartId}`, operationId: 'op1' }; }
     },
-    fetchImpl: async (url, init) => { calls.push({ url, body: JSON.parse(init.body) }); return Response.json({ messages: [{ id: `wamid.${calls.length}` }] }); }
+    fetchImpl: async (url, init) => { calls.push({ url, body: JSON.parse(init.body), headers: init.headers }); return Response.json({ messages: [{ id: `wamid.${calls.length}` }] }); }
   };
   const seed = async () => {
     await store.set(['whatsapp_accounts', 'phone-a'], { officeId: 'office-a', wabaId: 'waba-a', status: 'connected', isOnBizApp: true, platformType: 'CLOUD_API', metaPhoneStatus: 'CONNECTED' });
@@ -307,6 +307,25 @@ for (const [label, value] of [['missing', undefined], ['empty', ''], ['unknown',
     assert.equal(status.economicMode, true); assert.equal(status.paidClassifier, false); assert.equal(status.sendingEnabled, false);
   });
 }
+
+test('A14c META_ACCESS_TOKEN is recognized while free simulation remains enforced', async () => {
+  const f = fixture({ envPatch: { META_WHATSAPP_ACCESS_TOKEN: undefined, META_ACCESS_TOKEN: 'local-test-token', ECONOMIC_TEST_MODE: undefined } });
+  const status = await whatsappAgentStatus(f.ctx, { officeId: 'office-a', actor: { isManager: true } });
+  assert.equal(status.metaTokenConfigured, true, JSON.stringify({ legacy: Boolean(f.ctx.env.META_ACCESS_TOKEN), current: Boolean(f.ctx.env.META_WHATSAPP_ACCESS_TOKEN), status }));
+  assert.equal(status.economicMode, true);
+  assert.equal(status.sendingEnabled, false);
+  assert.equal(f.calls.length, 0, 'checking configuration does not send a WhatsApp message');
+});
+
+test('META_ACCESS_TOKEN reaches the mocked Meta transport when sending is explicitly enabled', async () => {
+  const f = fixture({ envPatch: { META_WHATSAPP_ACCESS_TOKEN: undefined, META_ACCESS_TOKEN: 'local-test-token' } }); await f.seed();
+  const sent = await f.say('أبحث عن فيلا');
+  const call = f.calls.find(c => c.url.includes('graph.facebook'));
+  assert.ok(call, 'only the in-process fake Meta endpoint is used by this test');
+  assert.equal(call.headers.Authorization, 'Bearer local-test-token');
+  assert.ok(sent.length > 0);
+  assert.equal(f.paid(), 0);
+});
 
 test('A15 only allowlisted test recipients ever receive a message', async () => {
   const f = fixture({ envPatch: { WHATSAPP_AGENT_ALLOWED_RECIPIENTS: '966599999999' } }); await f.seed();
