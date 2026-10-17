@@ -477,3 +477,20 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
   .os-app [data-ui="comparison-table"] { width: 100%; }
   .os-app [data-ui="feedback"] { min-width: 0; overflow-wrap: anywhere; }
 }
+
+/* All internal workflows: consistent responsive overflow and fixed bottom navigation clearance. */
+@media (max-width: 600px) {
+  .os-app { min-width: 0; }
+  .os-app :is(.os-form,.os-form-grid,.os-action-bar,.os-center-list,.os-settings-grid,.os-record-list,.os-chips) { min-width: 0; max-width: 100%; }
+  .os-app :is(.os-page-head,.os-page-header,.os-card,.os-office-section,.os-stage-panel,.os-now-card) { box-sizing: border-box; }
+  .os-app :is(.os-form,.os-form-grid,.os-office-section-body) > * { min-width: 0; }
+  .os-app :is(.os-input,.os-select,textarea) { min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .os-app .os-action-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .os-app .os-action-bar > .os-btn { min-height: 44px; max-width: 100%; }
+  .os-app :is(.os-chips,.os-center-chips) { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .os-app :is(.os-data-table,.os-compare,[data-ui="comparison-table"]) { max-width: 100%; }
+  .os-app :is(.os-center-row,.os-set-row,.os-notification,.os-inbox-card) { min-width: 0; overflow-wrap: anywhere; }
+  .os-app :is(.os-center-row,.os-set-row,.os-notification) > .os-set-text { min-width: 0; }
+  .os-app .ref-bottom { padding-bottom: max(8px,env(safe-area-inset-bottom)); }
+  .os-app:has(.ref-bottom) { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+}
