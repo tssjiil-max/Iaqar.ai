@@ -70,7 +70,7 @@ async function main() {
   assertStagingServiceAccount(serviceAccount);
   if (serviceAccount.project_id !== STAGING_PROJECT_ID) throw new Error("Refusing non-Staging project");
 
-  if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: STAGING_PROJECT_ID });
+  admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: STAGING_PROJECT_ID });
   const db = admin.firestore();
   const officeRef = db.collection("offices").doc(QA_OFFICE_ID);
   const office = await officeRef.get();

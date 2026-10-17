@@ -42,4 +42,6 @@ test("isolated confirmed fixture produces ten minute reminder without sending it
   assert.deepEqual(due.map((entry) => entry.kind), [VIEWING_REMINDER_KIND.TEN_MINUTES]);
   assert.match(diagnostic, /notificationsAttempted: false/);
   assert.match(diagnostic, /externalMessagesSent: false/);
+  assert.match(diagnostic, /admin\.initializeApp\(\{ credential: admin\.credential\.cert\(serviceAccount\)/);
+  assert.doesNotMatch(diagnostic, /admin\.apps\.length/);
 });
