@@ -358,3 +358,139 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-guest-result .os-badge{margin:0}
 .os-record-reservation{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#e3ecee)}
 .os-record-reservation .os-btn{flex:0 1 auto}
+
+/* Mobile interior refinement: scoped to office tools, not the public journey.
+   Reduce oversized vertical rhythm while preserving touch targets and RTL. */
+@media (max-width: 600px) {
+  .os-app [data-tool-market] { gap: 12px; min-width: 0; }
+  .os-app [data-tool-market] .os-office-section,
+  .os-app [data-tool-market] .os-card { min-width: 0; }
+  .os-app [data-tool-market] .os-market-stats {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px; padding: 12px;
+  }
+  .os-app [data-tool-market] .os-market-stat {
+    min-width: 0; padding: 8px 4px; text-align: center;
+  }
+  .os-app [data-tool-market] .os-market-stat b { font-size: clamp(1.3rem, 6vw, 1.8rem); }
+  .os-app [data-tool-market] .os-market-stat small {
+    display: block; overflow-wrap: anywhere; line-height: 1.4;
+  }
+  .os-app [data-tool-market] .os-data-table { width: 100%; table-layout: fixed; }
+  .os-app [data-tool-market] .os-data-table :is(th,td) {
+    min-width: 0; padding: 10px 5px; overflow-wrap: anywhere;
+  }
+  .os-app [data-tool-market] .os-data-table :is(th,td) :is(b,small) {
+    display: block; overflow-wrap: anywhere;
+  }
+  .os-app .os-guide-step { gap: 10px; padding: 12px; min-width: 0; }
+  .os-app .os-guide-copy { min-width: 0; overflow-wrap: anywhere; }
+  .os-app .os-guide-step .os-btn { min-height: 44px; }
+}
+
+/* Interior mobile density: shared visual language, no global element overrides. */
+@media (max-width: 600px) {
+  .os-app .os-page-title { line-height: 1.35; overflow-wrap: anywhere; }
+  .os-app .os-tool-intro { margin-block: 6px 12px; }
+  .os-app [data-tool-guide], .os-app [data-tool-templates] { min-width: 0; }
+  .os-app [data-tool-templates] .os-template { min-width: 0; }
+  .os-app [data-tool-templates] .os-template-text { width: 100%; max-width: 100%; }
+  .os-app [data-tool-services].os-settings-grid > .os-service-row {
+    min-height: 0; padding: 12px; gap: 8px;
+    border-color: var(--frame-soft); box-shadow: var(--shadow);
+  }
+  .os-app [data-tool-services] .ref-reference-icon { max-width: 48px; max-height: 48px; }
+  .os-app [data-search-results] .os-center-list,
+  .os-app [data-inbox] .os-center-list { display: grid; gap: 10px; min-width: 0; }
+  .os-app [data-search-results] .os-center-row,
+  .os-app [data-inbox] .os-inbox-card {
+    min-width: 0; margin: 0; padding: 12px; overflow-wrap: anywhere;
+  }
+  .os-app [data-search-results] .os-set-text { min-width: 0; overflow-wrap: anywhere; }
+  .os-app [data-inbox] .os-inbox-head,
+  .os-app [data-inbox] .os-inbox-foot { flex-wrap: wrap; gap: 8px; }
+  .os-app [data-inbox] .os-inbox-text { overflow-wrap: anywhere; }
+}
+
+/* Broker workflows: compact repeatable cards and accessible mobile actions. */
+@media (max-width: 600px) {
+  .os-app .os-scout-find,
+  .os-app .os-scout-task,
+  .os-app .os-now-card,
+  .os-app .os-stage-panel {
+    box-sizing: border-box; width: 100%; min-width: 0;
+    padding: 12px; overflow-wrap: anywhere;
+  }
+  .os-app .os-scout-find-top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .os-app .os-scout-headline { display: block; line-height: 1.45; overflow-wrap: anywhere; }
+  .os-app .os-scout-why { margin-block: 6px; }
+  .os-app .os-scout-task .os-set-text { min-width: 0; }
+  .os-app .os-stage-panel .os-path { max-width: 100%; overflow-x: auto; }
+  .os-app .os-stage-panel .os-step { min-width: 0; }
+  .os-app .os-now-card .os-btn,
+  .os-app .os-scout-task { min-height: 44px; }
+}
+
+/* Compact real estate inventory and task workflow, mobile only. */
+@media (max-width: 600px) {
+  .os-app .os-record-list { display: grid; gap: 10px; min-width: 0; }
+  .os-app .ref-record-card {
+    box-sizing: border-box; width: 100%; min-width: 0;
+    padding: 10px; margin: 0; overflow: hidden;
+  }
+  .os-app .ref-record-open { min-width: 0; width: 100%; gap: 10px; }
+  .os-app .ref-record-copy { min-width: 0; overflow-wrap: anywhere; }
+  .os-app .ref-record-copy h3 { margin-block: 0 4px; line-height: 1.55; }
+  .os-app .ref-record-copy p { margin-block: 4px; overflow-wrap: anywhere; }
+  .os-app .ref-record-meta { flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
+  .os-app .ref-record-tags { flex-wrap: wrap; gap: 5px; }
+  .os-app .ref-record-open { min-height: 44px; }
+  .os-app .os-task-card,
+  .os-app .ref-task-card,
+  .os-app .ref-deal-card {
+    box-sizing: border-box; min-width: 0; width: 100%;
+    padding: 12px; overflow-wrap: anywhere;
+  }
+  .os-app .os-task-card .os-btn,
+  .os-app .ref-task-card .os-btn { min-height: 44px; }
+}
+
+/* Shared internal composition — every view using the design-system primitives. */
+@media (max-width: 600px) {
+  .os-app [data-ui="page-header"] { min-width: 0; margin-block-end: 12px; }
+  .os-app [data-ui="page-header"] .os-page-heading { min-width: 0; gap: 10px; }
+  .os-app [data-ui="page-header"] .os-page-copy { min-width: 0; }
+  .os-app [data-ui="page-header"] .os-page-title { margin: 0; font-size: clamp(1.1rem, 4.5vw, 1.35rem); }
+  .os-app [data-ui="page-header"] .os-page-icon { flex: 0 0 auto; }
+  .os-app [data-ui="surface"] { min-width: 0; max-width: 100%; }
+  .os-app .os-office-section { min-width: 0; overflow-wrap: anywhere; }
+  .os-app .os-office-section-head { gap: 10px; }
+  .os-app .os-office-section-copy,
+  .os-app .os-office-section-body { min-width: 0; }
+  .os-app .os-office-section-title { flex-wrap: wrap; gap: 6px; }
+  .os-app [data-ui="navigation-tile"] { min-width: 0; gap: 10px; }
+  .os-app [data-ui="navigation-tile"] .os-set-text { min-width: 0; overflow-wrap: anywhere; }
+  .os-app [data-ui="form-grid"] { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  .os-app [data-ui="form-field"] { min-width: 0; }
+  .os-app [data-ui="form-field"] :is(input,select,textarea) { max-width: 100%; box-sizing: border-box; }
+  .os-app [data-ui="control-group"] { min-width: 0; }
+  .os-app [data-ui="comparison-table"] { width: 100%; }
+  .os-app [data-ui="feedback"] { min-width: 0; overflow-wrap: anywhere; }
+}
+
+/* All internal workflows: consistent responsive overflow and fixed bottom navigation clearance. */
+@media (max-width: 600px) {
+  .os-app { min-width: 0; }
+  .os-app :is(.os-form,.os-form-grid,.os-action-bar,.os-center-list,.os-settings-grid,.os-record-list,.os-chips) { min-width: 0; max-width: 100%; }
+  .os-app :is(.os-page-head,.os-page-header,.os-card,.os-office-section,.os-stage-panel,.os-now-card) { box-sizing: border-box; }
+  .os-app :is(.os-form,.os-form-grid,.os-office-section-body) > * { min-width: 0; }
+  .os-app :is(.os-input,.os-select,textarea) { min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .os-app .os-action-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .os-app .os-action-bar > .os-btn { min-height: 44px; max-width: 100%; }
+  .os-app :is(.os-chips,.os-center-chips) { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .os-app :is(.os-data-table,.os-compare,[data-ui="comparison-table"]) { max-width: 100%; }
+  .os-app :is(.os-center-row,.os-set-row,.os-notification,.os-inbox-card) { min-width: 0; overflow-wrap: anywhere; }
+  .os-app :is(.os-center-row,.os-set-row,.os-notification) > .os-set-text { min-width: 0; }
+  .os-app .ref-bottom { padding-bottom: max(8px,env(safe-area-inset-bottom)); }
+  .os-app:has(.ref-bottom) { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+}

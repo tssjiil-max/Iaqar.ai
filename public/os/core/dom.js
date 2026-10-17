@@ -123,7 +123,7 @@ export function surface(tag = 'section', props = {}, ...children) {
 
 /** Shared semantic section: same title/icon/description hierarchy across office tools. */
 export function officeSection({ title, iconName = 'office', description = '', className = '', attrs = {}, count = null, accessory = null }, ...children) {
-  const tone = ({ office: 'blue', shield: 'gold', offers: 'green', search: 'purple', photos: 'purple', link: 'purple', pin: 'green', bell: 'gold' })[iconName] || 'blue';
+  const tone = ({ office: 'blue', shield: 'blue', offers: 'blue', search: 'blue', photos: 'blue', link: 'blue', pin: 'blue', bell: 'blue' })[iconName] || 'blue';
   return surface('section', { ...attrs, class: `os-office-section tone-${tone} ${className}`.trim(), 'aria-label': attrs['aria-label'] || title },
     h('header', { class: 'os-office-section-head' },
       h('span', { class: 'os-page-icon', 'aria-hidden': 'true' }, ic(iconName)),
