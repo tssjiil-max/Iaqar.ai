@@ -411,3 +411,22 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
   .os-app [data-inbox] .os-inbox-foot { flex-wrap: wrap; gap: 8px; }
   .os-app [data-inbox] .os-inbox-text { overflow-wrap: anywhere; }
 }
+
+/* Broker workflows: compact repeatable cards and accessible mobile actions. */
+@media (max-width: 600px) {
+  .os-app .os-scout-find,
+  .os-app .os-scout-task,
+  .os-app .os-now-card,
+  .os-app .os-stage-panel {
+    box-sizing: border-box; width: 100%; min-width: 0;
+    padding: 12px; overflow-wrap: anywhere;
+  }
+  .os-app .os-scout-find-top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .os-app .os-scout-headline { display: block; line-height: 1.45; overflow-wrap: anywhere; }
+  .os-app .os-scout-why { margin-block: 6px; }
+  .os-app .os-scout-task .os-set-text { min-width: 0; }
+  .os-app .os-stage-panel .os-path { max-width: 100%; overflow-x: auto; }
+  .os-app .os-stage-panel .os-step { min-width: 0; }
+  .os-app .os-now-card .os-btn,
+  .os-app .os-scout-task { min-height: 44px; }
+}
