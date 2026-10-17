@@ -62,6 +62,9 @@ MCP_SERVER = "enabled"
 KAPSO_OFFICE_ID = "qa-office-kapso"
 KAPSO_PHONE_NUMBER_ID = "597907523413541"
 KAPSO_ALLOWED_SENDERS = "966552019909"
+# WhatsApp economic test mode (Staging only): no paid AI call and every WhatsApp reply simulated, even if keys exist.
+# Only the exact value "disabled" leaves it, and only with the owner's approval. Not set for production.
+ECONOMIC_TEST_MODE = "enabled"
 
 [env.staging.ai]
 binding = "AI"

@@ -9,6 +9,9 @@ Economic mode is **on by default**. It stays on when `ECONOMIC_TEST_MODE` is mis
 - Offer messages, sensitive financial/contract instructions, and unsupported media still go to human review through the existing flow. Do not use simulation output to promise property availability.
 - Do not add Anthropic credentials, buy credits, change Meta registration, enable production, or send real customer messages.
 
+## Staging deploy
+`worker/wrangler.toml` sets `ECONOMIC_TEST_MODE = "enabled"` under `[env.staging.vars]` only. The Staging deploy workflows no longer pass `GEMINI_API_KEY`, and `scripts/deploy-staging.sh` never sets it: after the Worker deploy it deletes any old `GEMINI_API_KEY` and proves it is gone by reading secret **names** only (`wrangler secret list`; values are never read). If the names cannot be read or the key is still there, the deploy stops before any Staging test runs.
+
 ## Validation
 Run `node --test test/whatsapp-economic-mode.test.mjs test/whatsapp-claude-pipeline.test.mjs test/whatsapp-webhook-runtime.test.mjs`, then `npm test` and `npm run check` on a full checkout. The economic-mode tests check offline classification, human escalation, the fail-safe default for missing/unknown values, and that no Anthropic or Meta request leaves while it is on. Before staging activation, test the full Worker pipeline in economic mode and verify no outbound Meta requests or Anthropic calls occur.
 

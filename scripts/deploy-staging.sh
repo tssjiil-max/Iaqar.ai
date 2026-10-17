@@ -108,13 +108,34 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
   npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY" # // pragma: allowlist secret
   CURRENT_STAGE="wrangler-secret-firebase-private-key-id"
   npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY_ID" # // pragma: allowlist secret
-  if [[ -n "${GEMINI_API_KEY:-}" ]]; then
-    CURRENT_STAGE="wrangler-secret-gemini-api-key"
-    printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --env staging # // pragma: allowlist secret
-    echo "GEMINI_API_KEY synced to staging Worker (value not printed)."
-  else
-    echo "NOTE: GEMINI_API_KEY not set — voice analyze returns GEMINI_NOT_CONFIGURED until configured."
+)
+
+# Economic test mode: the Staging Worker never holds a paid AI key. This path never sets GEMINI_API_KEY; an old one is
+# deleted, then its absence is proven by reading secret NAMES only (Wrangler never returns values). If that cannot be
+# proven, the deploy stops before any Staging test runs. Voice analyze answers GEMINI_NOT_CONFIGURED on Staging.
+echo "--- Economic mode: prove GEMINI_API_KEY is absent from the staging Worker (names only) ---"
+(
+  cd worker
+  gemini_state() {
+    local names rc=0
+    names="$(npx wrangler secret list --env staging --format json)" || return 2
+    printf '%s' "$names" | node ../scripts/staging-secret-names.mjs GEMINI_API_KEY >/dev/null || rc=$?
+    return "$rc"
+  }
+  CURRENT_STAGE="economic-mode-list-secrets"
+  state=0; gemini_state || state=$?
+  if [[ "$state" == "0" ]]; then
+    CURRENT_STAGE="economic-mode-delete-gemini-key"
+    printf 'y\n' | npx wrangler secret delete GEMINI_API_KEY --env staging \
+      || die "could not delete GEMINI_API_KEY from the staging Worker; refusing to continue in economic mode"
+    CURRENT_STAGE="economic-mode-verify-gemini-key-absent"
+    state=0; gemini_state || state=$?
   fi
+  case "$state" in
+    1) echo "GEMINI_API_KEY absent on the staging Worker (secret names checked; values never read)." ;;
+    0) die "GEMINI_API_KEY is still present on the staging Worker after deletion; refusing to continue in economic mode" ;;
+    *) die "could not read the staging Worker secret names to prove GEMINI_API_KEY is absent; refusing to continue in economic mode" ;;
+  esac
 )
 
 # «قنوات المكتب» — WhatsApp Embedded Signup (optional). Staging Worker only; values never reach logs.
