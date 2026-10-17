@@ -101,11 +101,10 @@ try {
   // ---------- public page: not real estate → kept, manual offered
   await page.goto(`${h.origin}/o/sultan`);
   // «أبحث عن عقار» is the guest search (owner decision 2026-10-16); same guarantees, its own controls.
-  await page.locator('[data-path="client"]').click();
   await page.locator('textarea[name="description"]').fill("السلام عليكم كيف الحال");
   await page.locator("[data-guest-analyze]").click();
   await page.locator('[data-guest-search-form] .os-alert.bad').waitFor();
-  assert.ok((await page.locator('[data-guest-search-form] .os-alert.bad').innerText()).includes("أدخل المواصفات يدويًا"), "clear message");
+  assert.ok((await page.locator('[data-guest-search-form] .os-alert.bad').innerText()).includes("أكمل التفاصيل يدويًا"), "clear message");
   assert.equal(await page.locator('[name="price"]').inputValue(), "", "nothing filled");
   assert.equal(await page.locator('[name="propertyType"]').inputValue(), "", "nothing filled");
   assert.equal(await page.locator('details[data-search-criteria]').getAttribute("open"), "", "manual criteria opened, one press away");
