@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "node:crypto";
 import {
   createServiceAccountJwt,
@@ -70,28 +71,29 @@ async function main() {
   assertStagingServiceAccount(serviceAccount);
   if (serviceAccount.project_id !== STAGING_PROJECT_ID) throw new Error("Refusing non-Staging project");
 
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: STAGING_PROJECT_ID });
-  const db = admin.firestore();
-  const officeRef = db.collection("offices").doc(QA_OFFICE_ID);
-  const office = await officeRef.get();
-  if (!office.exists || office.data()?.isTestFixture !== true) throw new Error("QA office guard refused: dedicated fixture office missing or unmarked");
-
-  const now = new Date();
-  const appointmentAt = new Date(now.getTime() + 9 * 60_000);
-  const fixtureRef = officeRef.collection("matches").doc(fixtureId);
-  assertQaPath(fixtureRef);
-  await fixtureRef.create({
-    officeId: QA_OFFICE_ID,
-    appointmentAt: admin.firestore.Timestamp.fromDate(appointmentAt),
-    appointmentStatus: "CONFIRMED_BY_BROKER",
-    livingStage: "APPOINTMENT_CONFIRMED",
-    isTestFixture: true,
-    testRunId: runId,
-    createdBy: "STAGING_VIEWING_REMINDER_QUERY_DIAGNOSTIC"
-  });
-  report.fixture.created = true;
-
+  const app = admin.initializeApp({ credential: admin.cert(serviceAccount), projectId: STAGING_PROJECT_ID });
+  let fixtureRef;
   try {
+    const db = getFirestore(app);
+    const officeRef = db.collection("offices").doc(QA_OFFICE_ID);
+    const office = await officeRef.get();
+    if (!office.exists || office.data()?.isTestFixture !== true) throw new Error("QA office guard refused: dedicated fixture office missing or unmarked");
+
+    const now = new Date();
+    const appointmentAt = new Date(now.getTime() + 9 * 60_000);
+    fixtureRef = officeRef.collection("matches").doc(fixtureId);
+    assertQaPath(fixtureRef);
+    await fixtureRef.create({
+      officeId: QA_OFFICE_ID,
+      appointmentAt: Timestamp.fromDate(appointmentAt),
+      appointmentStatus: "CONFIRMED_BY_BROKER",
+      livingStage: "APPOINTMENT_CONFIRMED",
+      isTestFixture: true,
+      testRunId: runId,
+      createdBy: "STAGING_VIEWING_REMINDER_QUERY_DIAGNOSTIC"
+    });
+    report.fixture.created = true;
+
     const token = await accessToken(serviceAccount);
     const earliest = new Date(now.getTime() - 15 * 60_000);
     const latest = new Date(now.getTime() + 2 * 60 * 60_000);
@@ -106,12 +108,17 @@ async function main() {
     report.legacyIndexQuerySucceeded = legacyQuery.ok;
     report.status = "passed";
   } finally {
-    const current = await fixtureRef.get();
-    if (current.exists && current.data()?.testRunId === runId && current.data()?.isTestFixture === true) {
-      await fixtureRef.delete();
-      report.cleanup.completed = true;
+    try {
+      if (fixtureRef && report.fixture.created) {
+        const current = await fixtureRef.get();
+        if (current.exists && current.data()?.testRunId === runId && current.data()?.isTestFixture === true) {
+          await fixtureRef.delete();
+          report.cleanup.completed = true;
+        }
+      }
+    } finally {
+      await app.delete();
     }
-    await admin.app().delete();
   }
 }
 
