@@ -1,0 +1,38 @@
+name: Inventory link verification
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [codex/unified-staging-lineage-2026-08-29]
+    paths:
+      - 'public/os/domain/inventory-query-domain.js'
+      - 'worker/src/office-os/public-search-service.js'
+      - 'worker/src/office-os/whatsapp-agent-service.js'
+      - 'scripts/staging-inventory-read-audit.mjs'
+      - '.github/workflows/inventory-link-check.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix worker
+      - run: node --test test/whatsapp-agent-journey.test.mjs test/office-os-public-search.test.mjs
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/qa/office-os/inventory-enquiry.e2e.mjs
+      - name: Read-only Staging inventory audit
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: node scripts/staging-inventory-read-audit.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inventory-link-evidence
+          path: artifacts/inventory-link/
+          retention-days: 7

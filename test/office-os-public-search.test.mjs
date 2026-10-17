@@ -101,3 +101,17 @@ test('guest results respect the entered budget and do not imply an owner approve
  const r=await call('/os/public/search',{...input,requestKey:'strict-budget-test-0001',criteria:{...input.criteria,district:'العقيق'}});
  assert.equal(r.status,200);assert.equal(r.body.results.length,0);
 });
+
+test('public link inventory enquiry finds the exact bank record without type, purpose or budget defaults', async () => {
+ const bankRecord = { ...offer, propertyType:'عمارة', district:'حي درة العقيق', priceOrBudget:3000000, salePrice:3000000 };
+ h.store.seed(`offices/${OFFICE_A}/opportunities/durra-building`, bankRecord);
+ for (const district of ['درة العقيق','حي درة العقيق','مخطط درة العقيق']) {
+  const r = await call('/os/public/search',{officeId:OFFICE_A,scope:'office',mode:'inventory',criteria:{district},requestKey:`durra-${district.length}-inventory-001`});
+  assert.equal(r.status,200,JSON.stringify(r.body));
+  assert.deepEqual(r.body.results.map(row=>row.reference),[`${OFFICE_A}:durra-building`]);
+  assert.equal(r.body.results[0].propertyType,bankRecord.propertyType);
+  assert.equal(r.body.results[0].price,bankRecord.priceOrBudget);
+ }
+ const invalid=await call('/os/public/search',{officeId:OFFICE_A,scope:'office',mode:'inventory',criteria:{},requestKey:'inventory-empty-query-0001'});
+ assert.equal(invalid.status,400);
+});

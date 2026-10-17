@@ -377,3 +377,47 @@ test('A18 alternatives keep the client\'s numbering: a withdrawn offer is skippe
   const again = await f.tap('wa:DETAILS:2', 'تفاصيل');
   assert.ok(f.all(again).includes(shown[2].reference), 'button 3 still means the third property');
 });
+
+// Regression: browsing inventory must not inherit a previous villa/buying/budget request.
+for (const phrase of ['اش عندك عروض في درة العقيق؟', 'وش عندك في حي درة العقيق؟', 'وش عندك في مخطط درة العقيق؟']) {
+ test(`inventory enquiry: ${phrase}`, async () => {
+  const f = fixture(); await f.seed();
+  for (const collection of ['offices', 'publicOffices']) await f.ctx.store.set([collection, 'office-a'], { city: 'المدينة المنورة' });
+  const building = { officeId: 'office-a', opportunityKind: 'OFFER', purpose: 'SALE', propertyType: 'عمارة', city: 'المدينة المنورة', district: 'حي درة العقيق', priceOrBudget: 3000000, salePrice: 3000000, lifecycleStatus: 'ACTIVE', publicSearchVisible: true, priceStatus: 'NEGOTIABLE' };
+  await f.ctx.store.set(['offices', 'office-a', 'opportunities', 'building-durra'], building);
+  await f.ctx.store.set(['offices', 'office-a', 'opportunities', 'private-durra'], { ...building, publicSearchVisible: false });
+  await f.ctx.store.set(['offices', 'office-b', 'opportunities', 'foreign-durra'], { ...building, officeId: 'office-b' });
+  const sent = await f.say(phrase);
+  const shown = await f.shown();
+  assert.deepEqual(shown.map(row => row.reference), ['office-a:building-durra']);
+  assert.match(f.all(sent), /عمارة/); assert.match(f.all(sent), /3,000,000|٣٬٠٠٠٬٠٠٠/);
+  const c = (await f.ctx.store.list(['offices', 'office-a', 'whatsappConversations']))[0];
+  assert.equal(c.draft.propertyType, undefined); assert.equal(c.draft.purpose, undefined); assert.equal(c.draft.price, undefined);
+  assert.equal(c.consent, undefined, 'browsing is not contact consent');
+  assert.equal(f.paid(), 0);
+ });
+}
+
+test('inventory: broad building and budget enquiries, empty results and query failure stay truthful', async () => {
+ const f = fixture(); await f.seed();
+ await f.ctx.store.set(['offices','office-a','opportunities','building'], { officeId:'office-a',opportunityKind:'OFFER',purpose:'SALE',propertyType:'عمارة',city:'الرياض',district:'الملقا',priceOrBudget:2900000,salePrice:2900000,lifecycleStatus:'ACTIVE',publicSearchVisible:true });
+ assert.match(f.all(await f.say('عندك عمائر للبيع؟')), /عمارة/);
+ assert.ok((await f.shown()).every(row => row.propertyType === 'عمارة'));
+ await f.say('وش العروض تحت 3 ملايين؟');
+ assert.ok((await f.shown()).some(row => row.reference === 'office-a:building'));
+ assert.ok((await f.shown()).every(row => row.price < 3000000 && row.officeId === 'office-a'));
+ assert.match(f.all(await f.say('وش عندك في حي غير موجود؟')), /ما وجدت الآن عروضًا منشورة/);
+ f.failListWhen(p => p.includes('opportunities'));
+ assert.match(f.all(await f.say('اش عندك عروض في درة العقيق؟')), /تعذر الوصول/);
+});
+
+test('inventory browsing keeps interest behind explicit contact consent', async () => {
+ const f=fixture(); await f.seed();
+ await f.say('وش عندك في حي الملقا؟');
+ assert.match(f.all(await f.tap('wa:INTEREST:0')),/هل توافق/);
+ assert.equal((await f.cases()).length,0);
+ await f.say('موافق');
+ assert.equal((await f.cases()).length,1);
+ const trace=(await f.ctx.store.list(['offices','office-a','inbox'])).find(row=>row.waInventoryTrace)?.waInventoryTrace;
+ assert.ok(trace.completed); assert.ok(trace.exclusions.not_published>0);
+});
