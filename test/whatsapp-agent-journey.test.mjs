@@ -421,3 +421,23 @@ test('inventory browsing keeps interest behind explicit contact consent', async 
  const trace=(await f.ctx.store.list(['offices','office-a','inbox'])).find(row=>row.waInventoryTrace)?.waInventoryTrace;
  assert.ok(trace.completed); assert.ok(trace.exclusions.not_published>0);
 });
+
+test('parity: «وش عندك عروض في درة العقيق؟» returns the same eligible offers, in the same order, on WhatsApp and the public page', async () => {
+ const { guestSearch } = await import('../worker/src/office-os/public-search-service.js');
+ const { inventoryInquiry } = await import('../public/os/domain/inventory-query-domain.js');
+ const f = fixture(); await f.seed();
+ const durra = (id, price, extra = {}) => f.ctx.store.set(['offices', extra.officeId || 'office-a', 'opportunities', id], { officeId: extra.officeId || 'office-a', opportunityKind: 'OFFER', purpose: 'SALE', propertyType: 'فيلا', city: 'الرياض', district: 'درة العقيق', priceOrBudget: price, salePrice: price, lifecycleStatus: 'ACTIVE', publicSearchVisible: true, ...extra });
+ await durra('d1', 4800000); await durra('d2', 4200000, { district: 'دره العقيق' }); await durra('d-hidden', 4000000, { publicSearchVisible: false }); await durra('d-other', 4100000, { officeId: 'office-b' });
+ const text = 'وش عندك عروض في درة العقيق؟';
+ const reply = f.all(await f.say(text));
+ assert.doesNotMatch(reply, /ما وجدت/, 'the agent never denies an offer that the query found');
+ const whatsapp = (await f.shown()).map((x) => x.reference);
+ assert.deepEqual([...whatsapp].sort(), ['office-a:d1', 'office-a:d2']);
+ // The page sends the same partial criteria to the same engine (scope: this office).
+ const page = await guestSearch(f.ctx, { input: { officeId: 'office-a', scope: 'office', mode: 'inventory', criteria: inventoryInquiry(text), requestKey: 'page-parity-durra-0001' }, ip: 'page' });
+ assert.deepEqual(page.results.map((x) => x.reference), whatsapp, 'same eligibility and the same order');
+ // The page's own «auto» mode with only the district picked lands on the same rows.
+ const auto = await guestSearch(f.ctx, { input: { officeId: 'office-a', scope: 'office', mode: 'auto', criteria: { districts: ['درة العقيق'] }, requestKey: 'page-parity-durra-0002' }, ip: 'page' });
+ assert.deepEqual(auto.results.map((x) => x.reference), whatsapp);
+ assert.equal(f.paid(), 0);
+});
