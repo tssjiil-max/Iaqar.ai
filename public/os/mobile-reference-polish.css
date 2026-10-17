@@ -267,3 +267,47 @@
   .os-app :is(.os-btn, .os-icon-btn, .os-chip, .os-seg button) { transition: none; }
   .os-app .os-skeleton, .os-app .os-btn[aria-busy="true"]::after { animation: none; }
 }
+
+/* Figma guest journey: compact office identity and one primary search action. */
+.os-app.os-public-page {
+  --guest-bg:#f5f6f8; --guest-ink:#142635; --guest-muted:#647580;
+  --guest-brand:#086f73; --guest-soft:#e8f3f1;
+  background:var(--guest-bg); color:var(--guest-ink); max-width:600px;
+  padding:24px 20px; gap:20px; direction:rtl;
+}
+.os-public-page .os-public-hero {
+  display:grid; grid-template-columns:48px minmax(0,1fr); gap:8px 12px;
+  padding:16px; background:#fff; border:0; border-radius:16px;
+  text-align:right; box-shadow:none;
+}
+.os-public-page .os-public-logo {width:48px;height:48px;margin:0;grid-row:1 / span 3}
+.os-public-page .os-public-title {font-size:19px;line-height:1.45;text-align:right}
+.os-public-page .os-public-rule {display:none}
+.os-public-page .os-license {justify-content:flex-start;font-size:12px;gap:8px;flex-wrap:wrap}
+.os-public-page .os-public-license {grid-column:2;font-size:12px;width:fit-content;padding:2px 8px;margin:0}
+.os-public-page .os-smart-search-form {
+  background:transparent;border:0;box-shadow:none;border-radius:0;padding:0;gap:20px;
+}
+.os-smart-search-form > div:first-child .os-h2 {font-size:30px;line-height:1.45;margin:0 0 14px}
+.os-smart-search-form .os-sub {font-size:16px;color:var(--guest-muted);line-height:1.6}
+.os-smart-search-form .os-textarea {min-height:132px;background:#fff;border:1px solid #dfe6e8;border-radius:16px;padding:16px;font-size:17px;line-height:1.6}
+.os-smart-search-form .os-field > span:first-child {font-size:14px}
+.os-public-page .os-btn.primary {background:var(--guest-brand);color:#fff;border:1px solid var(--guest-brand);min-height:52px;border-radius:12px;box-shadow:none}
+.os-public-page .os-btn.secondary {background:var(--guest-soft);color:var(--guest-brand);border:1px solid transparent;border-radius:12px;min-height:48px}
+.os-search-examples {display:flex;gap:8px;flex-wrap:wrap}
+.os-search-examples .os-btn {padding:8px 12px;font-size:13px;min-height:44px}
+.os-smart-search-form [name=scope] {background:var(--guest-soft);color:var(--guest-brand);border:0;font-size:14px;min-height:52px}
+.os-search-summary {background:var(--guest-soft);color:var(--guest-brand);padding:14px;border-radius:12px;font-size:14px;line-height:1.7;margin:0}
+.os-public-page .os-guest-result {background:#fff;border:1px solid #dfe6e8;box-shadow:none;border-radius:16px;padding:16px}
+.os-public-page [data-search-criteria] summary,.os-public-page [data-request-review] summary {cursor:pointer;color:var(--guest-brand);padding:12px 0;font-size:14px}
+.os-public-page [data-guest-results]:empty {display:none}
+.os-public-page .os-path-card {background:#fff;border:1px solid #dfe6e8;border-radius:16px;padding:16px}
+.os-public-page .os-public-trust,.os-public-page .os-public-coop {font-size:12px;line-height:1.6}
+@media(max-width:430px){.os-app.os-public-page{padding:20px}.os-public-page .os-guest-result-head{display:grid}.os-public-page .os-guest-result-price{white-space:normal}}
+.os-public-page .os-path-card[data-path="owner"] {background:#fff;color:var(--guest-ink);box-shadow:none}
+.os-public-page .os-path-card[data-path="owner"] :is(b,small,.ic,.os-path-go),.os-public-page .os-path-card[data-path="owner"] .os-ico {color:var(--guest-brand)}
+.os-public-page .os-path-card[data-path="owner"] :is(.ic,.os-path-go) {background:var(--guest-soft)}
+.os-public-page .os-smart-search-form > div:first-child .os-h2 {max-width:290px;font-size:30px}
+.os-public-page .os-page-header,.os-public-page .os-office-section {background:#fff;box-shadow:none;border:1px solid #dfe6e8;border-radius:16px}
+.os-public-page .os-page-icon {background:var(--guest-soft);color:var(--guest-brand)}
+.os-public-page .os-page-header .os-sub {color:var(--guest-muted)}

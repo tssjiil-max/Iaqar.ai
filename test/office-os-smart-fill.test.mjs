@@ -108,3 +108,13 @@ test("compound amounts and «بالحي»", async () => {
   assert.deepEqual([l.kind, l.purpose, l.districts.join("،"), l.price, l.urgent], ["REQUEST", "PURCHASE", "الهجرة،شوران", 2_000_000, true]);
   assert.deepEqual(analyzeListing("عندي عمارة للبيع في الهجرة، مساحتها 600 متر").districts, ["الهجرة"]);
 });
+
+ test('compound plan names are extracted without inventing location or budget', () => {
+  for (const location of ['في درة العقيق', 'في مخطط درة العقيق']) {
+    const l = analyzeText(`أبحث عن فيلا للبيع ${location} بالمدينة المنورة بميزانية 5 ملايين ريال`).listings[0];
+    assert.deepEqual(l.districts, ['درة العقيق']);
+    assert.equal(l.city, 'المدينة المنورة');
+    assert.equal(l.price, 5000000);
+  }
+  assert.equal(analyzeText('مطلوب فيلا في حي الملقا بالرياض').listings[0].price, 0);
+ });
