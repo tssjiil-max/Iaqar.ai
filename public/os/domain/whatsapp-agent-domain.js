@@ -213,7 +213,8 @@ export const imageMessage = (link, caption = "") => ({ type: "image", image: { l
 /** One result line, from the verified snapshot only. */
 export function resultLine(item, i) {
   const specs = [item.rooms ? `${item.rooms} غرف` : "", item.area ? `${money(item.area)} م²` : ""].filter(Boolean).join("، ");
-  return `${i + 1}) ${item.propertyType} — ${item.district}، ${item.city}\nالسعر: ${money(item.price)} ريال${specs ? ` · ${specs}` : ""}\nالحالة: ${item.statusLabel || "متاح"} · المرجع: ${item.reference}`;
+  const purpose = item.purpose === 'SALE' ? 'للبيع' : item.purpose === 'RENT' ? 'للإيجار' : '';
+  return `${i + 1}) ${item.propertyType} — ${item.district}، ${item.city}\n${purpose ? `الغرض: ${purpose}\n` : ''}السعر: ${money(item.price)} ريال${item.priceStatus === 'NEGOTIABLE' ? ' · قابل للتفاوض' : ''}${specs ? ` · ${specs}` : ""}\nالحالة: ${item.statusLabel || "متاح"} · المرجع: ${item.reference}`;
 }
 
 /** Why it matches, and how it differs from what the client asked for. */

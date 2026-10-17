@@ -6,6 +6,7 @@
  * The AI runs the journey; a person approves commitments. Nothing here reserves, accepts a price,
  * confirms a viewing or closes a deal, and nothing claims a message was sent when it was not.
  */
+import { normalizeInventoryDistrict } from '../../../public/os/domain/inventory-query-domain.js';
 import { analyzeOfficeText } from './smart-fill-service.js';
 import { kindOf, lifecycleOf, priceOf, validateRecordInput, recordFields } from '../../../public/os/domain/records-domain.js';
 import { normalizeArabicText, opportunityToMatchInput, scoreMatch } from '../matching-engine.js';
@@ -33,7 +34,16 @@ export async function analyzeGuestSearch(ctx,{officeId='',text='',ip=''}){
 }
 function point(v){const lat=Number(v?.lat ?? v?.latitude),lng=Number(v?.lng ?? v?.longitude);return v && Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180?{lat,lng}:null;}
 function distance(a,b){const r=x=>x*Math.PI/180;const dlat=r(b.lat-a.lat),dlng=r(b.lng-a.lng);const x=Math.sin(dlat/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dlng/2)**2;return 6371*2*Math.atan2(Math.sqrt(x),Math.sqrt(Math.max(0,1-x)));}
-const live=(r,now)=>r.publicSearchVisible===true && kindOf(r)==='OFFER' && lifecycleOf(r)==='ACTIVE' && [STATE.ACTIVE,STATE.LEGACY].includes(validityState(r,now)) && Number(priceOf(r))>0;
+export function publicInventoryExclusion(row, officeId, now = new Date()) {
+ if (row.officeId && row.officeId !== officeId) return 'office_mismatch';
+ if (row.publicSearchVisible !== true) return 'not_published';
+ if (kindOf(row) !== 'OFFER') return 'not_offer';
+ if (lifecycleOf(row) !== 'ACTIVE') return 'inactive';
+ if (![STATE.ACTIVE, STATE.LEGACY].includes(validityState(row, now))) return 'expired_or_unavailable';
+ if (!(Number(priceOf(row)) > 0)) return 'price_missing';
+ return '';
+}
+const live=(row,now)=>!publicInventoryExclusion(row,row.officeId,now);
 const interestPath=(officeId,recordId)=>['offices',officeId,'opportunities',recordId,'interests'];
 const splitRef=(reference)=>{const [officeId,recordId]=String(reference||'').split(':');return /^[a-zA-Z0-9_-]{1,80}$/.test(officeId||'')&&/^[a-zA-Z0-9_-]{1,160}$/.test(recordId||'')?{officeId,recordId}:null;};
 
@@ -66,25 +76,32 @@ export async function guestSearch(ctx,{input={},ip=''}){
  const criteria=input.criteria&&typeof input.criteria==='object'?input.criteria:{};
  // Criteria only: contact details are asked for after the client chooses a property.
  const check=validateRecordInput({...criteria,kind:'REQUEST',contactName:'',contactPhone:''});
- const criteriaErrors=Object.entries(check.errors).filter(([k])=>!['contactPhone','contactName'].includes(k));
+ const browse = input.mode === 'inventory';
+ const criteriaErrors=Object.entries(check.errors).filter(([k])=>!['contactPhone','contactName'].includes(k) && (!browse || Boolean(criteria[k])));
+ if (browse && !['propertyType','district','city','price','purpose'].some(k => Boolean(criteria[k]))) throw ctx.deps.appError('request_invalid',400,'حدد حيًا أو نوع عقار أو ميزانية للبحث');
  if(criteriaErrors.length)throw ctx.deps.appError('request_invalid',400,criteriaErrors[0][1]);
  const viewerKey=/^[a-f0-9]{32}$/.test(String(input.viewerKey||''))?String(input.viewerKey):'';
+ if (browse && !check.value.city && home?.city) check.value.city = home.city;
  const source=recordFields(check.value,{officeId:officeId||'platform',brokerId:'',now:ctx.now()});
- const offices=scope==='office'?[home]:(await ctx.store.list(['publicOffices'],50)).filter(o=>o.active!==false&&(!o.city||eq(o.city,source.city)));
- const rows=[];let inventoryLimited=false;const journeys=new Map();
+ const offices=scope==='office'?[home]:(await ctx.store.list(['publicOffices'],50)).filter(o=>o.active!==false&&(!source.city||!o.city||eq(o.city,source.city)));
+ const rows=[];const exclusions={};const exclude=reason=>{exclusions[reason]=(exclusions[reason]||0)+1;};let inventoryLimited=false;const journeys=new Map();
  for(const office of offices){
   const offers=await ctx.store.list(['offices',office.id,'opportunities'],300);if(offers.length>=300)inventoryLimited=true;
   for(const row of offers){
-   if(row.officeId&&row.officeId!==office.id||!live(row,ctx.now())||!eq(row.city,source.city)||!eq(row.propertyType,source.propertyType))continue;
-   if(priceOf(row)>check.value.price)continue;
-   const same=eq(row.district,source.district);let km=null;
+   const reason=publicInventoryExclusion(row,office.id,ctx.now());
+   if(reason){exclude(reason);continue;}
+   if((source.city&&!eq(row.city,source.city))||(source.propertyType&&!eq(row.propertyType,source.propertyType))){exclude('criteria_mismatch');continue;}
+   if (browse && criteria.purpose && (criteria.purpose === 'PURCHASE' ? !['SALE','PURCHASE'].includes(row.purpose) : !['RENT','LEASE_REQUEST'].includes(row.purpose))) continue;
+   if(check.value.price>0 && (criteria.priceExclusive === true ? priceOf(row)>=check.value.price : priceOf(row)>check.value.price))continue;
+   const same=!source.district || normalizeInventoryDistrict(row.district)===normalizeInventoryDistrict(source.district);let km=null;
    if(!same){const from=point(office.districtCenters?.[source.district]),to=point(row.coordinates);if(!from||!to)continue;km=distance(from,to);if(km>5)continue;}
-   const scored=scoreMatch(opportunityToMatchInput(source),opportunityToMatchInput(row,{id:row.id}));if(!scored.eligible)continue;
+   const scored=browse ? {eligible:true,score:0,reasons:[criteria.district?'في الحي المطلوب':'',criteria.propertyType?'نوع العقار المطلوب':'',criteria.price?'ضمن الميزانية المحددة':''].filter(Boolean)} : scoreMatch(opportunityToMatchInput(source),opportunityToMatchInput(row,{id:row.id}));if(!scored.eligible)continue;
    const status=await statusOf(ctx,row,office.id,journeys);
    if(!isMatchable(status,{showNegotiating:office.publicSearchShowNegotiating!==false}))continue;
    rows.push({row,office,scored,same,km,status});
   }
  }
+ ctx.onInventoryDiagnostic?.({exclusions,inventoryLimited});
  let results=[];
  const orchestration=await dispatchOrchestratorEvent({event:ORCHESTRATOR_EVENT.SEARCH_REQUESTED,eventId:buildOrchestratorEventId({event:ORCHESTRATOR_EVENT.SEARCH_REQUESTED,officeId:officeId||'platform',entityId:requestKey}),context:{officeId:officeId||'platform',entityId:requestKey},adapters:{[ORCHESTRATOR_OWNER.MATCHING]:async()=>{
   // District first, then match strength (type/purpose/budget/specs), then distance, then the freshest confirmation.
@@ -94,14 +111,14 @@ export async function guestSearch(ctx,{input={},ip=''}){
    const ref=`${x.office.id}:${x.row.id}`,key=x.row.canonicalPropertyId||`${x.office.id}:${x.row.propertyId||x.row.id}`;
    if(seen.has(key)){seen.get(key).sources.push({officeId:x.office.id,officeName:clean(x.office.officeName),reference:ref});continue;}
    const photo=recordImages(x.row).find(image=>keyBelongsTo(image.path,x.office.id,x.row.id));
-   const item={imagePath:photo?'/media/public/'+photo.path.split('/').map(encodeURIComponent).join('/'):'',reference:ref,officeId:x.office.id,officeName:clean(x.office.officeName)||'مكتب عقاري',propertyType:clean(x.row.propertyType,40),purpose:clean(x.row.purpose),city:clean(x.row.city),district:clean(x.row.district),price:priceOf(x.row),rooms:Number(x.row.rooms)||null,area:Number(x.row.area)||null,score:x.scored.score,reasons:(x.scored.reasons||[]).map(reason=>String(reason).replace(/ وقابل للتفاوض/g,'')),nearby:!x.same,distanceKm:x.km===null?null:Math.round(x.km*10)/10,distanceType:x.km===null?null:'straight_line',status:x.status,statusLabel:LISTING_STATUS_LABEL[x.status],sources:[{officeId:x.office.id,officeName:clean(x.office.officeName),reference:ref}]};
+   const item={imagePath:photo?'/media/public/'+photo.path.split('/').map(encodeURIComponent).join('/'):'',reference:ref,officeId:x.office.id,officeName:clean(x.office.officeName)||'مكتب عقاري',propertyType:clean(x.row.propertyType,40),purpose:clean(x.row.purpose),priceStatus:['FIXED','NEGOTIABLE'].includes(x.row.priceStatus)?x.row.priceStatus:'',city:clean(x.row.city),district:clean(x.row.district),price:priceOf(x.row),rooms:Number(x.row.rooms)||null,area:Number(x.row.area)||null,score:x.scored.score,reasons:(x.scored.reasons||[]).map(reason=>String(reason).replace(/ وقابل للتفاوض/g,'')),nearby:!x.same,distanceKm:x.km===null?null:Math.round(x.km*10)/10,distanceType:x.km===null?null:'straight_line',status:x.status,statusLabel:LISTING_STATUS_LABEL[x.status],sources:[{officeId:x.office.id,officeName:clean(x.office.officeName),reference:ref}]};
    seen.set(key,item);
   }results=[...seen.values()].slice(0,10);return {ok:true};
  }}});
  if(!orchestration.ok)throw ctx.deps.appError('search_failed',503,'تعذر البحث الآن');
  // Real recorded interest from OTHER clients only; the notice carries no names, numbers or counts.
  for(const item of results){item.othersInterested=await interestNoticeFor(ctx,item.reference,viewerKey);if(item.othersInterested)item.interestNotice=INTEREST_NOTICE;}
- const token=(await hmacHex(ctx,['search',officeId,scope,requestKey,check.value.propertyType,check.value.district,check.value.price])).slice(0,48);
+ const token=(await hmacHex(ctx,['search',officeId,scope,requestKey,input.mode||'match',check.value,criteria.priceExclusive===true])).slice(0,48);
  const sessionId=await ctx.deps.sha256Hex(token);
  const session={officeId,scope,criteriaJson:JSON.stringify({...check.value,contactName:'',contactPhone:''}),resultsJson:JSON.stringify(results),status:'RESULTS_SHOWN',consentProcessing:false,consentContact:false,createdAt:ctx.now(),expiresAt:new Date(ctx.now().getTime()+SESSION_TTL_MS).toISOString()};
  const created=await ctx.store.create(['publicSearchSessions',sessionId],session);
@@ -121,7 +138,7 @@ async function loadSession(ctx,token){
 export async function currentListing(ctx,reference){
  const parts=splitRef(reference);if(!parts)return null;
  const [row,office]=await Promise.all([ctx.store.get(['offices',parts.officeId,'opportunities',parts.recordId]),ctx.store.get(['publicOffices',parts.officeId])]);
- if(!row||!office||office.active===false||!live({...row},ctx.now()))return null;
+ if(!row||!office||office.active===false||publicInventoryExclusion(row,parts.officeId,ctx.now()))return null;
  const status=listingStatus(row,{recordId:parts.recordId,openJourneys:await ctx.store.list(['offices',parts.officeId,'journeys'],300).catch(()=>[])});
  if(!isMatchable(status,{showNegotiating:office.publicSearchShowNegotiating!==false}))return null;
  return {...parts,row,office,status};

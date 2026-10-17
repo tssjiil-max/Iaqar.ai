@@ -21,6 +21,7 @@ import {
   askViewingTimeMessage, viewingRequestedMessages, followUpQuestion, officeActionAllowed, viewingConflict,
   officeUpdateText, reminderText, listMessage
 } from '../../../public/os/domain/whatsapp-agent-domain.js';
+import { inventoryInquiry } from '../../../public/os/domain/inventory-query-domain.js';
 import { guestSearch, currentListing, selectGuestResultForChannel } from './public-search-service.js';
 import { saveRecord, pairRecords } from './records-service.js';
 import { notifyOffice } from './bot-notify.js';
@@ -186,7 +187,7 @@ function whichOfferMessage(c,verb){
 async function agentTurn(ctx,job,c){
  const action=detectAction({text:job.messageText,actionId:job.actionId},c);
  const results=c.results||[];
- if(action.type===ACTION.NEW_SEARCH)return {messages:[textMessage('تمام، نبدأ طلبًا جديدًا. وش العقار اللي تبحث عنه؟ (النوع، الحي، والميزانية)')],patch:{draft:{},missing:'',results:[],shown:0,selectedIndex:null,searchToken:'',awaiting:'',stage:'INTAKE',awaitingConsent:false}};
+ if(action.type===ACTION.NEW_SEARCH)return {messages:[textMessage('تمام، نبدأ طلبًا جديدًا. وش العقار اللي تبحث عنه؟ (النوع، الحي، والميزانية)')],patch:{draft:{},inventoryBrowse:false,pendingInventoryAction:null,missing:'',results:[],shown:0,selectedIndex:null,searchToken:'',awaiting:'',stage:'INTAKE',awaitingConsent:false}};
  if(action.type===ACTION.MORE){
   // The client's list keeps its numbering: unavailable entries are skipped, never renumbered under them.
   const start=Math.min(Number(c.shown||3),results.length),page=[];let next=start;
@@ -339,6 +340,16 @@ async function intakeTurn(ctx,job,c){
  return {messages:resultsMessages(verified,{criteria:draft,from:0,count:3}),patch,intent:classified.intent,usage:classified.usage,inventory:true};
 }
 
+async function inventoryTurn(ctx, job, c, criteria) {
+ let result, diagnostic;
+ try { result = await guestSearch({...ctx,onInventoryDiagnostic:value=>{diagnostic=value;}}, { input: { officeId: job.officeId, scope: 'office', mode: 'inventory', criteria, requestKey: `inventory_${job.id}` }, ip: `wa:${job.conversationId}` }); }
+ catch { throw Object.assign(Error('inventory_unavailable'), { code: 'inventory_unavailable' }); }
+ const verified = await verifiedResults(ctx, result.results || []);
+ const patch = { draft: criteria, inventoryBrowse: true, results: verified, searchToken: result.searchToken, shown: 3, selectedIndex: null, requestRecordId: '', stage: 'RESULTS', missing: '', awaiting: '', awaitingConsent: false };
+ await ctx.store.set(path(job.officeId, job.id), { waInventoryTrace: { source: 'opportunities', scope: 'office', completed: true, resultCount: verified.length, filters: Object.keys(criteria).sort(), publicationRequired: true, exclusions: diagnostic?.exclusions || {}, inventoryLimited: diagnostic?.inventoryLimited || false, at: ctx.now().toISOString() } });
+ return { messages: verified.length ? resultsMessages(verified, { criteria, count: 3 }) : [textMessage('ما وجدت الآن عروضًا منشورة ومتاحة ضمن هذه المواصفات. تقدر تغيّر البحث أو تكتب «موظف» ليتحقق المكتب من الخيارات غير المنشورة.')], patch, inventory: true };
+}
+
 async function buildReply(ctx,job,c){
  // «موظف» / the button: one honest message, then the conversation belongs to a person until the office resumes it.
  if(job.actionId==='wa:HUMAN'||wantsHuman(job.messageText)){
@@ -346,6 +357,17 @@ async function buildReply(ctx,job,c){
   return {messages:[textMessage(HUMAN_TEXT)],patch:{awaiting:''},handoffAfterSend:true};
  }
  try{
+  const inquiry = inventoryInquiry(job.messageText);
+  if (inquiry && !job.actionId && !c.awaiting) return await inventoryTurn(ctx, job, c, inquiry);
+  if (c.inventoryBrowse && !c.consent) {
+   if (c.awaitingConsent && /^موافق[.،!\s]*$/.test(job.messageText) && c.pendingInventoryAction) {
+    const answer = await agentTurn(ctx, { ...job, ...c.pendingInventoryAction }, { ...c, consent: true });
+    return { ...answer, patch: { ...answer.patch, consent: true, awaitingConsent: false, pendingInventoryAction: null } };
+   }
+   const action = detectAction({ text: job.messageText, actionId: job.actionId }, c);
+   if ([ACTION.DETAILS, ACTION.PHOTOS, ACTION.MORE, ACTION.NEW_SEARCH, ACTION.NONE].includes(action.type)) return await agentTurn(ctx, job, c);
+   return { messages: [textMessage('هل توافق على حفظ اهتمامك لدى المكتب والتواصل معك بشأن العقار؟ اكتب «موافق» للمتابعة.')], patch: { awaitingConsent: true, pendingInventoryAction: { messageText: job.messageText, actionId: job.actionId || '' } } };
+  }
   if(c.consent===true&&Array.isArray(c.results)&&(c.results.length||c.stage==='RESULTS'))return await agentTurn(ctx,job,c);
   return await intakeTurn(ctx,job,c);
  }catch(e){

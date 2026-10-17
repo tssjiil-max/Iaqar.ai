@@ -6,6 +6,7 @@ import { h, ic, clear, field, append, surface, pageHeader, feedback } from '../c
 import { api, workerBase } from '../core/runtime.js';
 import { runAction, openSheet } from '../core/ui.js';
 import { formatNumber } from '../domain/format-domain.js';
+import { inventoryInquiry } from '../domain/inventory-query-domain.js';
 import { PROPERTY_TYPES } from '../domain/records-domain.js';
 
 const VIEWER_KEY = 'iaqar.guestInterestKey';
@@ -103,6 +104,9 @@ export function publicSearchForm(office = null, { initialText = '', notice = '',
   h('div', { class: 'os-row2' }, field('المدينة', controls.city), field('الحي', controls.district)),
   field('الميزانية (ريال)', controls.price), h('div', { class: 'os-row2' }, field('عدد الغرف', controls.rooms, { optional: true }), field('المساحة (م²)', controls.area, { optional: true }))));
  const summary = h('p', { class: 'os-search-summary', 'data-search-summary': '', hidden: true });
+ let manuallyEdited = false;
+ Object.values(controls).forEach(control => control.addEventListener('input', () => { manuallyEdited = true; }));
+ description.addEventListener('input', () => { manuallyEdited = false; });
  const criteriaValue = () => Object.fromEntries(Object.entries(controls).map(([k, v]) => [k, v.value]));
  const updateSummary = () => {
   summary.textContent = [controls.purpose.selectedOptions[0]?.text, controls.propertyType.value, controls.city.value, controls.district.value, controls.price.value ? `حتى ${formatNumber(controls.price.value)} ريال` : ''].filter(Boolean).join(' · ');
@@ -133,10 +137,11 @@ export function publicSearchForm(office = null, { initialText = '', notice = '',
  form.addEventListener('submit', async (event) => {
   event.preventDefault(); status.hidden = true;
   await runAction(submit, async () => {
-   if (analyzedText !== description.value.trim() && description.value.trim()) await understand();
-   const criteria = criteriaValue();
+   const inquiry = !review.open && !manuallyEdited ? inventoryInquiry(description.value) : null;
+   if (!inquiry && analyzedText !== description.value.trim() && description.value.trim()) await understand();
+   const criteria = inquiry || criteriaValue();
    say('info', 'نبحث عن العقارات الأنسب…');
-   const r = await api('/os/public/search', { officeId: id, scope: scope.value, requestKey, criteria, viewerKey: readViewerKey() }, { authenticated: false });
+   const r = await api('/os/public/search', { officeId: id, scope: scope.value, requestKey, criteria, ...(inquiry ? { mode: 'inventory' } : {}), viewerKey: readViewerKey() }, { authenticated: false });
    clear(results);
    append(results, pageHeader('أفضل العقارات المطابقة', { description: r.results.length ? 'أفضل الخيارات من العروض المصرّح بنشرها والمتاحة الآن' : 'ما لقينا عقارًا مطابقًا حاليًا. أرسل طلبك للمكتب ويتابع معك إذا توفر المناسب.' }));
    const draw = (items, offset = 0) => items.forEach((x, i) => append(results, resultCard(x, offset + i, (item, index) => chooseSheet(item, index, r.searchToken))));
