@@ -27,11 +27,14 @@ const intakesOf = (officeId) => h.store.list(`offices/${officeId}/publicIntake`)
 const opportunitiesOf = (officeId) => h.store.list(`offices/${officeId}/opportunities`);
 async function open(width) {
  const ctx = await browser.newContext({ viewport: { width, height: 844 }, locale: 'ar-SA' });
- const page = await ctx.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+ const page = await ctx.newPage(); const errors = [], selectApi = [];
+ page.on('pageerror', (e) => errors.push(e.message));
+ page.on('request', (request) => { if (new URL(request.url()).pathname === '/os/public/search/select') selectApi.push({ request: request.postData() }); });
+ page.on('response', async (response) => { if (new URL(response.url()).pathname === '/os/public/search/select') selectApi.push({ status: response.status(), body: await response.text().catch(() => '') }); });
  // A WhatsApp link is the client's own app: the page must never call it by itself.
  const whatsapp = []; page.on('request', (r) => { if (/wa\.me|graph\.facebook\.com/.test(r.url())) whatsapp.push(r.url()); });
  await page.goto(`${h.origin}/m/sultan`); await page.locator('[data-guest-search-form]').waitFor();
- return { ctx, page, errors, whatsapp };
+ return { ctx, page, errors, whatsapp, selectApi };
 }
 async function search(page, text) {
  await page.locator('textarea[name=description]').fill(text);
@@ -56,7 +59,7 @@ try {
 
   // 1 — search as a guest, choose a result, consent, then the client's own WhatsApp (nothing sent for him).
   const choose = async (client, phone) => {
-   const { ctx, page, errors, whatsapp } = await open(width);
+   const { ctx, page, errors, whatsapp, selectApi } = await open(width);
    assert.equal(await page.locator('[data-login-form]').count(), 0, 'no login before searching');
    assert.equal(await page.locator('[data-path="client"]').getAttribute('aria-pressed'), 'true', 'searching is the default path');
    assert.equal(await page.locator('[name=contactPhone]').count(), 0, 'no phone asked before searching');
@@ -79,7 +82,18 @@ try {
    await page.locator('[name=consentProcessing]').check(); await page.locator('[name=consentContact]').check();
    if (client === 'first') await shot(page, '2-choose', false);
    await page.locator('[data-guest-select]').click();
-   const link = page.locator('[data-whatsapp-handoff]'); await link.waitFor();
+   const link = page.locator('[data-whatsapp-handoff]');
+   await link.waitFor({ timeout: 8000 }).catch(async (error) => {
+    const state = {
+     width,
+     selectApi,
+     status: await page.locator('[data-guest-select-form] [role=status]').allTextContents().catch(() => []),
+     outcome: await page.locator('[data-guest-outcome]').innerText().catch(() => ''),
+     pageErrors: errors
+    };
+    console.error('PUBLIC_SEARCH_SELECT_DIAGNOSTIC', JSON.stringify(state));
+    throw error;
+   });
    const href = new URL(await link.getAttribute('href'));
    assert.equal(href.hostname, 'wa.me'); assert.equal(href.pathname, '/966501111111', 'the office number');
    assert.match(href.searchParams.get('text'), new RegExp(`${OFFICE_A}:${id}`));
