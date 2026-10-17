@@ -10,7 +10,7 @@
  * last moment before every send. No paid model is called unless WHATSAPP_AGENT_CLASSIFIER=claude.
  * The agent never accepts a price, never confirms a viewing, never signs, never moves money.
  */
-import { classifyWithClaude, sendWhatsAppMessage, usesPaidClassifier } from './whatsapp-agent-transport.js';
+import { classifyWithClaude, economicModeActive, sendWhatsAppMessage, usesPaidClassifier } from './whatsapp-agent-transport.js';
 import { extractFacts, mergeDraft, nextMissing, questionFor, personaFromText, PERSONA, wantsHuman, toRecordInput, summaryLines } from '../../../public/os/domain/visitor-domain.js';
 import { LISTING_STATUS_LABEL, mandateDecision, READINESS_EVENT } from '../../../public/os/domain/direct-match-domain.js';
 import { recordImages, keyBelongsTo } from '../../../public/os/domain/record-media-domain.js';
@@ -408,7 +408,7 @@ async function processJob(ctx,queue) {
   const freshC=await ctx.store.get(cp),freshMapping=await mappingFor(ctx,job.phoneNumberId,job.wabaId);
   if(freshC.lease!==lease||millis(freshC.leaseUntil)<=ctx.now().getTime())return;
   if(!whatsappAgentAvailable(ctx.env)||!await officeOn(ctx,job.officeId)||freshC.optedOut||freshC.handoff||!agentNumber(freshMapping)||freshMapping.officeId!==job.officeId||!recipientAllowed(ctx,job.senderPhone)||ctx.now().getTime()-millis(job.receivedAt)>=DAY){await finish(ctx,job,queue,'HUMAN_REVIEW',{waError:'policy_changed'});return;}
-  if(ctx.env.ECONOMIC_TEST_MODE==='enabled'||ctx.env.WHATSAPP_AGENT_SEND!=='enabled'){
+  if(economicModeActive(ctx.env)||ctx.env.WHATSAPP_AGENT_SEND!=='enabled'){
    await finish(ctx,job,queue,'SIMULATED');
    if(reply.handoffAfterSend)await ctx.store.update(cp,()=>({handoff:true}));
    return;
@@ -468,7 +468,7 @@ async function deliverOfficeUpdate(ctx,{officeId,caseDoc,key,messages,conversati
  const created=await ctx.store.create(op,{officeId,id,caseId:caseDoc.id,key:String(key).slice(0,200),state:state||'PENDING',summary:summaryOf(messages),createdAt:ctx.now()});
  if(!created)return {id,state:(await ctx.store.get(op))?.state,duplicate:true};
  if(state)return {id,state};
- if(ctx.env.ECONOMIC_TEST_MODE==='enabled'||ctx.env.WHATSAPP_AGENT_SEND!=='enabled'||!ctx.env.META_WHATSAPP_ACCESS_TOKEN){
+ if(economicModeActive(ctx.env)||ctx.env.WHATSAPP_AGENT_SEND!=='enabled'||!ctx.env.META_WHATSAPP_ACCESS_TOKEN){
   await ctx.store.set(op,{state:'SIMULATED',updatedAt:ctx.now()});
   if(conversationPatch)await ctx.store.update(cp,()=>conversationPatch);
   return {id,state:'SIMULATED'};
@@ -628,5 +628,5 @@ export async function whatsappAgentStatus(ctx,{officeId,actor}) {
  const integration=await ctx.store.get(['offices',officeId,'integrations','whatsapp'])||{};
  const sample=(await ctx.store.list(['offices',officeId,'inbox'],300)).filter(r=>r.source==='whatsapp_cloud_api'&&r.waQueueState);
  const counts={};for(const row of sample)counts[row.waQueueState]=(counts[row.waQueueState]||0)+1;
- return {ok:true,environmentReady:whatsappAgentAvailable(ctx.env),enabled:integration.autoReplyEnabled===true,sendingEnabled:ctx.env.WHATSAPP_AGENT_SEND==='enabled'&&ctx.env.ECONOMIC_TEST_MODE!=='enabled',economicMode:!usesPaidClassifier(ctx.env),paidClassifier:usesPaidClassifier(ctx.env),claudeConfigured:Boolean(ctx.env.ANTHROPIC_API_KEY&&ctx.env.ANTHROPIC_MODEL),metaTokenConfigured:Boolean(ctx.env.META_WHATSAPP_ACCESS_TOKEN),mediaOrigin:Boolean(mediaOrigin(ctx.env)),sampleLimit:300,sampled:sample.length,counts};
+ return {ok:true,environmentReady:whatsappAgentAvailable(ctx.env),enabled:integration.autoReplyEnabled===true,sendingEnabled:ctx.env.WHATSAPP_AGENT_SEND==='enabled'&&!economicModeActive(ctx.env),economicMode:economicModeActive(ctx.env),paidClassifier:usesPaidClassifier(ctx.env),claudeConfigured:Boolean(ctx.env.ANTHROPIC_API_KEY&&ctx.env.ANTHROPIC_MODEL),metaTokenConfigured:Boolean(ctx.env.META_WHATSAPP_ACCESS_TOKEN),mediaOrigin:Boolean(mediaOrigin(ctx.env)),sampleLimit:300,sampled:sample.length,counts};
 }

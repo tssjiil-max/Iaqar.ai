@@ -45,7 +45,7 @@
 | `WHATSAPP_AGENT_OFFICE_IDS` | معرف مكتب الاختبار |
 | `WHATSAPP_AGENT_ALLOWED_RECIPIENTS` | أرقام الاختبار فقط |
 | `WHATSAPP_AGENT_SEND` | `disabled`: محاكاة، لا يُرسل شيء. `enabled`: إرسال فعلي لقائمة السماح |
-| `ECONOMIC_TEST_MODE` | `enabled`: لا شبكة ولا إرسال |
+| `ECONOMIC_TEST_MODE` | يعمل الوضع الاقتصادي افتراضيًا (لا Claude ولا إرسال Meta حتى مع وجود المفاتيح). القيمة `disabled` وحدها تُخرج منه، وتبقى بقية البوابات مطلوبة |
 | `WHATSAPP_AGENT_CLASSIFIER` | اتركه فارغًا. Claude لا يُستدعى إلا إذا كانت القيمة `claude` |
 | `META_WHATSAPP_ACCESS_TOKEN`، `META_APP_SECRET` | Secrets عبر `wrangler secret put --env staging` |
 | `WHATSAPP_MEDIA_ORIGIN` | رابط Worker العام بـ https لإرسال الصور (اختياري) |

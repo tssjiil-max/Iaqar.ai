@@ -28,7 +28,7 @@ function fixture({ envPatch = {} } = {}) {
   let at = new Date('2026-10-17T09:00:00Z');
   const env = {
     DEPLOYMENT_ENV: 'staging', FIREBASE_PROJECT_ID: 'iaqar-ai-staging', WHATSAPP_AGENT_ENABLED: 'enabled', WHATSAPP_AGENT_OFFICE_IDS: 'office-a',
-    WHATSAPP_AGENT_ALLOWED_RECIPIENTS: CLIENT, WHATSAPP_AGENT_SEND: 'enabled', META_WHATSAPP_ACCESS_TOKEN: 'test-meta-secret',
+    WHATSAPP_AGENT_ALLOWED_RECIPIENTS: CLIENT, ECONOMIC_TEST_MODE: 'disabled', WHATSAPP_AGENT_SEND: 'enabled', META_WHATSAPP_ACCESS_TOKEN: 'test-meta-secret',
     // Keys exist on purpose: economic mode must still make zero paid calls.
     ANTHROPIC_API_KEY: 'present-but-unused', ANTHROPIC_MODEL: 'unused', OPENAI_API_KEY: 'present-but-unused',
     FIREBASE_PRIVATE_KEY: 'local-hmac-fixture', WHATSAPP_MEDIA_ORIGIN: 'https://media.staging.test', ...envPatch
@@ -287,7 +287,7 @@ test('A13 office isolation: another office sees neither the case nor the client,
 });
 
 test('A14 economic mode end to end: zero paid AI calls; with sending off every reply is SIMULATED and nothing leaves', async () => {
-  const f = fixture({ envPatch: { WHATSAPP_AGENT_SEND: 'disabled' } }); await untilResults(f);
+  const f = fixture({ envPatch: { ECONOMIC_TEST_MODE: undefined, WHATSAPP_AGENT_SEND: 'disabled' } }); await untilResults(f);
   await f.tap('wa:INTEREST:0'); await f.tap('wa:VIEWING:0'); await f.say('الخميس 7 م');
   assert.equal(f.calls.length, 0, 'no network call at all');
   const states = (await f.ctx.store.list(['offices', 'office-a', 'inbox'])).filter(r => r.source === 'whatsapp_cloud_api').map(r => r.waQueueState);
@@ -295,6 +295,18 @@ test('A14 economic mode end to end: zero paid AI calls; with sending off every r
   const status = await whatsappAgentStatus(f.ctx, { officeId: 'office-a', actor: { isManager: true } });
   assert.equal(status.economicMode, true); assert.equal(status.paidClassifier, false);
 });
+
+for (const [label, value] of [['missing', undefined], ['empty', ''], ['unknown', 'off'], ['differently cased', 'DISABLED'], ['legacy enabled', 'enabled']]) {
+  test(`A14b economic mode is the default when ECONOMIC_TEST_MODE is ${label}: Claude and Meta keys present, sending on, still no external request`, async () => {
+    const f = fixture({ envPatch: { ECONOMIC_TEST_MODE: value, WHATSAPP_AGENT_CLASSIFIER: 'claude', ANTHROPIC_API_KEY: 'present', ANTHROPIC_MODEL: 'present' } }); await untilResults(f);
+    await f.tap('wa:INTEREST:0'); await f.tap('wa:VIEWING:0'); await f.say('الخميس 7 م');
+    assert.equal(f.calls.length, 0, 'neither Anthropic nor Meta was called');
+    const states = (await f.ctx.store.list(['offices', 'office-a', 'inbox'])).filter(r => r.source === 'whatsapp_cloud_api').map(r => r.waQueueState);
+    assert.ok(states.length && states.every(s => s === 'SIMULATED'), states.join(','));
+    const status = await whatsappAgentStatus(f.ctx, { officeId: 'office-a', actor: { isManager: true } });
+    assert.equal(status.economicMode, true); assert.equal(status.paidClassifier, false); assert.equal(status.sendingEnabled, false);
+  });
+}
 
 test('A15 only allowlisted test recipients ever receive a message', async () => {
   const f = fixture({ envPatch: { WHATSAPP_AGENT_ALLOWED_RECIPIENTS: '966599999999' } }); await f.seed();

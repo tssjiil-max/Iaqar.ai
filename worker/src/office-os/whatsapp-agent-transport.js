@@ -10,11 +10,20 @@ export async function readWebhookBody(request) {
 }
 
 /**
+ * Economic test mode is fail-safe: it is ON unless ECONOMIC_TEST_MODE is exactly `disabled`. A missing,
+ * empty, misspelled, differently cased or unknown value keeps it on, so a configuration slip never turns on paid calls or real sends.
+ * Leaving it only lifts this one gate; every other gate (agent, office, recipient, send flag, keys) still applies.
+ */
+export function economicModeActive(env={}) {
+  return env.ECONOMIC_TEST_MODE!=='disabled';
+}
+
+/**
  * Paid model calls are opt-in. The deterministic local classifier is the default; Claude is used only when
- * WHATSAPP_AGENT_CLASSIFIER=claude AND economic test mode is off AND its keys exist.
+ * economic test mode is disabled AND WHATSAPP_AGENT_CLASSIFIER=claude AND its keys exist.
  */
 export function usesPaidClassifier(env={}) {
-  return env.ECONOMIC_TEST_MODE!=='enabled'&&String(env.WHATSAPP_AGENT_CLASSIFIER||'').toLowerCase()==='claude';
+  return !economicModeActive(env)&&String(env.WHATSAPP_AGENT_CLASSIFIER||'').toLowerCase()==='claude';
 }
 
 export function classifyEconomicWhatsApp(text) {
@@ -51,6 +60,8 @@ const ALLOWED_TYPES=new Set(['text','interactive','image']);
  */
 export async function sendWhatsAppMessage(ctx,{phoneNumberId,to,message,callback}) {
   if(!message||!ALLOWED_TYPES.has(message.type))return {ok:false,error:'message_type_not_allowed'};
+  // Defence in depth: even if a caller skips its own check, economic mode never reaches the Cloud API.
+  if(economicModeActive(ctx.env))return {ok:false,error:'economic_mode_no_send'};
   try {
     const r=await (ctx.fetchImpl||fetch)(`https://graph.facebook.com/${/^v\d+\.\d+$/.test(ctx.env.META_GRAPH_VERSION||'')?ctx.env.META_GRAPH_VERSION:'v25.0'}/${encodeURIComponent(phoneNumberId)}/messages`,{
       method:'POST',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',Authorization:`Bearer ${ctx.env.META_WHATSAPP_ACCESS_TOKEN}`},
