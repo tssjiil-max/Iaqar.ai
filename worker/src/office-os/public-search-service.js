@@ -118,7 +118,7 @@ async function loadSession(ctx,token){
 }
 
 /** Re-read a chosen listing now: it must still be published, live and not reserved/sold. */
-async function currentListing(ctx,reference){
+export async function currentListing(ctx,reference){
  const parts=splitRef(reference);if(!parts)return null;
  const [row,office]=await Promise.all([ctx.store.get(['offices',parts.officeId,'opportunities',parts.recordId]),ctx.store.get(['publicOffices',parts.officeId])]);
  if(!row||!office||office.active===false||!live({...row},ctx.now()))return null;
@@ -187,9 +187,25 @@ export async function selectGuestResult(ctx,{input={},ip=''}){
   message:telegramLink?'اضغط بدء المحادثة في تيليجرام لاستلام تفاصيل العقار من النظام.':'وصل اختيارك للمكتب. الإرسال الآلي لهذه القناة غير مفعّل حاليًا، ولم تُرسل رسالة.'}};
 }
 
+/**
+ * The same choice as the web page, from an authenticated channel conversation (WhatsApp agent):
+ * the snapshot is re-read now, the interest + lead reach the listing's office, nothing is reserved.
+ */
+export async function selectGuestResultForChannel(ctx,{searchToken,reference,name,phone,channel='whatsapp',via='whatsapp_agent'}){
+ const {id,session,results}=await loadSession(ctx,clean(searchToken,60));
+ const item=results.find(x=>x.reference===clean(reference,260));
+ if(!item)throw ctx.deps.appError('result_unknown',400,'اختر عقارًا من نتائج بحثك');
+ const phoneDigits=whatsappDigits(phone);if(!phoneDigits)throw ctx.deps.appError('phone_invalid',400,'رقم الجوال غير مدعوم');
+ const listing=await currentListing(ctx,item.reference);
+ if(!listing)throw ctx.deps.appError('listing_unavailable',409,'هذا العقار لم يعد متاحًا.');
+ const {key,leadCreated}=await recordChoice(ctx,{sessionId:id,session:{...session,consentProcessing:true,consentContact:true},item,listing,name:clean(name,80)||'عميل واتساب',phoneDigits,channel,via});
+ const others=await interestNoticeFor(ctx,item.reference,key);
+ return {ok:true,item:{...item,price:priceOf(listing.row),status:listing.status,statusLabel:LISTING_STATUS_LABEL[listing.status]},listing,leadCreated,othersInterested:others,interestNotice:others?INTEREST_NOTICE:''};
+}
+
 function resultLine(x,i){return `${i+1}. ${x.propertyType} — ${x.district} — ${Number(x.price).toLocaleString('ar-SA')} ريال\n${x.officeName}${x.status===LISTING_STATUS.NEGOTIATING?' · قيد التفاوض':''}\nالمرجع: ${x.reference}`;}
 /** Recheck every snapshot now: a revoked, reserved or sold offer must not be sent from an old list. */
-async function availableNow(ctx,snapshots){const out=[];for(const x of snapshots){const l=await currentListing(ctx,x.reference);if(l)out.push({...x,price:priceOf(l.row),propertyType:clean(l.row.propertyType,40),district:clean(l.row.district),status:l.status});}return out;}
+export async function availableNow(ctx,snapshots){const out=[];for(const x of snapshots){const l=await currentListing(ctx,x.reference);if(l)out.push({...x,price:priceOf(l.row),propertyType:clean(l.row.propertyType,40),district:clean(l.row.district),status:l.status});}return out;}
 
 /** Triggered only by Telegram's authenticated webhook and an unguessable, expiring guest link. */
 export async function deliverGuestSearchTelegram(ctx,{token,chat}){

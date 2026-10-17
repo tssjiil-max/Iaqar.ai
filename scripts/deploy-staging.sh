@@ -83,6 +83,10 @@ echo "--- Staging credential + permission preflight ---"
 CURRENT_STAGE="staging-permission-preflight"
 node scripts/preflight-staging.mjs "$GAC_FILE"
 
+echo "--- Add Staging viewing-reminder Firestore index (preserve existing indexes) ---"
+CURRENT_STAGE="staging-viewing-reminder-index"
+node scripts/deploy-staging-firestore-index.mjs
+
 if [[ "${IAQAR_SKIP_INNER_TESTS:-}" == "1" ]]; then
   echo "--- Full Phase 9A test gate skipped (already run by deploy:staging:safe) ---"
 else
@@ -108,33 +112,39 @@ echo "--- Sync derived Worker staging secrets (values not printed) ---"
   npx wrangler secret put FIREBASE_PRIVATE_KEY --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY" # // pragma: allowlist secret
   CURRENT_STAGE="wrangler-secret-firebase-private-key-id"
   npx wrangler secret put FIREBASE_PRIVATE_KEY_ID --env staging < "$NORMALIZED_SECRET_DIR/FIREBASE_PRIVATE_KEY_ID" # // pragma: allowlist secret
-  if [[ -n "${GEMINI_API_KEY:-}" ]]; then
-    CURRENT_STAGE="wrangler-secret-gemini-api-key"
-    printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY --env staging # // pragma: allowlist secret
-    echo "GEMINI_API_KEY synced to staging Worker (value not printed)."
-  else
-    echo "NOTE: GEMINI_API_KEY not set — voice analyze returns GEMINI_NOT_CONFIGURED until configured."
-  fi
 )
 
-# «قنوات المكتب» — WhatsApp Embedded Signup (optional). Staging Worker only; values never reach logs.
+# Economic test mode: the Staging Worker never holds a paid AI key. This path never sets GEMINI_API_KEY; an old one is
+# deleted, then its absence is proven by reading secret NAMES only (Wrangler never returns values). If that cannot be
+# proven, the deploy stops before any Staging test runs. Voice analyze answers GEMINI_NOT_CONFIGURED on Staging.
+echo "--- Economic mode: prove GEMINI_API_KEY is absent from the staging Worker (names only) ---"
 (
   cd worker
-  if [[ -n "${META_APP_SECRET:-}" ]]; then
-    CURRENT_STAGE="wrangler-secret-meta-app-secret"
-    printf '%s' "$META_APP_SECRET" | tr -d '[:space:]' | npx wrangler secret put META_APP_SECRET --env staging # // pragma: allowlist secret
-    echo "::notice title=WhatsApp link (Staging)::META_APP_SECRET synced to the staging Worker (value not printed)."
-  else
-    echo "NOTE: META_APP_SECRET not set — «ربط واتساب» stays hidden on Staging."
+  gemini_state() {
+    local names rc=0
+    names="$(npx wrangler secret list --env staging --format json)" || return 2
+    printf '%s' "$names" | node ../scripts/staging-secret-names.mjs GEMINI_API_KEY >/dev/null || rc=$?
+    return "$rc"
+  }
+  CURRENT_STAGE="economic-mode-list-secrets"
+  state=0; gemini_state || state=$?
+  if [[ "$state" == "0" ]]; then
+    CURRENT_STAGE="economic-mode-delete-gemini-key"
+    printf 'y\n' | npx wrangler secret delete GEMINI_API_KEY --env staging \
+      || die "could not delete GEMINI_API_KEY from the staging Worker; refusing to continue in economic mode"
+    CURRENT_STAGE="economic-mode-verify-gemini-key-absent"
+    state=0; gemini_state || state=$?
   fi
-  if [[ -n "${META_WEBHOOK_VERIFY_TOKEN:-}" ]]; then
-    CURRENT_STAGE="wrangler-secret-meta-verify-token"
-    printf '%s' "$META_WEBHOOK_VERIFY_TOKEN" | tr -d '\r\n' | npx wrangler secret put META_WEBHOOK_VERIFY_TOKEN --env staging # // pragma: allowlist secret
-    echo "::notice title=WhatsApp link (Staging)::META_WEBHOOK_VERIFY_TOKEN synced to the staging Worker (value not printed)."
-  else
-    echo "NOTE: META_WEBHOOK_VERIFY_TOKEN not set — the Meta webhook cannot be verified on Staging yet."
-  fi
+  case "$state" in
+    1) echo "GEMINI_API_KEY absent on the staging Worker (secret names checked; values never read)." ;;
+    0) die "GEMINI_API_KEY is still present on the staging Worker after deletion; refusing to continue in economic mode" ;;
+    *) die "could not read the staging Worker secret names to prove GEMINI_API_KEY is absent; refusing to continue in economic mode" ;;
+  esac
 )
+
+# Meta secrets are managed directly on the Staging Worker. This deploy deliberately
+# leaves META_ACCESS_TOKEN, META_APP_SECRET and META_WEBHOOK_VERIFY_TOKEN untouched.
+echo "Meta secrets remain Cloudflare-managed; the Staging deploy will not overwrite them."
 
 # Kapso WhatsApp Sandbox (optional, Staging only). Without the webhook secret the endpoint answers 503 to everything.
 (
