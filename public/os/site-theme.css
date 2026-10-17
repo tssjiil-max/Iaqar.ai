@@ -454,3 +454,26 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
   .os-app .os-task-card .os-btn,
   .os-app .ref-task-card .os-btn { min-height: 44px; }
 }
+
+/* Shared internal composition — every view using the design-system primitives. */
+@media (max-width: 600px) {
+  .os-app [data-ui="page-header"] { min-width: 0; margin-block-end: 12px; }
+  .os-app [data-ui="page-header"] .os-page-heading { min-width: 0; gap: 10px; }
+  .os-app [data-ui="page-header"] .os-page-copy { min-width: 0; }
+  .os-app [data-ui="page-header"] .os-page-title { margin: 0; font-size: clamp(1.1rem, 4.5vw, 1.35rem); }
+  .os-app [data-ui="page-header"] .os-page-icon { flex: 0 0 auto; }
+  .os-app [data-ui="surface"] { min-width: 0; max-width: 100%; }
+  .os-app .os-office-section { min-width: 0; overflow-wrap: anywhere; }
+  .os-app .os-office-section-head { gap: 10px; }
+  .os-app .os-office-section-copy,
+  .os-app .os-office-section-body { min-width: 0; }
+  .os-app .os-office-section-title { flex-wrap: wrap; gap: 6px; }
+  .os-app [data-ui="navigation-tile"] { min-width: 0; gap: 10px; }
+  .os-app [data-ui="navigation-tile"] .os-set-text { min-width: 0; overflow-wrap: anywhere; }
+  .os-app [data-ui="form-grid"] { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  .os-app [data-ui="form-field"] { min-width: 0; }
+  .os-app [data-ui="form-field"] :is(input,select,textarea) { max-width: 100%; box-sizing: border-box; }
+  .os-app [data-ui="control-group"] { min-width: 0; }
+  .os-app [data-ui="comparison-table"] { width: 100%; }
+  .os-app [data-ui="feedback"] { min-width: 0; overflow-wrap: anywhere; }
+}
