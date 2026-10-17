@@ -358,3 +358,64 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-guest-result .os-badge{margin:0}
 .os-record-reservation{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#e3ecee)}
 .os-record-reservation .os-btn{flex:0 1 auto}
+
+/* ── Section colour identity ─────────────────────────────────────────────────────────────────────
+   Every page wears the colour of its tool on «أدوات المكتب» (app.js sets data-tone on .os-app), in the
+   same language as those tiles: a white→pastel wash, white frame, coloured icon. --tool-color is for
+   icons and fills; --tool-text is the darker ink used wherever the colour carries text (≥4.5:1). */
+.os-app[data-tone="teal"],.os-app .tone-teal{--tool-color:#03677a;--tool-text:#03677a;--tool-bg:#e1f3f6}
+.os-app[data-tone="blue"],.os-app:not([data-view="office"]) .tone-blue{--tool-color:#0878eb;--tool-text:#095ba8;--tool-bg:#e0f0ff}
+.os-app[data-tone="gold"],.os-app:not([data-view="office"]) .tone-gold{--tool-color:#b67e19;--tool-text:#7f5610;--tool-bg:#fff0d7}
+.os-app[data-tone="purple"],.os-app:not([data-view="office"]) .tone-purple{--tool-color:#6331cf;--tool-text:#5a2bbf;--tool-bg:#eee5ff}
+.os-app[data-tone="green"],.os-app:not([data-view="office"]) .tone-green{--tool-color:#0c9e70;--tool-text:#08704b;--tool-bg:#ddfaee}
+.os-app[data-tone="red"],.os-app:not([data-view="office"]) .tone-red{--tool-color:#dc1526;--tool-text:#ad1424;--tool-bg:#ffe2e7}
+
+/* Page header = the tool's tile, full width. */
+.os-app[data-tone] .os-page-header{background:linear-gradient(115deg,#ffffffd9,var(--tool-bg));border:1px solid #fff;box-shadow:0 3px 12px #17465d14}
+.os-app[data-tone] .os-page-header .os-page-icon{background:#fff;color:var(--tool-color);box-shadow:0 2px 6px #17465d12;--ico:currentColor}
+.os-app[data-tone] .os-page-header .os-back{color:var(--tool-text)}
+.os-app[data-tone] .os-page-header .os-icon-btn{background:#ffffffcc;color:var(--tool-text);border-color:#fff}
+
+/* Section heads inside a page take the page colour unless the section names its own tone. */
+.os-app[data-tone] .os-office-section{--section-tint:var(--tool-bg);--section-ink:var(--tool-color)}
+.os-app[data-tone] .os-office-section:is(.tone-blue,.tone-gold,.tone-purple,.tone-green,.tone-red){--section-tint:var(--tool-bg);--section-ink:var(--tool-color)}
+.os-app[data-tone] :is(.ref-agent-head .os-set-icon,.os-card>header .os-set-icon){background:var(--tool-bg);color:var(--tool-color);border-color:transparent;--ico:currentColor}
+
+/* Figures: coloured numbers on tinted tiles, like the tool chips. */
+.os-app[data-tone] .os-market-stats{background:linear-gradient(115deg,#ffffffd9,var(--tool-bg));border-color:#fff}
+.os-app[data-tone] .os-market-stat{padding:8px 4px;border-radius:12px;background:#ffffffb3}
+.os-app[data-tone] :is(.os-market-stat b,.os-scout-stat strong){color:var(--tool-text)}
+.os-app[data-tone] .os-scout-stat:nth-child(5n+1){background:#e0f0ff;border-color:#fff}.os-app[data-tone] .os-scout-stat:nth-child(5n+1) strong{color:#095ba8}
+.os-app[data-tone] .os-scout-stat:nth-child(5n+2){background:#eee5ff;border-color:#fff}.os-app[data-tone] .os-scout-stat:nth-child(5n+2) strong{color:#5a2bbf}
+.os-app[data-tone] .os-scout-stat:nth-child(5n+3){background:#fff0d7;border-color:#fff}.os-app[data-tone] .os-scout-stat:nth-child(5n+3) strong{color:#7f5610}
+.os-app[data-tone] .os-scout-stat:nth-child(5n+4){background:#ddfaee;border-color:#fff}.os-app[data-tone] .os-scout-stat:nth-child(5n+4) strong{color:#08704b}
+.os-app[data-tone] .os-scout-stat:nth-child(5n+5){background:#ffe2e7;border-color:#fff}.os-app[data-tone] .os-scout-stat:nth-child(5n+5) strong{color:#ad1424}
+
+/* Deal path: each stage keeps one colour everywhere — strip, stage pill and task icon. */
+.os-app .ref-step[data-step="0"],.os-app .step-0{--stage:#0c9e70;--stage-ink:#08704b;--stage-bg:#ddfaee}
+.os-app .ref-step[data-step="1"],.os-app .step-1{--stage:#0878eb;--stage-ink:#095ba8;--stage-bg:#e0f0ff}
+.os-app .ref-step[data-step="2"],.os-app .step-2{--stage:#b67e19;--stage-ink:#7f5610;--stage-bg:#fff0d7}
+.os-app .ref-step[data-step="3"],.os-app .step-3{--stage:#6331cf;--stage-ink:#5a2bbf;--stage-bg:#eee5ff}
+.os-app .ref-step[data-step="4"],.os-app .step-4{--stage:#dc1526;--stage-ink:#ad1424;--stage-bg:#ffe2e7}
+.os-app .ref-step[data-step="5"],.os-app .step-5{--stage:#03677a;--stage-ink:#03677a;--stage-bg:#e1f3f6}
+.os-app .ref-steps>.ref-step>span{background:var(--stage-bg);color:var(--stage);--ico:currentColor}
+.os-app .ref-steps>.ref-step .ref-step-count{background:var(--stage-ink)}
+.os-app .ref-steps>.ref-step:is(.active,[aria-pressed="true"])>span{background:var(--stage);color:#fff;box-shadow:0 0 0 3px var(--stage-bg)}
+.os-app .ref-steps>.ref-step:is(.active,[aria-pressed="true"]) small{color:var(--stage-ink)}
+.os-app .ref-status:is(.step-0,.step-1,.step-2,.step-3,.step-4,.step-5){background:var(--stage-bg);color:var(--stage-ink)}
+.os-app .ref-task-card:has(.ref-status.step-0) .ref-photo{background:#ddfaee;color:#0c9e70}
+.os-app .ref-task-card:has(.ref-status.step-1) .ref-photo{background:#e0f0ff;color:#0878eb}
+.os-app .ref-task-card:has(.ref-status.step-2) .ref-photo{background:#fff0d7;color:#b67e19}
+.os-app .ref-task-card:has(.ref-status.step-3) .ref-photo{background:#eee5ff;color:#6331cf}
+.os-app .ref-task-card:has(.ref-status.step-4) .ref-photo{background:#ffe2e7;color:#dc1526}
+.os-app .ref-task-card:has(.ref-status.step-5) .ref-photo{background:#e1f3f6;color:#03677a}
+.os-app .ref-task-card .ref-photo .os-ico{color:inherit}
+
+/* Settings and other navigation tiles = office tool tiles. */
+.os-app .os-settings-grid>[data-ui="navigation-tile"]{background:linear-gradient(115deg,#ffffffd9,var(--tool-bg,#e1f3f6));border-color:#fff;box-shadow:0 3px 10px #17465d12}
+.os-app .os-settings-grid>[data-ui="navigation-tile"] .ref-reference-icon{background:#fff;color:var(--tool-color,#03677a);box-shadow:0 2px 6px #17465d12;--ico:currentColor}
+.os-app .ref-task-card:has(.ref-status[class*="step-"]){position:relative;overflow:hidden;background:linear-gradient(115deg,#fff 45%,color-mix(in srgb,var(--card-stage) 9%,#fff))}
+.os-app .ref-task-card:has(.ref-status[class*="step-"])::before{content:"";position:absolute;top:0;bottom:0;right:0;width:5px;background:var(--card-stage)}
+.os-app .ref-task-card:has(.ref-status.step-0){--card-stage:#0c9e70}.os-app .ref-task-card:has(.ref-status.step-1){--card-stage:#0878eb}
+.os-app .ref-task-card:has(.ref-status.step-2){--card-stage:#b67e19}.os-app .ref-task-card:has(.ref-status.step-3){--card-stage:#6331cf}
+.os-app .ref-task-card:has(.ref-status.step-4){--card-stage:#dc1526}.os-app .ref-task-card:has(.ref-status.step-5){--card-stage:#03677a}
