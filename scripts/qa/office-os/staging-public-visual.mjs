@@ -33,14 +33,13 @@ try {
       results.push({ width, name, ...metrics });
     };
     const iconColors = await page.locator('[data-path="owner"] svg').evaluateAll(nodes => nodes.map(n => getComputedStyle(n).color));
-    assert.ok(iconColors.length === 2 && iconColors.every(c => c === "rgb(255, 255, 255)"), "primary icons must be white");
+    assert.ok(iconColors.length === 2 && iconColors.every(c => c === "rgb(8, 111, 115)"), "owner entry uses the Figma petroleum accent");
     await inspect("public-office");
     await page.locator('[data-path="owner"]').click();
     await page.locator('[data-fill-mode="manual"]').click();
     await page.locator('input[name="contactPhone"]').waitFor();
     await inspect("offer-form");
     await page.getByRole("button", { name: "رجوع", exact: true }).click();
-    await page.locator('[data-path="client"]').click();
     // «أبحث عن عقار» is the guest search: the request box first, no phone until a property is chosen.
     await page.locator('[data-guest-search-form] textarea[name="description"]').waitFor();
     assert.equal(await page.locator('input[name="contactPhone"]').count(), 0, "no phone asked before a choice");
