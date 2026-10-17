@@ -116,7 +116,7 @@
 }
 .os-public-page .os-paths-toggle .os-path-card .ic { width: 40px; height: 40px; border-radius: 12px; }
 .os-public-page .os-paths-toggle .os-path-card .ic svg { width: 22px; height: 22px; }
-.os-public-page .os-paths-toggle .os-path-text b { font-size: var(--fs-body, 16px); line-height: 1.35; }
+.os-public-page .os-paths-toggle .os-path-text b { font-size: var(--fs-body, 16px); line-height: 1.45; }
 .os-public-page .os-paths-toggle .os-path-go { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; width: 22px; height: 22px; }
 .os-public-page .os-paths-toggle .os-path-go svg { width: 14px; height: 14px; }
 @media (max-width: 479px) {
