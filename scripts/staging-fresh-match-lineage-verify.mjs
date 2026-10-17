@@ -81,13 +81,13 @@ async function persistPair() {
     office.collection("opportunities").doc(REQUEST_ID).set({
       ...stamp(), opportunityKind: "REQUEST", kind: "client_request", purpose: "LEASE_REQUEST",
       advertiserRole: "CLIENT", contactType: "buyer", budget: 55000, priceOrBudget: 55000,
-      priceMax: 55000, contactPhone: "0501111842", advertiserPhoneNormalized: "+966501111842",
+      priceMax: 55000, contactPhone: "05000000000", advertiserPhoneNormalized: "+966500000000",
       contactName: `عميل QA ${RUN_ID}`
     }),
     office.collection("opportunities").doc(OFFER_ID).set({
       ...stamp(), opportunityKind: "OFFER", kind: "owner_offer", purpose: "RENT",
       advertiserRole: "OWNER", contactType: "owner", salePrice: 50000, annualRent: 50000,
-      priceOrBudget: 50000, contactPhone: "0502221842", advertiserPhoneNormalized: "+966502221842",
+      priceOrBudget: 50000, contactPhone: "05000000000", advertiserPhoneNormalized: "+966500000000",
       contactName: `مالك QA ${RUN_ID}`
     })
   ]);
@@ -179,6 +179,132 @@ async function installEventBridge(page) {
   });
 }
 
+function redactDiagnosticText(value) {
+  return String(value || "")
+    .replace(/Bearer\s+[^\s"']+/gi, "Bearer [redacted]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, "[redacted-phone]")
+    .slice(0, 800);
+}
+
+function safeResponseSummary(payload) {
+  if (Array.isArray(payload)) return { kind: "array", count: payload.length };
+  if (!payload || typeof payload !== "object") return { kind: typeof payload };
+  const summary = { keys: Object.keys(payload).slice(0, 30) };
+  if (typeof payload.ok === "boolean") summary.ok = payload.ok;
+  if (typeof payload.status === "string") summary.status = payload.status;
+  if (typeof payload.code === "string" || typeof payload.code === "number") summary.code = payload.code;
+  if (typeof payload.error === "string") summary.error = redactDiagnosticText(payload.error);
+  if (payload.error && typeof payload.error === "object") {
+    if (payload.error.status) summary.errorStatus = redactDiagnosticText(payload.error.status);
+    if (payload.error.code) summary.errorCode = redactDiagnosticText(payload.error.code);
+    if (payload.error.message) summary.errorMessage = redactDiagnosticText(payload.error.message);
+  }
+  if (Array.isArray(payload.matches)) summary.matchesCount = payload.matches.length;
+  for (const key of ["matchId", "requestId", "offerId", "operationId"]) {
+    const value = String(payload[key] || "");
+    if (/^(?:mat_|opp_fresh_lineage_|op_)/.test(value)) summary[key] = value;
+  }
+  return summary;
+}
+
+function attachBrowserDiagnostics(page) {
+  const diagnostics = { consoleErrors: [], pageErrors: [], failedRequests: [], responses: [] };
+  const pending = [];
+  const add = (list, value) => {
+    if (list.length < 80) list.push(value);
+  };
+  page.on("console", (message) => {
+    if (message.type() === "error") add(diagnostics.consoleErrors, redactDiagnosticText(message.text()));
+  });
+  page.on("pageerror", (error) => add(diagnostics.pageErrors, redactDiagnosticText(error?.stack || error?.message || error)));
+  page.on("requestfailed", (request) => {
+    let url = "";
+    try { const parsed = new URL(request.url()); url = `${parsed.origin}${parsed.pathname}`; } catch {}
+    add(diagnostics.failedRequests, {
+      method: request.method(), url, resourceType: request.resourceType(),
+      error: redactDiagnosticText(request.failure()?.errorText || "request_failed")
+    });
+  });
+  page.on("response", (response) => {
+    const task = (async () => {
+      let parsedUrl;
+      try { parsedUrl = new URL(response.url()); } catch { return; }
+      const host = parsedUrl.hostname;
+      if (!host.includes("iaqar-ai-staging")
+        && host !== "iaqar-intake-staging.iaqar-ai.workers.dev"
+        && host !== "firestore.googleapis.com"
+        && host !== "identitytoolkit.googleapis.com") return;
+      const headers = await response.allHeaders().catch(() => ({}));
+      let summary = null;
+      if (String(headers["content-type"] || "").includes("json")) {
+        const body = await response.json().catch(() => null);
+        summary = safeResponseSummary(body);
+      }
+      add(diagnostics.responses, {
+        method: response.request().method(), url: `${parsedUrl.origin}${parsedUrl.pathname}`,
+        status: response.status(), contentType: redactDiagnosticText(headers["content-type"] || ""),
+        summary
+      });
+    })();
+    pending.push(task);
+  });
+  return { diagnostics, flush: () => Promise.allSettled(pending) };
+}
+
+async function saveFreshBankFailureEvidence(page, capture, details) {
+  await capture.flush();
+  const snapshot = await page.evaluate(({ requestId, offerId, matchId, operationId }) => {
+    const visible = (node) => {
+      if (!node) return false;
+      const style = getComputedStyle(node); const rect = node.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    };
+    const attrs = (node) => ({
+      tag: node.tagName.toLowerCase(), id: node.id || "", className: String(node.className?.baseVal || node.className || "").slice(0, 180),
+      role: node.getAttribute("role") || "", visible: visible(node),
+      opportunityId: node.getAttribute("data-opportunity-id") || "",
+      action: node.getAttribute("data-opportunity-primary-action") || "",
+      matchId: node.getAttribute("data-match-id") || "", operationId: node.getAttribute("data-operation-id") || "",
+      ariaPressed: node.getAttribute("aria-pressed") || ""
+    });
+    const rows = [...document.querySelectorAll("[data-cv2-inbox-item][data-opportunity-id]")];
+    const actionButtons = [...document.querySelectorAll("[data-bank-action-filter]")];
+    const operations = Array.isArray(window.IAQAR?.operationsItems) ? window.IAQAR.operationsItems : [];
+    const exactOperations = operations.filter((item) => String(item?.matchId || "") === matchId
+      || String(item?.id || item?.recordId || "") === operationId
+      || [item?.requestId, item?.clientRequestId, item?.opportunityId, item?.requestOpportunityId].map(String).includes(requestId)
+      || [item?.offerId, item?.ownerOfferId, item?.opportunityId, item?.offerOpportunityId].map(String).includes(offerId))
+      .slice(0, 8).map((item) => ({
+        id: String(item?.id || item?.recordId || ""), recordType: String(item?.recordType || ""),
+        operationType: String(item?.operationType || item?.type || ""), status: String(item?.status || ""),
+        officeId: String(item?.officeId || ""), matchId: String(item?.matchId || ""),
+        opportunityId: String(item?.opportunityId || ""), requestId: String(item?.requestId || item?.clientRequestId || ""),
+        offerId: String(item?.offerId || item?.ownerOfferId || "")
+      }));
+    const status = document.getElementById("opportunityBankStatus");
+    const targetRows = rows.filter((node) => [requestId, offerId].includes(node.getAttribute("data-opportunity-id")));
+    return {
+      origin: location.origin, pathname: location.pathname,
+      bankStatus: status?.textContent?.trim().slice(0, 180) || "",
+      bankStatusTone: status?.className || "",
+      bankRootVisible: visible(document.getElementById("opportunityBankRoot")),
+      actionFilters: actionButtons.map(attrs),
+      renderedRowCount: rows.length,
+      targetRows: targetRows.map((row) => ({ row: attrs(row), primaryActions: [...row.querySelectorAll("[data-opportunity-primary-action]")].map(attrs) })),
+      exactOperationsInWindow: exactOperations,
+      retryVisible: visible(document.getElementById("opportunityBankRetry"))
+    };
+  }, details);
+  const artifact = {
+    generatedAt: new Date().toISOString(), ...details, snapshot,
+    browser: capture.diagnostics
+  };
+  writeFileSync(path.join(OUT, "fresh-lineage-browser-failure.json"), JSON.stringify(artifact, null, 2));
+  const mask = page.locator('[data-contact-name], [data-contact-phone], [data-phone], a[href^="tel:"], a[href*="wa.me"], input[type="tel"]');
+  await page.screenshot({ path: path.join(OUT, "fresh-lineage-bank-failure.png"), fullPage: true, mask: [mask], maskColor: "#111827" }).catch(() => {});
+}
+
 async function selectMatchesFilter(page) {
   const filter = page.locator('[data-bank-action-filter="matches"]').first();
   await filter.waitFor({ state: "visible", timeout: 30000 });
@@ -253,6 +379,7 @@ async function clickFreshMatch(page, target) {
 async function verifyFreshBank(browser, customToken, matchId, operationId) {
   const context = await browser.newContext({ locale: "ar-SA", viewport: { width: 390, height: 900 } });
   const page = await context.newPage();
+  const capture = attachBrowserDiagnostics(page);
   try {
     await page.goto(freshBankUrl(), { waitUntil: "domcontentloaded", timeout: 90000 });
     await page.waitForFunction(() => window.firebase?.apps?.length > 0, { timeout: 30000 });
@@ -277,8 +404,15 @@ async function verifyFreshBank(browser, customToken, matchId, operationId) {
     await selectMatchesFilter(page);
     const requestAfter = await inspectFreshCard(page, "request", REQUEST_ID, matchId, operationId);
     const offerAfter = await inspectFreshCard(page, "offer", OFFER_ID, matchId, operationId);
-    await page.screenshot({ path: path.join(OUT, "fresh-lineage-bank-after-refresh.png"), fullPage: true });
+    const mask = page.locator('[data-contact-name], [data-contact-phone], [data-phone], a[href^="tel:"], a[href*="wa.me"], input[type="tel"]');
+    await page.screenshot({ path: path.join(OUT, "fresh-lineage-bank-after-refresh.png"), fullPage: true, mask: [mask], maskColor: "#111827" });
     return { requestBefore, offerBefore, requestOpen, offerOpen, requestAfter, offerAfter, refreshPreserved: true };
+  } catch (error) {
+    await saveFreshBankFailureEvidence(page, capture, {
+      runId: RUN_ID, officeId: OFFICE_ID, requestId: REQUEST_ID, offerId: OFFER_ID, matchId, operationId,
+      message: redactDiagnosticText(error?.message || error), stack: redactDiagnosticText(error?.stack || "")
+    }).catch((captureError) => console.warn("fresh lineage browser diagnostics failed", redactDiagnosticText(captureError?.message || captureError)));
+    throw error;
   } finally {
     await context.close().catch(() => {});
   }
@@ -570,7 +704,8 @@ async function main() {
   } catch (error) {
     writeFileSync(path.join(OUT, "staging-fresh-match-lineage-failure.json"), JSON.stringify({
       generatedAt: new Date().toISOString(), stage: currentStage, runId: RUN_ID, officeId: OFFICE_ID,
-      requestId: REQUEST_ID, offerId: OFFER_ID, matchId: activeMatchId, message: error?.message || String(error), stack: error?.stack || ""
+      requestId: REQUEST_ID, offerId: OFFER_ID, matchId: activeMatchId,
+      message: redactDiagnosticText(error?.message || String(error)), stack: redactDiagnosticText(error?.stack || "")
     }, null, 2));
     throw error;
   } finally {

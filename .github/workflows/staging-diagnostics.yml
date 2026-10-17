@@ -1,0 +1,84 @@
+name: Staging Diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Diagnostic suite to run against isolated Staging fixtures
+        type: choice
+        required: true
+        default: both
+        options:
+          - match-lineage
+          - viewing-reminder-query
+          - both
+  pull_request:
+    branches:
+      - codex/unified-staging-lineage-2026-08-29
+    paths:
+      - ".github/workflows/staging-diagnostics.yml"
+      - "scripts/staging-fresh-match-lineage-verify.mjs"
+      - "scripts/staging-viewing-reminder-query-diagnostic.mjs"
+      - "scripts/staging-qa-identity.mjs"
+      - "scripts/staging-credentials.mjs"
+      - "worker/src/viewing-reminder-domain.js"
+      - "worker/test/viewing-reminder-query-diagnostic.test.mjs"
+      - "worker/package.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-diagnostics-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Isolated Staging diagnostics (no deploy)
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      DIAGNOSTIC_OUT: artifacts/staging-diagnostics
+      LIVE_E2E_OUT: artifacts/staging-diagnostics
+      SUITE: ${{ github.event.inputs.suite || 'both' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Worker test dependencies
+        run: npm ci --prefix worker
+
+      - name: Install Chromium
+        if: env.SUITE == 'match-lineage' || env.SUITE == 'both'
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify reminder query contract
+        run: node --test worker/test/viewing-reminder-query-diagnostic.test.mjs
+
+      - name: Diagnose fresh Match lineage
+        if: ${{ always() && (env.SUITE == 'match-lineage' || env.SUITE == 'both') }}
+        run: node scripts/run-staging-fresh-match-lineage-verify.mjs
+
+      - name: Diagnose scheduled viewing reminder query
+        if: ${{ always() && (env.SUITE == 'viewing-reminder-query' || env.SUITE == 'both') }}
+        run: node scripts/staging-viewing-reminder-query-diagnostic.mjs
+
+      - name: Upload redacted diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-diagnostics-${{ github.run_id }}
+          path: artifacts/staging-diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
