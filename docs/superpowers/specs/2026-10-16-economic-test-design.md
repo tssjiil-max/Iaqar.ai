@@ -1,0 +1,8 @@
+# Economic Test Mode
+Owner specification: execute the existing office journey on Staging without buying or calling paid AI, without real outbound messages, without a parallel brain/CRM, without touching number 9909 or Production.
+
+Extend PR238's existing queue with a deterministic RULES provider. Reuse smart-fill-domain analysis, records-service save/deduplication, central-search-service and validity-service. A manager-only office panel ingests explicitly simulated messages into the existing inbox, reviews extracted fields, saves into the existing repository, searches existing office inventory and confirms availability updates. Incoming Meta messages still require HMAC and a connected phone/WABA mapping; coexistence evidence gates sending, not safe receipt/simulation. Economic mode never sends, even if a stale send flag or secret exists.
+
+Restrict to DEPLOYMENT_ENV=staging, FIREBASE_PROJECT_ID=iaqar-ai-staging and one explicit ECONOMIC_TEST_OFFICE_ID. Missing scope fails closed; do not guess Sultan's office id from a QA fixture or phone suffix. Mock messages retain source SIMULATED and a local timestamp; actual messages retain Meta source and timestamp. Extracted drafts are unconfirmed until a manager explicitly reviews them. Sold changes require exact same-office record id, review confirmation and existing actor permissions. Expiry uses the existing validity engine with all outbound disabled.
+
+No external/provider APIs in the economic path. Existing database/hosting usage remains metered by the existing plan; no promise of free quota or new trial credit. Other offices retain their code paths. Scope and live Meta proof remain external activation requirements.

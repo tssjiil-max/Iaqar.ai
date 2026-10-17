@@ -26,20 +26,20 @@ function b64url(buf) { return Buffer.from(buf).toString("base64url"); }
 const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const jwk = { ...publicKey.export({ format: "jwk" }), kid: "e2e-kid", alg: "RS256", use: "sig" };
 
-export function idTokenFor(uid) {
+export function idTokenFor(uid, projectId = PROJECT) {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", kid: "e2e-kid", typ: "JWT" }));
-  const claims = b64url(JSON.stringify({ aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}`, sub: uid, iat: now, exp: now + 3600 }));
+  const claims = b64url(JSON.stringify({ aud: projectId, iss: `https://securetoken.google.com/${projectId}`, sub: uid, iat: now, exp: now + 3600 }));
   return `${header}.${claims}.${b64url(crypto.sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), privateKey))}`;
 }
 
 function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
 
-export async function startOfficeOsHarness({ port = 0 } = {}) {
-  const store = installMemoryFirestore({ jwk });
+export async function startOfficeOsHarness({ port = 0, projectId = PROJECT } = {}) {
+  const store = installMemoryFirestore({ jwk, projectId });
   const sa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
   const env = {
-    FIREBASE_PROJECT_ID: PROJECT,
+    FIREBASE_PROJECT_ID: projectId,
     FIREBASE_CLIENT_EMAIL: "e2e@demo-iaqar.iam.gserviceaccount.com",
     FIREBASE_PRIVATE_KEY: sa.privateKey,
     FIREBASE_PRIVATE_KEY_ID: "0123456789abcdef0123456789abcdef01234567",
@@ -100,7 +100,7 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
       if (url.pathname === "/version.json") return send(200, "application/json", "{}");
       if (url.pathname === "/js/fcm-fid.js") return send(200, "text/javascript", "window.IAQAR_FCM_READY = Promise.resolve(null);");
       if (url.pathname === "/__/firebase/init.js") return send(200, "text/javascript", stub);
-      if (url.pathname === "/harness/token") return send(200, "text/plain", idTokenFor(url.searchParams.get("uid") || ""));
+      if (url.pathname === "/harness/token") return send(200, "text/plain", idTokenFor(url.searchParams.get("uid") || "", projectId));
       if (url.pathname === "/harness/signin") {
         const email = url.searchParams.get("email");
         const password = url.searchParams.get("password");

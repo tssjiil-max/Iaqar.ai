@@ -1,3 +1,4 @@
+import { economicModeFor } from './economic-policy.js';
 /**
  * «تعبئة ذكية» — the central analysis service. One entry for the public office page (no account, rate-limited,
  * the office must have a public page) and the office app («إضافة سريعة», membership already verified).
@@ -58,7 +59,7 @@ export function acceptModelValues(listing, found = {}, original = "") {
 }
 
 async function withModel(ctx, officeId, analysis) {
-  if (smartFillAiStatus(ctx.env) !== "configured" || typeof ctx.deps.callGemini !== "function") return { ...analysis, ai: "not_configured" };
+  if (economicModeFor(ctx.env,officeId) || smartFillAiStatus(ctx.env) !== "configured" || typeof ctx.deps.callGemini !== "function") return { ...analysis, ai: "not_configured" };
   const gaps = analysis.listings.filter((l) => l.missing.length && l.understood);
   if (!gaps.length) return { ...analysis, ai: "skipped" };
   const day = ctx.now().toISOString().slice(0, 10);

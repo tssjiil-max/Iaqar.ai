@@ -123,6 +123,7 @@ export async function brokerLinkFor(store, deps, officeId, uid) {
  * side types is then routed to that office only), and a blocked bot switches the link off.
  */
 export async function sendToParty(store, deps, officeId, link, body, options = {}) {
+  if(deps.economicOfficeId===officeId) return {ok:false,sent:false,reason:"economic_test"};
   const now = options.now || new Date();
   const sent = await sendToChat(deps, link.chatId, body, { ...options, now });
   if (sent.ok) await store.set(["telegramBotChats", text(link.chatId)], { lastOfficeId: officeId, lastOfficeAt: now, updatedAt: now }).catch(() => {});
@@ -143,6 +144,7 @@ export async function markPartyBlocked(store, key, now = new Date()) {
  * office app. Sent only for what needs him; skipped silently when he has not linked his chat.
  */
 export async function alertBrokerOnTelegram(store, deps, { officeId, brokerId, title, body = "", route = "", now = new Date() }) {
+  if(deps.economicOfficeId===officeId) return {ok:false,sent:false,reason:"economic_test"};
   if (typeof deps?.telegram !== "function") return { ok: false, skipped: true };
   let uid = text(brokerId);
   if (!uid) uid = text((await store.get(["offices", officeId]))?.ownerUid);

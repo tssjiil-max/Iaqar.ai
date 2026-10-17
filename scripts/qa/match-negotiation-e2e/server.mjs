@@ -42,12 +42,12 @@ export function fromFields(fields = {}) {
   return out;
 }
 
-export function installMemoryFirestore({ jwk }) {
+export function installMemoryFirestore({ jwk, projectId = PROJECT }) {
   const docs = new Map();
   let clock = 0;
-  const base = `/v1/projects/${PROJECT}/databases/(default)/documents/`;
+  const base = `/v1/projects/${projectId}/databases/(default)/documents/`;
   const stamp = () => new Date(Date.UTC(2026, 8, 29, 9, 0, 0) + (++clock) * 1000).toISOString();
-  const docJson = (p) => ({ name: `projects/${PROJECT}/databases/(default)/documents/${p}`, fields: docs.get(p).fields, updateTime: docs.get(p).updateTime });
+  const docJson = (p) => ({ name: `projects/${projectId}/databases/(default)/documents/${p}`, fields: docs.get(p).fields, updateTime: docs.get(p).updateTime });
   const write = (p, fields, mask) => {
     const merged = mask && mask.length ? { ...(docs.get(p)?.fields || {}) } : {};
     for (const key of mask && mask.length ? mask : Object.keys(fields)) {

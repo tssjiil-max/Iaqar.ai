@@ -1,3 +1,5 @@
+import { economicEnvironment, economicContext } from './economic-policy.js';
+import { economicTest } from './economic-test-service.js';
 import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue } from "./whatsapp-agent-service.js";
 /**
  * /os/* routes — the office operating system API.
@@ -47,6 +49,7 @@ const PUBLIC_ROUTES = Object.freeze({
 });
 
 const OFFICE_ROUTES = Object.freeze({
+  ...Object.fromEntries(["status", "ingest", "save", "search", "pair", "approve", "availability", "sweep"].map(action => [`/os/economic/${action}`, (ctx,b,actor) => economicTest(ctx,{actor,action,input:b})])),
   "/os/whatsapp-agent/status": (ctx, b, actor) => whatsappAgentStatus(ctx, { officeId: ctx.officeId, actor }),
   "/os/whatsapp-agent/settings": (ctx, b, actor) => configureWhatsAppAgent(ctx, { officeId: ctx.officeId, actor, enabled: b.enabled }),
   "/os/whatsapp-agent/run": (ctx, b, actor) => {
@@ -175,7 +178,7 @@ export async function officeOsContext(env, deps, officeId) {
   deps.assertFirebaseSecrets(env);
   const projectId = env.FIREBASE_PROJECT_ID || deps.DEFAULT_PROJECT_ID;
   const accessToken = await deps.getGoogleAccessToken(env);
-  const boundDeps = deps.bind ? deps.bind({ env, projectId, accessToken }) : deps;
+  const boundDeps = deps.bind ? deps.bind({ env: economicEnvironment(env, officeId), projectId, accessToken }) : deps;
   return { deps: boundDeps, store: createStore(boundDeps, { projectId, accessToken }), officeId, env, appOrigin: deps.resolveAppOrigin(env), now: () => new Date() };
 }
 
@@ -196,7 +199,7 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
     deps.assertFirebaseSecrets(env);
     const projectId = env.FIREBASE_PROJECT_ID || deps.DEFAULT_PROJECT_ID;
     const accessToken = await deps.getGoogleAccessToken(env);
-    const boundDeps = deps.bind ? deps.bind({ env, projectId, accessToken }) : deps;
+    const boundDeps = deps.bind ? deps.bind({ env: economicEnvironment(env, officeId), projectId, accessToken }) : deps;
     return {
       deps: boundDeps,
       store: createStore(boundDeps, { projectId, accessToken }),
@@ -237,7 +240,7 @@ export async function handleOfficeOs(request, env, deps, { requestId = "" } = {}
     if (!officeId || officeId === "platform") throw deps.appError("office_id_required", 400, "تعذر تحديد المكتب");
     // Membership is verified before any office data is read.
     const actor = await resolveActor(deps, request, env, officeId);
-    const ctx = await makeCtx(officeId);
+    const ctx = economicContext(await makeCtx(officeId));
     const result = await handler(ctx, body, actor);
     // «الباحث عن الفرص» follows the record at once (its search starts, waits or ends); a failure here never undoes the action.
     if (SCOUT_RECORD_ROUTES.has(url.pathname)) {

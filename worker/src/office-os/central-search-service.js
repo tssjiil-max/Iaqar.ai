@@ -30,7 +30,10 @@ export async function searchThroughCentral(ctx, { actor, recordId, limit = 10 })
             const propertyId = String(row.propertyId || row.canonicalPropertyId || candidate.recordId);
             if (seen.has(propertyId)) continue;
             seen.add(propertyId);
-            candidates.push({ ...candidate, officeId, propertyId, reference: `${officeId}:${candidate.recordId}` });
+            candidates.push({ ...candidate, officeId, propertyId, reference: `${officeId}:${candidate.recordId}`,
+              source: String(row.source || row.intakeOrigin?.source || row.intakeOrigin?.method || 'سجل المكتب').slice(0,80),
+              referenceCode: String(row.referenceCode || row.publicReference || candidate.recordId).slice(0,80),
+              lastVerifiedAt: row.availabilityConfirmedAt || row.updatedAt || row.createdAt || null });
             if (candidates.length === take) break;
           }
           result = { ...found, candidates };

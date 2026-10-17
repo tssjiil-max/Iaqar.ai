@@ -21,6 +21,7 @@ import { assertCanActOn } from "./permissions.js";
 import { finishTasks } from "./task-service.js";
 import { assertOfficeMediatedJourney } from "./external-broker-service.js";
 import { buildMatchReviewDedupKey, operationDocumentId } from "../operations-domain.js";
+import { economicModeFor } from "./economic-policy.js";
 
 function base64Url(bytes) {
   let binary = "";
@@ -131,6 +132,7 @@ export async function createProposals(ctx, { actor, officeId, journeyId = "", ma
       : buildProposalMessage({ kind: template.kind, fields, recipientRole: role, recipientName, officeName: identity.officeName, brokerName: identity.brokerName, property, now });
     const messageText = ensureLinkInMessage(baseText, replyUrl);
     const expiresAt = proposalExpiry(template.kind, fields, now);
+    const economicTest = economicModeFor(ctx.env, officeId);
     const doc = {
       schemaVersion: 1,
       officeId,
@@ -151,10 +153,11 @@ export async function createProposals(ctx, { actor, officeId, journeyId = "", ma
       replyOptionsJson: JSON.stringify(replyOptionsFor(template.kind)),
       messageText,
       replyUrl,
-      whatsappUrl: buildWhatsAppUrl(phone, messageText),
+      whatsappUrl: economicTest ? "" : buildWhatsAppUrl(phone, messageText),
       linkHash,
       status: PROPOSAL_STATUS.ACTIVE,
       sendState: SEND_STATE.READY,
+      economicTest: economicModeFor(ctx.env, officeId),
       handoffCount: 0,
       expiresAt,
       reply: null,
@@ -220,6 +223,7 @@ function resultOf(proposal) {
     phoneMissing: !whatsappDigits(proposal.recipientPhone),
     messageText: proposal.messageText,
     whatsappUrl: proposal.whatsappUrl || "",
+    economicTest: proposal.economicTest === true,
     replyUrl: proposal.replyUrl,
     status: proposal.status,
     sendState: proposal.sendState
@@ -241,6 +245,7 @@ export async function supersedeProposal(ctx, officeId, proposalId, byProposalId 
  * with the prepared message — never that it was sent, delivered or read.
  */
 export async function recordHandoff(ctx, { actor, officeId, proposalId, channel = "WHATSAPP" }) {
+  if (economicModeFor(ctx.env, officeId)) throw ctx.deps.appError("economic_outbound_disabled", 403, "تسليم الرسائل إلى واتساب متوقف في وضع التجربة");
   if (!["WHATSAPP", "SHARE"].includes(channel)) throw ctx.deps.appError("invalid_channel", 400, "قناة المشاركة غير صالحة");
   const segments = ["offices", officeId, "proposals", proposalId];
   const proposal = await ctx.store.get(segments);

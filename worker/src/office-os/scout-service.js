@@ -1,3 +1,4 @@
+import { economicModeFor } from './economic-policy.js';
 /**
  * «الباحث عن الفرص» — the office's background researcher (Worker side; rules in public/os/domain/scout-domain.js).
  *
@@ -323,6 +324,7 @@ async function understand(ctx, officeId, item, { aiAllowed, usage, seenFlag }) {
  *   sinceMs     read the sources from this moment only (a digest just pasted)
  */
 export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}, sync = false, inline = false, onlySource = "", sinceMs = 0, recheckKnown = false, now = ctx.now() } = {}) {
+  if(economicModeFor(ctx.env,officeId)) return {ok:true,off:true,reason:"economic_external_search_disabled",tasks:{},enqueue:[]};
   const office = (await ctx.store.get(["offices", officeId])) || {};
   const settings = await loadSettings(ctx, officeId, office);
   if (!settings.enabled) return { ok: true, off: true, tasks: {}, enqueue: [] };
