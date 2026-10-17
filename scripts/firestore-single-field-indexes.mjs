@@ -1,15 +1,19 @@
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function indexSignature(index, fieldPath) {
-  return JSON.stringify({
-    queryScope: index.queryScope || '',
-    fields: (index.fields || []).map((field) => ({
-      fieldPath: field.fieldPath || fieldPath,
-      order: field.order || '',
-      arrayConfig: field.arrayConfig || '',
-      vectorConfig: field.vectorConfig || null
-    }))
-  });
+  // Firestore enforces uniqueness of index modes per query scope. A field
+  // inherited from __default__ may use '*' instead of its concrete path.
+  const fields = index.fields || [];
+  if (fields.length !== 1) throw new Error('single_field_index_expected');
+  const field = fields[0];
+  const mode = field.order ? `order:${field.order}`
+    : field.arrayConfig ? `array:${field.arrayConfig}`
+    : field.vectorConfig ? `vector:${JSON.stringify(field.vectorConfig)}`
+    : null;
+  if (!mode) throw new Error('single_field_index_mode_missing');
+  if (field.fieldPath && field.fieldPath !== '*' && field.fieldPath !== fieldPath)
+    throw new Error('single_field_index_field_mismatch');
+  return JSON.stringify({ queryScope: index.queryScope || 'COLLECTION', mode });
 }
 
 function supportsAnyApi(index) {
@@ -41,6 +45,9 @@ export function mergeSingleFieldIndexes(existing = [], required = [], fieldPath)
       return;
     }
     if (supportsAnyApi(index) && !supportsAnyApi(merged[currentPosition])) merged[currentPosition] = clone(index);
+    // Never silently discard a distinct definition for the same Firestore mode.
+    else if (JSON.stringify(index.fields?.[0]?.vectorConfig || null) !== JSON.stringify(merged[currentPosition].fields?.[0]?.vectorConfig || null))
+      throw new Error('single_field_index_mode_conflict');
   };
   for (const index of existing) addOrPreferAnyApi(index);
   for (const index of required) addOrPreferAnyApi(index);
