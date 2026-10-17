@@ -1,0 +1,75 @@
+{
+  "widths": [
+    {
+      "width": 360,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    },
+    {
+      "width": 390,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    },
+    {
+      "width": 430,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    },
+    {
+      "width": 768,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    },
+    {
+      "width": 1440,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    }
+  ],
+  "matches": {
+    "shown": [
+      "office-alpha:durra-1",
+      "office-alpha:durra-3",
+      "office-alpha:durra-4"
+    ],
+    "hiddenExcluded": "office-alpha:durra-hidden"
+  },
+  "request": {
+    "reference": "IQ-24800924",
+    "savedIn": [
+      "office-gamma",
+      "office-delta"
+    ],
+    "notIn": [
+      "office-alpha",
+      "office-beta"
+    ],
+    "recordIds": [
+      "office-gamma/opp_os_d01550ab1be9b34df23aa262ab08",
+      "office-delta/opp_os_836e9d93377d41b465fdc1e2cf06"
+    ]
+  },
+  "offer": {
+    "reference": "c7cedgqngbw",
+    "office": "office-beta",
+    "record": "offices/office-beta/opportunities/opp_intake_c7cedgqngbw",
+    "publicSearchVisible": false,
+    "workflowStage": "new"
+  },
+  "isolation": {
+    "chosen": [
+      "office-alpha",
+      "office-beta",
+      "office-gamma"
+    ],
+    "resultOffices": [
+      "office-alpha"
+    ],
+    "excluded": "office-delta"
+  }
+}

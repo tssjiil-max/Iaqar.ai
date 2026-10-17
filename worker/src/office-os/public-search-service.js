@@ -6,7 +6,7 @@
  * The AI runs the journey; a person approves commitments. Nothing here reserves, accepts a price,
  * confirms a viewing or closes a deal, and nothing claims a message was sent when it was not.
  */
-import { normalizeInventoryDistrict } from '../../../public/os/domain/inventory-query-domain.js';
+import { guestScope, sameDistrict, browseReasons } from '../../../public/os/domain/guest-search-domain.js';
 import { analyzeOfficeText } from './smart-fill-service.js';
 import { kindOf, lifecycleOf, priceOf, validateRecordInput, recordFields } from '../../../public/os/domain/records-domain.js';
 import { normalizeArabicText, opportunityToMatchInput, scoreMatch } from '../matching-engine.js';
@@ -66,42 +66,74 @@ async function interestNoticeFor(ctx,ref,viewerKey){
  return othersInterested(rows,{viewerKey,now:ctx.now()});
 }
 
-/** Step 1 — search. No account, no name, no phone. */
+/** The public offices a search reads: this office, the offices the guest chose (≤3), or every active participating office. */
+async function searchOffices(ctx,{scope,home,officeIds,city}){
+ if(scope==='office')return [home];
+ if(scope==='selected'){
+  if(!officeIds.length)throw ctx.deps.appError('scope_invalid',400,'اختر مكتبًا واحدًا على الأقل أو جميع المكاتب');
+  return Promise.all(officeIds.map(id=>publicOffice(ctx,id)));
+ }
+ return (await ctx.store.list(['publicOffices'],50)).filter(o=>o.active!==false&&(!city||!o.city||eq(o.city,city)));
+}
+
+/**
+ * Step 1 — search. No account, no name, no phone.
+ * The same engine answers the public page, the office link and the WhatsApp agent (mode «inventory»):
+ * eligibility first (published, active, valid, priced, offer, this office), then the guest's criteria.
+ * mode «auto» (the public page) ranks with the central matcher when the criteria are complete and
+ * filters on what was actually given when they are not — nothing missing is assumed.
+ */
 export async function guestSearch(ctx,{input={},ip=''}){
  rate(ctx,ip,'submit');
  const officeId=officeIdOf(ctx,input.officeId),scope=clean(input.scope)|| (officeId?'office':'all');
- if(!['office','all'].includes(scope)||scope==='office'&&!officeId)throw ctx.deps.appError('scope_invalid',400,'حدد نطاق البحث');
+ if(!['office','all','selected'].includes(scope)||scope==='office'&&!officeId)throw ctx.deps.appError('scope_invalid',400,'حدد نطاق البحث');
  const home=officeId?await publicOffice(ctx,officeId):null;
+ // An office may keep its link to its own offers only; the page then never offers a wider scope.
+ if(home&&home.publicSearchExpand===false&&scope!=='office')throw ctx.deps.appError('scope_invalid',400,'هذا الرابط يعرض عروض المكتب فقط');
  const requestKey=clean(input.requestKey,100);if(!/^[a-zA-Z0-9_-]{12,100}$/.test(requestKey))throw ctx.deps.appError('request_key_required',400,'أعد فتح البحث وحاول مجددًا');
- const criteria=input.criteria&&typeof input.criteria==='object'?input.criteria:{};
+ const criteria=input.criteria&&typeof input.criteria==='object'?{...input.criteria}:{};
+ const picked=guestScope({districts:criteria.districts,district:criteria.district,officeIds:scope==='selected'?input.officeIds:[]});
+ if(!picked.ok)throw ctx.deps.appError('scope_invalid',400,picked.error);
+ const districts=picked.districts;criteria.district=districts[0]||'';delete criteria.districts;
  // Criteria only: contact details are asked for after the client chooses a property.
  const check=validateRecordInput({...criteria,kind:'REQUEST',contactName:'',contactPhone:''});
- const browse = input.mode === 'inventory';
- const criteriaErrors=Object.entries(check.errors).filter(([k])=>!['contactPhone','contactName'].includes(k) && (!browse || Boolean(criteria[k])));
+ const errorsOf=(only)=>Object.entries(check.errors).filter(([k])=>!['contactPhone','contactName','kind'].includes(k)&&(!only||Boolean(criteria[k])));
+ const browse = input.mode === 'inventory' || (input.mode === 'auto' && errorsOf(false).length > 0);
+ const criteriaErrors=errorsOf(browse);
  if (browse && !['propertyType','district','city','price','purpose'].some(k => Boolean(criteria[k]))) throw ctx.deps.appError('request_invalid',400,'حدد حيًا أو نوع عقار أو ميزانية للبحث');
  if(criteriaErrors.length)throw ctx.deps.appError('request_invalid',400,criteriaErrors[0][1]);
  const viewerKey=/^[a-f0-9]{32}$/.test(String(input.viewerKey||''))?String(input.viewerKey):'';
- if (browse && !check.value.city && home?.city) check.value.city = home.city;
+ if (browse && !check.value.city && home?.city && scope==='office') check.value.city = home.city;
  const source=recordFields(check.value,{officeId:officeId||'platform',brokerId:'',now:ctx.now()});
- const offices=scope==='office'?[home]:(await ctx.store.list(['publicOffices'],50)).filter(o=>o.active!==false&&(!source.city||!o.city||eq(o.city,source.city)));
- const rows=[];const exclusions={};const exclude=reason=>{exclusions[reason]=(exclusions[reason]||0)+1;};let inventoryLimited=false;const journeys=new Map();
+ const offices=await searchOffices(ctx,{scope,home,officeIds:picked.officeIds,city:source.city});
+ const rows=[];const exclusions={};const exclude=reason=>{exclusions[reason]=(exclusions[reason]||0)+1;};let inventoryLimited=false,ineligibleMatches=0;const journeys=new Map();
+ // Where a row sits against the guest's criteria: null (not wanted), else in one of the districts or within 5 km of one.
+ const fit=(row,office)=>{
+  if((source.city&&!eq(row.city,source.city))||(source.propertyType&&!eq(row.propertyType,source.propertyType)))return null;
+  if (browse && criteria.purpose && (criteria.purpose === 'PURCHASE' ? !['SALE','PURCHASE'].includes(row.purpose) : !['RENT','LEASE_REQUEST'].includes(row.purpose))) return null;
+  if(check.value.price>0 && (criteria.priceExclusive === true ? priceOf(row)>=check.value.price : priceOf(row)>check.value.price))return null;
+  const inside=districts.find(d=>sameDistrict(row.district,d));
+  if(!districts.length||inside)return {same:true,km:null,district:inside||''};
+  const to=point(row.coordinates);if(!to)return null;
+  let km=null;for(const d of districts){const key=Object.keys(office.districtCenters||{}).find(k=>sameDistrict(k,d));const from=point(office.districtCenters?.[key]);if(from){const x=distance(from,to);if(km===null||x<km)km=x;}}
+  return km!==null&&km<=5?{same:false,km,district:''}:null;
+ };
  for(const office of offices){
   const offers=await ctx.store.list(['offices',office.id,'opportunities'],300);if(offers.length>=300)inventoryLimited=true;
   for(const row of offers){
    const reason=publicInventoryExclusion(row,office.id,ctx.now());
-   if(reason){exclude(reason);continue;}
-   if((source.city&&!eq(row.city,source.city))||(source.propertyType&&!eq(row.propertyType,source.propertyType))){exclude('criteria_mismatch');continue;}
-   if (browse && criteria.purpose && (criteria.purpose === 'PURCHASE' ? !['SALE','PURCHASE'].includes(row.purpose) : !['RENT','LEASE_REQUEST'].includes(row.purpose))) continue;
-   if(check.value.price>0 && (criteria.priceExclusive === true ? priceOf(row)>=check.value.price : priceOf(row)>check.value.price))continue;
-   const same=!source.district || normalizeInventoryDistrict(row.district)===normalizeInventoryDistrict(source.district);let km=null;
-   if(!same){const from=point(office.districtCenters?.[source.district]),to=point(row.coordinates);if(!from||!to)continue;km=distance(from,to);if(km>5)continue;}
-   const scored=browse ? {eligible:true,score:0,reasons:[criteria.district?'في الحي المطلوب':'',criteria.propertyType?'نوع العقار المطلوب':'',criteria.price?'ضمن الميزانية المحددة':''].filter(Boolean)} : scoreMatch(opportunityToMatchInput(source),opportunityToMatchInput(row,{id:row.id}));if(!scored.eligible)continue;
+   // Kept apart internally: «no such record» vs «a record exists but may not be shown». Never shown to the guest.
+   if(reason){exclude(reason);if(reason!=='office_mismatch'&&kindOf(row)==='OFFER'&&fit(row,office))ineligibleMatches++;continue;}
+   const place=fit(row,office);
+   if(!place){exclude('criteria_mismatch');continue;}
+   const {same,km}=place;
+   const scored=browse ? {eligible:true,score:browseReasons({...criteria,districts},row,{inDistrict:same}).length,reasons:browseReasons({...criteria,districts},row,{inDistrict:same})} : scoreMatch(opportunityToMatchInput(same&&place.district?{...source,district:row.district}:source),opportunityToMatchInput(row,{id:row.id}));if(!scored.eligible)continue;
    const status=await statusOf(ctx,row,office.id,journeys);
    if(!isMatchable(status,{showNegotiating:office.publicSearchShowNegotiating!==false}))continue;
    rows.push({row,office,scored,same,km,status});
   }
  }
- ctx.onInventoryDiagnostic?.({exclusions,inventoryLimited});
+ ctx.onInventoryDiagnostic?.({exclusions,inventoryLimited,ineligibleMatches,eligibleMatches:rows.length});
  let results=[];
  const orchestration=await dispatchOrchestratorEvent({event:ORCHESTRATOR_EVENT.SEARCH_REQUESTED,eventId:buildOrchestratorEventId({event:ORCHESTRATOR_EVENT.SEARCH_REQUESTED,officeId:officeId||'platform',entityId:requestKey}),context:{officeId:officeId||'platform',entityId:requestKey},adapters:{[ORCHESTRATOR_OWNER.MATCHING]:async()=>{
   // District first, then match strength (type/purpose/budget/specs), then distance, then the freshest confirmation.
@@ -118,13 +150,15 @@ export async function guestSearch(ctx,{input={},ip=''}){
  if(!orchestration.ok)throw ctx.deps.appError('search_failed',503,'تعذر البحث الآن');
  // Real recorded interest from OTHER clients only; the notice carries no names, numbers or counts.
  for(const item of results){item.othersInterested=await interestNoticeFor(ctx,item.reference,viewerKey);if(item.othersInterested)item.interestNotice=INTEREST_NOTICE;}
- const token=(await hmacHex(ctx,['search',officeId,scope,requestKey,input.mode||'match',check.value,criteria.priceExclusive===true])).slice(0,48);
+ // The mode joins the token only when it is not the default, so sessions made before this change keep their tokens.
+ const extra=[districts.length>1?districts:null,scope==='selected'?picked.officeIds:null].filter(Boolean);
+ const token=(await hmacHex(ctx,['search',officeId,scope,requestKey,input.mode||'match',check.value,criteria.priceExclusive===true,...extra])).slice(0,48);
  const sessionId=await ctx.deps.sha256Hex(token);
- const session={officeId,scope,criteriaJson:JSON.stringify({...check.value,contactName:'',contactPhone:''}),resultsJson:JSON.stringify(results),status:'RESULTS_SHOWN',consentProcessing:false,consentContact:false,createdAt:ctx.now(),expiresAt:new Date(ctx.now().getTime()+SESSION_TTL_MS).toISOString()};
+ const session={officeId,scope,officeIdsJson:JSON.stringify(scope==='selected'?picked.officeIds:offices.map(o=>o.id)),criteriaJson:JSON.stringify({...check.value,districts,contactName:'',contactPhone:''}),resultsJson:JSON.stringify(results),status:'RESULTS_SHOWN',consentProcessing:false,consentContact:false,createdAt:ctx.now(),expiresAt:new Date(ctx.now().getTime()+SESSION_TTL_MS).toISOString()};
  const created=await ctx.store.create(['publicSearchSessions',sessionId],session);
  // A retry of the same request keeps the first session (and any choice already made in it).
  const stored=created?session:await ctx.store.get(['publicSearchSessions',sessionId]);
- return {ok:true,results:created?results:JSON.parse(stored?.resultsJson||'[]').map((x,i)=>({...x,othersInterested:results[i]?.othersInterested||false,interestNotice:results[i]?.interestNotice})),searchToken:token,orchestration,coverageLimited:inventoryLimited||(scope==='all'&&offices.length>=50)};
+ return {ok:true,results:created?results:JSON.parse(stored?.resultsJson||'[]').map((x,i)=>({...x,othersInterested:results[i]?.othersInterested||false,interestNotice:results[i]?.interestNotice})),searchToken:token,orchestration,scope,mode:browse?'inventory':'match',criteria:{...check.value,districts,contactName:undefined,contactPhone:undefined,notes:undefined,priceStatus:undefined,kind:undefined},coverageLimited:inventoryLimited||(scope==='all'&&offices.length>=50)};
 }
 
 async function loadSession(ctx,token){

@@ -59,7 +59,7 @@ try {
   console.log(`✔ ${width}px guest journey`);
  }
  const page = await browser.newPage(); await page.goto(`${h.origin}/m/sultan`); await page.locator('[data-guest-search-form]').waitFor(); assert.equal(await page.locator('[name=scope]').inputValue(), 'office'); await page.close();
- // No-match request uses the existing public intake and reaches the office bank.
+ // No match → «أرسل طلبي للمكاتب»: the office link sends to this office, through the shared request path.
  const requestPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
  await requestPage.goto(`${h.origin}/m/sultan`);
  await requestPage.locator('[data-guest-search-form]').waitFor();
@@ -72,16 +72,17 @@ try {
  assert.equal(await requestPage.locator('[name=city]').inputValue(), 'المدينة المنورة');
  assert.equal(await requestPage.locator('[name=district]').inputValue(), 'درة العقيق');
  assert.equal(await requestPage.locator('[data-search-result]').count(), 0);
- await requestPage.locator('[data-send-office-request]').click();
- await requestPage.locator('[name=contactName]').fill('عميل اختبار');
- await requestPage.locator('[name=contactPhone]').fill('0557000444');
- await requestPage.locator('[name=consentProcessing]').check();
+ await requestPage.locator('[data-send-office-request]').first().click();
+ await requestPage.locator('[name=requestName]').fill('عميل اختبار');
+ await requestPage.locator('[name=requestPhone]').fill('0557000444');
+ await requestPage.locator('[name=requestConsentProcessing]').check();
+ await requestPage.locator('[name=requestConsentContact]').check();
  await requestPage.screenshot({ path: path.join(OUT, '390-send-request.png'), fullPage: true });
- await requestPage.locator('button[type=submit]').click();
- await requestPage.locator('[data-intake-reference]').waitFor();
- const ref = (await requestPage.locator('[data-intake-reference]').innerText()).split(': ').at(-1);
- const saved = h.store.get(`offices/${OFFICE_A}/opportunities/opp_intake_${ref}`);
- assert.ok(saved, 'request reaches the real intake pipeline and office bank');
+ await requestPage.locator('[data-guest-request-submit]').click();
+ await requestPage.locator('[data-request-reference]').waitFor();
+ const ref = await requestPage.locator('[data-request-reference]').getAttribute('data-request-reference');
+ const saved = h.store.list(`offices/${OFFICE_A}/opportunities`).find((row) => row.publicRequestReference === ref);
+ assert.ok(saved, 'request reaches the office request bank');
  assert.equal(saved.officeId, OFFICE_A);
  assert.equal(saved.opportunityKind, 'REQUEST');
  assert.equal(saved.propertyType, 'فيلا');
