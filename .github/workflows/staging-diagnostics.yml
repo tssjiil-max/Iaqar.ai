@@ -67,11 +67,11 @@ jobs:
         run: node --test worker/test/viewing-reminder-query-diagnostic.test.mjs
 
       - name: Diagnose fresh Match lineage
-        if: env.SUITE == 'match-lineage' || env.SUITE == 'both'
+        if: ${{ always() && (env.SUITE == 'match-lineage' || env.SUITE == 'both') }}
         run: node scripts/run-staging-fresh-match-lineage-verify.mjs
 
       - name: Diagnose scheduled viewing reminder query
-        if: env.SUITE == 'viewing-reminder-query' || env.SUITE == 'both'
+        if: ${{ always() && (env.SUITE == 'viewing-reminder-query' || env.SUITE == 'both') }}
         run: node scripts/staging-viewing-reminder-query-diagnostic.mjs
 
       - name: Upload redacted diagnostic artifacts

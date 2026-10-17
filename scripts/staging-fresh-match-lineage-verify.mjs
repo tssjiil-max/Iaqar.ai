@@ -302,7 +302,7 @@ async function saveFreshBankFailureEvidence(page, capture, details) {
   };
   writeFileSync(path.join(OUT, "fresh-lineage-browser-failure.json"), JSON.stringify(artifact, null, 2));
   const mask = page.locator('[data-contact-name], [data-contact-phone], [data-phone], a[href^="tel:"], a[href*="wa.me"], input[type="tel"]');
-  await page.screenshot({ path: path.join(OUT, "fresh-lineage-bank-failure.png"), fullPage: true, mask, maskColor: "#111827" }).catch(() => {});
+  await page.screenshot({ path: path.join(OUT, "fresh-lineage-bank-failure.png"), fullPage: true, mask: [mask], maskColor: "#111827" }).catch(() => {});
 }
 
 async function selectMatchesFilter(page) {
@@ -405,7 +405,7 @@ async function verifyFreshBank(browser, customToken, matchId, operationId) {
     const requestAfter = await inspectFreshCard(page, "request", REQUEST_ID, matchId, operationId);
     const offerAfter = await inspectFreshCard(page, "offer", OFFER_ID, matchId, operationId);
     const mask = page.locator('[data-contact-name], [data-contact-phone], [data-phone], a[href^="tel:"], a[href*="wa.me"], input[type="tel"]');
-    await page.screenshot({ path: path.join(OUT, "fresh-lineage-bank-after-refresh.png"), fullPage: true, mask, maskColor: "#111827" });
+    await page.screenshot({ path: path.join(OUT, "fresh-lineage-bank-after-refresh.png"), fullPage: true, mask: [mask], maskColor: "#111827" });
     return { requestBefore, offerBefore, requestOpen, offerOpen, requestAfter, offerAfter, refreshPreserved: true };
   } catch (error) {
     await saveFreshBankFailureEvidence(page, capture, {
