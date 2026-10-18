@@ -12,6 +12,8 @@
  *     (when available) adapts to any language it supports; these texts are the fallback.
  */
 
+import { priceRangeFrom } from "./price-range-domain.js";
+
 export const PERSONA = Object.freeze({ OWNER: "OWNER", BROKER: "BROKER", CLIENT: "CLIENT" });
 export const VISITOR_MODE = Object.freeze({ AGENT: "AGENT", HUMAN: "HUMAN" });
 export const START_PREFIX = "of_";
@@ -207,7 +209,10 @@ export function extractFacts(raw = "", { expectNumber = "" } = {}) {
   if (/موقف|مواقف|باركنج/.test(t)) out.parking = true;
   const area = text0.match(/(\d+(?:\.\d+)?)\s*(?:م2|م²|متر|مترمربع|م\b|مربع)/);
   if (area) out.area = Number(area[1]);
-  const price = priceIn(text0);
+  // «من 2,500,000 إلى 3,500,000»: the budget is the upper bound, the lower one is kept beside it.
+  const range = priceRangeFrom(text0);
+  const price = range ? range.max : priceIn(text0);
+  if (range?.min && range.max) out.priceMin = range.min;
   if (price) out.price = price;
   else if (expectNumber === "price") {
     const bare = AR_DIGITS(raw).replace(/,/g, "").match(/^\s*(\d+(?:\.\d+)?)\s*(مليون|الف|ألف|k)?\s*(ريال)?\s*$/i);
@@ -277,6 +282,8 @@ export function mergeDraft(draft = {}, found = {}) {
   set("city", String(found.city || "").trim().slice(0, 60));
   set("district", String(found.district || "").trim().replace(/^حي\s+/, "").slice(0, 80));
   set("price", Number(found.price) || 0);
+  set("priceMin", Number(found.priceMin) || 0);
+  if (out.priceMin && out.price && out.priceMin >= out.price) delete out.priceMin;
   set("area", Number(found.area) || 0);
   set("rooms", Number(found.rooms) || 0);
   if (out.kind) {
@@ -341,7 +348,9 @@ export function summaryLines(draft = {}, lang = "ar") {
     draft.kind ? (ar ? `النوع: ${draft.kind === "OFFER" ? "عرض عقار" : "طلب عقار"}` : `Type: ${draft.kind === "OFFER" ? "property listing" : "property request"}`) : "",
     `${draft.propertyType || ""} ${purpose}`.trim(),
     [draft.district, draft.city].filter(Boolean).join(ar ? "، " : ", "),
-    price ? `${draft.kind === "REQUEST" ? (ar ? "الميزانية" : "Budget") : (ar ? "السعر" : "Price")}: ${price}` : "",
+    // A request's range is said as written («من 1,600,000 إلى 1,900,000»), never as its upper bound alone.
+    price && draft.kind === "REQUEST" && Number(draft.priceMin) > 0 ? `${ar ? "الميزانية" : "Budget"}: ${ar ? `من ${Number(draft.priceMin).toLocaleString("en-US")} إلى ${price}` : `${Number(draft.priceMin).toLocaleString("en-US")} – ${price}`}` : "",
+    price && !(draft.kind === "REQUEST" && Number(draft.priceMin) > 0) ? `${draft.kind === "REQUEST" ? (ar ? "الميزانية" : "Budget") : (ar ? "السعر" : "Price")}: ${price}` : "",
     draft.area ? `${ar ? "المساحة" : "Area"}: ${draft.area}` : "",
     draft.rooms ? `${ar ? "الغرف" : "Rooms"}: ${draft.rooms}` : "",
     details.length ? `${ar ? "التفاصيل" : "Details"}: ${details.join(ar ? "، " : ", ")}` : ""
@@ -352,7 +361,7 @@ export function summaryLines(draft = {}, lang = "ar") {
 export function toRecordInput(draft = {}, { phone = "", name = "" } = {}) {
   return {
     kind: draft.kind, purpose: draft.purpose, propertyType: draft.propertyType, city: draft.city, district: draft.district,
-    price: draft.price, area: draft.area || "", rooms: draft.rooms || "", contactName: String(name || "").slice(0, 80), contactPhone: phone,
+    price: draft.price, priceMin: draft.priceMin || "", area: draft.area || "", rooms: draft.rooms || "", contactName: String(name || "").slice(0, 80), contactPhone: phone,
     // Every detail the person gave stays in the record's description (nothing is lost, nothing added).
     notes: [detailLines(draft).join("، "), draft.rentPeriod === "YEARLY" ? "إيجار سنوي" : draft.rentPeriod === "MONTHLY" ? "إيجار شهري" : "", draft.notes || ""].filter(Boolean).join(" — ").slice(0, 1000)
   };

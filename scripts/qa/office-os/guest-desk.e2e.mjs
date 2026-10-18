@@ -32,6 +32,10 @@ villa(OFFICE_A, 'durra-4', 'درة العقيق', 4900000);
 villa(OFFICE_A, 'durra-hidden', 'درة العقيق', 4100000, { publicSearchVisible: false });
 villa(OFFICE_B, 'b-durra', 'درة العقيق', 4500000);
 villa(OFFICE_C, 'c-aziz', 'العزيزية', 3900000);
+// The reported scenario: one published building in درة العقيق (3,000,000 · 650 m²) and one awaiting review.
+h.store.seed(`offices/${OFFICE_D}/opportunities/d-building`, { officeId: OFFICE_D, opportunityKind: 'OFFER', purpose: 'SALE', transactionType: 'sale', propertyType: 'عمارة', city: MADINAH, district: 'درة العقيق', priceOrBudget: 3000000, salePrice: 3000000, area: 650, lifecycleStatus: 'ACTIVE', publicSearchVisible: true, version: 1 });
+h.store.seed(`offices/${OFFICE_D}/opportunities/d-building-review`, { officeId: OFFICE_D, opportunityKind: 'OFFER', purpose: 'SALE', transactionType: 'sale', propertyType: 'عمارة', city: MADINAH, district: 'درة العقيق', priceOrBudget: 3100000, salePrice: 3100000, area: 700, lifecycleStatus: 'ACTIVE', version: 1 });
+const RANGE_TEXT = 'أبحث عن عمارة للبيع في درة العقيق أو الأحياء القريبة بالمدينة المنورة بميزانية من 2,500,000 إلى 3,500,000 ريال ومساحة لا تقل عن 500 متر';
 
 const browser = await chromium.launch();
 const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
@@ -160,6 +164,45 @@ try {
     console.log('✔ Arabic-Indic budget read; restricted link keeps its office');
   }
 
+  // The reported scenario on a phone: the range is kept, «القريبة» is not a district, the published building shows,
+  // the one awaiting review does not, and the request receipt says only what really happened.
+  {
+    const { page, ctx, errors } = await openPage(390);
+    await page.locator('textarea[name=description]').fill(RANGE_TEXT);
+    await page.locator('[data-guest-search]').click();
+    await page.locator('[data-guest-results] .os-page-title').waitFor();
+    const summary = (await page.locator('[data-search-summary]').innerText()).replace(/\s+/g, ' ');
+    assert.match(summary, /من 2,500,000 إلى 3,500,000 ريال/, summary);
+    assert.match(summary, /مساحة 500 م² فأكثر/);
+    assert.match(summary, /والأحياء القريبة/);
+    assert.deepEqual(await page.locator('[data-picked=districts] [data-chip]').evaluateAll((n) => n.map((x) => x.dataset.chip)), ['درة العقيق'], 'no «القريبة» or «طيبة» district');
+    assert.equal(await page.locator('[name=priceMin]').inputValue(), '2500000');
+    assert.equal(await page.locator('[name=price]').inputValue(), '3500000');
+    const shown = await page.locator('[data-search-result]').evaluateAll((n) => n.map((x) => x.dataset.searchResult));
+    assert.ok(shown.includes(`${OFFICE_D}:d-building`), `published building shown: ${shown}`);
+    assert.ok(!shown.includes(`${OFFICE_D}:d-building-review`), 'awaiting review: not shown');
+    await page.screenshot({ path: path.join(OUT, '390-10-range-results.png'), fullPage: true });
+    await page.locator('[data-guest-path=request]').click();
+    await page.locator(`[data-picker=offices] [data-pick-option="${OFFICE_D}"]`).click();
+    await page.locator('[name=requestName]').fill('عميل النطاق');
+    await page.locator('[name=requestPhone]').fill('0557000777');
+    await page.locator('[name=requestConsentProcessing]').check(); await page.locator('[name=requestConsentContact]').check();
+    await page.locator('[data-guest-request-submit]').click();
+    await page.locator('[data-request-reference]').waitFor();
+    const reference = await page.locator('[data-request-reference]').getAttribute('data-request-reference');
+    assert.match(reference, /^IQ-[2-9A-HJKMNP-Z]{6}$/);
+    const receipt = await page.locator('[data-request-receipt]').innerText();
+    assert.match(receipt, /مكتب دلتا العقاري/); assert.match(receipt, /محفوظ في بنك الطلبات · بانتظار مراجعة المكتب/); assert.match(receipt, /وصل المكتبَ تنبيه/);
+    assert.doesNotMatch(receipt, /سيتواصل|يتواصل معك المكتب عند/, 'no promise the platform cannot keep');
+    const [row] = h.store.list(`offices/${OFFICE_D}/opportunities`).filter((r) => r.publicRequestReference === reference);
+    assert.ok(row && row.priceMin === 2500000 && row.priceMax === 3500000 && row.area === 500, JSON.stringify(row));
+    proof.rangeScenario = { summary, shown, hiddenAwaitingReview: `${OFFICE_D}:d-building-review`, reference, bankRecord: `offices/${OFFICE_D}/opportunities/${row.id}`, priceMin: row.priceMin, priceMax: row.priceMax, area: row.area };
+    await page.screenshot({ path: path.join(OUT, '390-11-range-request-receipt.png'), fullPage: true });
+    assert.ok(await noOverflow(page)); assert.deepEqual(errors, []);
+    await ctx.close();
+    console.log(`✔ range scenario: published building shown, review one hidden, request ${reference} saved with both bounds`);
+  }
+
   // 9–11, 17–18: no results → send to the chosen offices, saved in each office bank; double tap = one request; error then retry.
   {
     const { page, ctx, errors } = await openPage(390);
@@ -183,7 +226,7 @@ try {
     await page.locator('[data-guest-request-submit]').dblclick();
     await page.locator('[data-request-reference]').waitFor();
     const reference = await page.locator('[data-request-reference]').getAttribute('data-request-reference');
-    assert.match(reference, /^IQ-[A-F0-9]{8}$/);
+    assert.match(reference, /^IQ-[2-9A-HJKMNP-Z]{6}$/);
     for (const id of [OFFICE_C, OFFICE_D]) {
       const rows = requestRows(id, reference);
       assert.equal(rows.length, 1, `exactly one request in ${id}`);
@@ -217,13 +260,18 @@ try {
     await page.screenshot({ path: path.join(OUT, '390-8-offer-form.png'), fullPage: true });
     await form.getByRole('button', { name: 'إرسال', exact: true }).click();
     await page.locator('[data-intake-reference]').waitFor();
-    const ref = (await page.locator('[data-intake-reference]').innerText()).split(': ').at(-1);
+    const ref = await page.locator('[data-intake-reference]').getAttribute('data-intake-id');
+    const shortRef = await page.locator('[data-intake-reference]').getAttribute('data-intake-reference');
+    assert.match(shortRef, /^IQ-[2-9A-HJKMNP-Z]{6}$/, 'the owner reads a short reference');
+    assert.match(await page.locator('[data-intake-status]').innerText(), /بانتظار مراجعته/);
+    assert.equal(await page.locator('[data-public-matches]').count(), 0, 'preliminary matches stay with the office');
     const saved = h.store.get(`offices/${OFFICE_B}/opportunities/opp_intake_${ref}`);
     assert.ok(saved, 'offer reaches the chosen office');
     assert.equal(saved.opportunityKind, 'OFFER'); assert.equal(saved.officeId, OFFICE_B);
     assert.notEqual(saved.publicSearchVisible, true, 'never published automatically');
     for (const id of [OFFICE_A, OFFICE_C, OFFICE_D]) assert.equal(h.store.get(`offices/${id}/opportunities/opp_intake_${ref}`), null, `not in ${id}`);
-    proof.offer = { reference: ref, office: OFFICE_B, record: `offices/${OFFICE_B}/opportunities/opp_intake_${ref}`, publicSearchVisible: saved.publicSearchVisible ?? false, workflowStage: saved.workflowStage };
+    assert.equal(saved.publicReference, shortRef, 'the office record carries the same short reference');
+    proof.offer = { reference: shortRef, intakeId: ref, office: OFFICE_B, record: `offices/${OFFICE_B}/opportunities/opp_intake_${ref}`, publicSearchVisible: saved.publicSearchVisible ?? false, workflowStage: saved.workflowStage };
     await page.screenshot({ path: path.join(OUT, '390-9-offer-sent.png'), fullPage: true });
     assert.deepEqual(errors, []);
     await ctx.close();

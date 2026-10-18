@@ -1,0 +1,88 @@
+{
+  "widths": [
+    {
+      "width": 360,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    },
+    {
+      "width": 390,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    },
+    {
+      "width": 430,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    },
+    {
+      "width": 768,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    },
+    {
+      "width": 1440,
+      "overflow": false,
+      "consoleErrors": 0,
+      "results": 3
+    }
+  ],
+  "matches": {
+    "shown": [
+      "office-alpha:durra-1",
+      "office-alpha:durra-3",
+      "office-alpha:durra-4"
+    ],
+    "hiddenExcluded": "office-alpha:durra-hidden"
+  },
+  "request": {
+    "reference": "IQ-ADXRK4",
+    "savedIn": [
+      "office-gamma",
+      "office-delta"
+    ],
+    "notIn": [
+      "office-alpha",
+      "office-beta"
+    ],
+    "recordIds": [
+      "office-gamma/opp_os_9a44d5d51f00a4d1a28cfaadd704",
+      "office-delta/opp_os_794b3105247456bd8871cb0f3a79"
+    ]
+  },
+  "offer": {
+    "reference": "IQ-5TZQ2T",
+    "intakeId": "a9l9hus54df",
+    "office": "office-beta",
+    "record": "offices/office-beta/opportunities/opp_intake_a9l9hus54df",
+    "publicSearchVisible": false,
+    "workflowStage": "new"
+  },
+  "isolation": {
+    "chosen": [
+      "office-alpha",
+      "office-beta",
+      "office-gamma"
+    ],
+    "resultOffices": [
+      "office-alpha"
+    ],
+    "excluded": "office-delta"
+  },
+  "rangeScenario": {
+    "summary": "فهمنا طلبك: شراء عمارة المدينة المنورة درة العقيق والأحياء القريبة (حتى 5 كم) من 2,500,000 إلى 3,500,000 ريال مساحة 500 م² فأكثر جميع المكاتب المشاركة تعديل",
+    "shown": [
+      "office-delta:d-building"
+    ],
+    "hiddenAwaitingReview": "office-delta:d-building-review",
+    "reference": "IQ-D68VEA",
+    "bankRecord": "offices/office-delta/opportunities/opp_os_76b5f436047b4f3aac3c8f184052",
+    "priceMin": 2500000,
+    "priceMax": 3500000,
+    "area": 500
+  }
+}

@@ -15,6 +15,7 @@ import { imagePicker } from "./record-images.js";
 import { EXTERNAL_BROKER, externalBrokerClaim } from "../domain/external-broker-domain.js";
 import { normalizeAnalysis, notesWithDistricts, splitDistrictInput } from "../domain/smart-fill-domain.js";
 import { applyListing, fillModes } from "./smart-fill.js";
+import { guestReference } from "../domain/guest-search-domain.js";
 
 export function publicOfficeTarget() {
   // Guest platform search lives at /?view=search only. «#/search» is the signed-in office search
@@ -67,18 +68,21 @@ function officeHeader(office) {
     office.licenseNumber ? h("span", { class: "os-public-license", "data-office-license": "" }, ic("license"), ` رخصة فال ${office.licenseNumber}`) : null);
 }
 
-function successView(root, office, kind, { matches = 0, reference = "" } = {}) {
+function successView(root, office, kind, { reference = "" } = {}) {
   clear(root);
-  const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب.`);
+  const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}، أرسلت ${kind === "owner" ? "بيانات عقاري" : "طلبي"} من رابط المكتب${reference ? ` (المرجع ${guestReference(reference)})` : ""}.`);
   append(root, h("main", { class: "os-app os-public-page os-public-receipt", style: { maxWidth: "560px" } },
     h("p", { class: "os-public-office-name", text: office.officeName || "المكتب العقاري" }),
     surface("div", { class: "os-card os-public-done", style: { textAlign: "center" } },
       h("div", { class: "os-task-icon", style: { margin: "0 auto 8px", background: "var(--ok-tint)", color: "var(--ok)" } }, ic("check-circle")),
       h("h2", { class: "os-h2", style: { justifyContent: "center" }, text: "تم استلام بياناتك" }),
-      reference ? h("p", { "data-intake-reference": "", text: `رقم الطلب: ${reference}` }) : null,
-      h("p", { class: "os-sub", text: `شكرًا لك. سيتواصل معك ${office.brokerName || "الوسيط"} عند وجود خيار مناسب.` }),
-      // How many options fit at first look (at most three) — the other side's details stay with the office.
-      matches > 0 ? h("p", { class: "os-alert ok", "data-public-matches": String(matches), text: `وجدنا ${matches === 1 ? "خيارًا واحدًا مناسبًا" : matches === 2 ? "خيارين مناسبين" : "ثلاثة خيارات مناسبة"} مبدئيًا. يراجعها ${office.brokerName || "الوسيط"} ويتواصل معك بالتفاصيل وموعد المعاينة.` }) : null,
+      // A short reference the visitor can read out; the office finds the same one on the record.
+      reference ? h("p", { "data-intake-reference": guestReference(reference), "data-intake-id": reference }, "الرقم المرجعي: ", h("b", { dir: "ltr", text: guestReference(reference) })) : null,
+      h("p", { class: "os-sub", "data-intake-status": kind === "owner" ? "AWAITING_REVIEW" : "SAVED", text: kind === "owner"
+        ? `محفوظ لدى ${office.officeName || "المكتب"} بانتظار مراجعته. لا يُنشر عرضك في البحث قبل أن يعتمده المكتب.`
+        : `محفوظ لدى ${office.officeName || "المكتب"} بانتظار مراجعته.` }),
+      // Preliminary matches are the office's work (they may include unpublished records): never counted to the visitor.
+      h("p", { class: "os-field-note", text: "المكتب هو من يراجع بياناتك ويقرر التواصل معك. لا نرسل لك رسائل آلية." }),
       wa ? h("a", { class: "os-btn whatsapp block", href: wa, target: "_blank", rel: "noopener", style: { marginTop: "10px" } }, ic("whatsapp"), "تواصل مع المكتب") : null,
       h("button", { type: "button", class: "os-btn secondary block", onClick: () => renderPublicOffice(root, publicOfficeTarget()) }, "العودة لصفحة المكتب"))));
   window.scrollTo({ top: 0 });
@@ -247,7 +251,6 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       return;
     }
     const v = check.value;
-    let matchCount = 0;
     const ok = await runAction(submit, async () => {
       const ref = submissionRef ||= db().collection("offices").doc(office.id).collection("publicIntake").doc();
       // Photos first (to this intake's folder); the intake then lists exactly what was stored.
@@ -301,11 +304,9 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
       }).catch(() => null).finally(() => clearTimeout(timer));
       waiting.hidden = true;
       if (response && !response.ok && response.status === 429) throw new Error("تم استلام بياناتك، وسنعالجها بعد قليل.");
-      const answer = response && response.ok ? await response.json().catch(() => ({})) : {};
-      matchCount = Math.max(0, Math.min(3, Number(answer.matches || 0)));
       return true;
     }, { onError: (error) => { waiting.hidden = true; status.querySelector(".os-feedback-copy").textContent = error.message; status.hidden = false; } });
-    if (ok) successView(root, office, kind, { matches: matchCount, reference: submissionRef?.id || "" });
+    if (ok) successView(root, office, kind, { reference: submissionRef?.id || "" });
   });
   return form;
 }

@@ -64,11 +64,22 @@ export function browseReasons(criteria = {}, row = {}, { inDistrict = false } = 
   if (inDistrict && (criteria.districts?.length || criteria.district)) reasons.push('في الحي المطلوب');
   if (criteria.propertyType) reasons.push('نوع العقار المطلوب');
   if (criteria.purpose) reasons.push(criteria.purpose === 'PURCHASE' ? 'متاح للبيع' : 'متاح للإيجار');
-  if (Number(criteria.price) > 0) reasons.push('ضمن الميزانية المحددة');
+  if (Number(criteria.price) > 0 || Number(criteria.priceMin) > 0) reasons.push('ضمن الميزانية المحددة');
   if (Number(criteria.rooms) > 0 && Number(row.rooms) >= Number(criteria.rooms)) reasons.push('عدد الغرف مناسب');
   if (Number(criteria.area) > 0 && Number(row.area) >= Number(criteria.area)) reasons.push('المساحة مناسبة');
   return reasons;
 }
 
-/** A short public reference a guest can quote to an office: «IQ-» + 8 characters from the request hash. */
-export const guestReference = (hex) => `IQ-${String(hex || '').replace(/[^a-f0-9]/gi, '').slice(0, 8).toUpperCase()}`;
+/**
+ * A short public reference a guest can read out and quote to an office: «IQ-» + 6 characters, without the
+ * look-alikes 0/O and 1/I/L. Taken from a hash (requests) or a stored id (offers), so it is stable on retries.
+ */
+const READABLE = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+export function guestReference(seed = '') {
+  // FNV-1a over the seed, written as 6 readable characters (31^6 ≈ 887 million references).
+  let hash = 2166136261;
+  for (const ch of String(seed || '')) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619) >>> 0;
+  let n = hash % (READABLE.length ** 6), out = '';
+  for (let i = 0; i < 6; i += 1) { out = READABLE[n % READABLE.length] + out; n = Math.floor(n / READABLE.length); }
+  return `IQ-${out}`;
+}
