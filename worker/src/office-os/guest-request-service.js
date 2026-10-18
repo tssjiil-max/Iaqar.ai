@@ -9,7 +9,7 @@
  * Contact data reaches only the offices the guest chose, after two explicit consents. Nothing is sent
  * to the guest by any channel from here, and no offer is published by anything in this file.
  */
-import { validateRecordInput } from '../../../public/os/domain/records-domain.js';
+import { priceOf, validateRecordInput } from '../../../public/os/domain/records-domain.js';
 import { notesWithDistricts } from '../../../public/os/domain/smart-fill-domain.js';
 import { guestScope, guestReference, requestGaps } from '../../../public/os/domain/guest-search-domain.js';
 import { whatsappDigits } from '../../../public/os/domain/format-domain.js';
@@ -18,6 +18,7 @@ import { saveRecord } from './records-service.js';
 import { notifyOffice } from './bot-notify.js';
 
 const clean = (v, n = 100) => String(v ?? '').trim().slice(0, n);
+const sameText = (a, b) => clean(a).replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه') === clean(b).replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه');
 function rate(ctx, ip, action, limit) {
   if (!consumePublicRateLimit(publicRateLimitKey({ route: `guest-${action}`, ip, officeId: '' }), { limit, windowMs: 60000 }).ok) throw ctx.deps.appError('rate_limited', 429, 'محاولات كثيرة، حاول بعد قليل');
 }
@@ -98,21 +99,38 @@ export async function submitGuestRequest(ctx, { input = {}, ip = '' }) {
     if (previous?.status === 'SENT') return { ok: true, duplicate: true, reference: previous.reference, offices: JSON.parse(previous.resultJson || '[]') };
   }
   const sent = [];
+  const notify = (officeId, key, title, body, opportunityId) => {
+    const job = notifyOffice(ctx.store, ctx.deps, { officeId, key: `${key}:${hex.slice(0, 24)}`, title, body, route: 'repo', opportunityId, now })
+      .catch((error) => console.warn('[guest-request] office notify failed', error?.message));
+    return ctx.waitUntil ? ctx.waitUntil(job) : job;
+  };
   for (const office of offices) {
-    // Same save path as the office itself: validation, duplicate detection (same phone + request), then matching.
-    const saved = await saveRecord(ctx, {
-      actor: await receivingActor(ctx, office.id), officeId: office.id, requestKey: `guest-${hex.slice(0, 24)}`,
-      input: { ...record, intakeOrigin: { channel: 'OTHER', role: 'CLIENT', method: text ? 'SMART_FILL' : 'MANUAL', text } }
-    });
-    await ctx.store.update(['offices', office.id, 'opportunities', saved.recordId], () => ({
-      publicRequestReference: reference, publicRequestSource: 'public_search', consentProcessing: true, consentContact: true, consentAt: now
-    }));
-    if (!saved.duplicate) {
-      const job = notifyOffice(ctx.store, ctx.deps, { officeId: office.id, key: `guest-request:${hex.slice(0, 24)}`, title: 'طلب عميل جديد من البحث العقاري', body: `${name} — ${record.propertyType} في ${record.district} (المرجع ${reference})`, route: 'repo', opportunityId: saved.recordId, now })
-        .catch((error) => console.warn('[guest-request] office notify failed', error?.message));
-      if (ctx.waitUntil) ctx.waitUntil(job); else await job;
+    const actor = await receivingActor(ctx, office.id);
+    const created = [], changed = [];
+    let existing = 0;
+    // One request per accepted district: matching reads one district per record, so each district is matched
+    // for real. All of them carry the same public reference; the other districts stay named in the notes.
+    for (const [i, district] of scope.districts.entries()) {
+      const input = { ...record, district, notes: notesWithDistricts(text, scope.districts.filter((d) => d !== district)) };
+      // Same save path as the office itself: validation, duplicate detection (same phone + request), then matching.
+      const saved = await saveRecord(ctx, { actor, officeId: office.id, requestKey: `guest-${hex.slice(0, 24)}-${i}`, input: { ...input, intakeOrigin: { channel: 'OTHER', role: 'CLIENT', method: text ? 'SMART_FILL' : 'MANUAL', text } } });
+      const recordPath = ['offices', office.id, 'opportunities', saved.recordId];
+      if (saved.duplicate && saved.duplicateMessage) {
+        // The office already holds this client's request for this district. It is never overwritten from a public
+        // page (a broker may have refined it); different criteria reach the office as a notice for review.
+        existing++;
+        const row = await ctx.store.get(recordPath);
+        const differs = row && (priceOf(row) !== check.value.price || !sameText(row.city, check.value.city)
+          || (check.value.rooms && Number(row.rooms) !== check.value.rooms) || (check.value.area && Number(row.area) !== check.value.area));
+        if (differs) { changed.push({ recordId: saved.recordId, district }); continue; }
+      } else if (!saved.duplicate) created.push({ recordId: saved.recordId, district });
+      await ctx.store.update(recordPath, () => ({
+        publicRequestReference: reference, publicRequestSource: 'public_search', consentProcessing: true, consentContact: true, consentAt: now
+      }));
     }
-    sent.push({ officeId: office.id, officeName: clean(office.officeName, 120) || 'مكتب عقاري', duplicate: Boolean(saved.duplicate) });
+    if (created.length) await notify(office.id, 'guest-request', 'طلب عميل جديد من البحث العقاري', `${name} — ${record.propertyType} في ${created.map((c) => c.district).join('، ')} (المرجع ${reference})`, created[0].recordId);
+    if (changed.length) await notify(office.id, 'guest-request-changed', 'عميل أعاد إرسال طلبه بمواصفات مختلفة', `${name} — ${record.propertyType} في ${changed.map((c) => c.district).join('، ')}: الميزانية ${check.value.price.toLocaleString('en-US')} ريال${check.value.rooms ? ` · ${check.value.rooms} غرف` : ''}${check.value.area ? ` · ${check.value.area} م²` : ''}. راجع الطلب الحالي (المرجع ${reference}).`, changed[0].recordId);
+    sent.push({ officeId: office.id, officeName: clean(office.officeName, 120) || 'مكتب عقاري', requests: scope.districts.length, duplicate: existing > 0 && !created.length, changedForReview: changed.length > 0 });
   }
   await ctx.store.set(path, { reference, status: 'SENT', officeIdsJson: JSON.stringify(scope.officeIds), resultJson: JSON.stringify(sent), createdAt: now, sentAt: ctx.now() });
   return { ok: true, duplicate: false, reference, offices: sent };

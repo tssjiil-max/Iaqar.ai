@@ -150,26 +150,60 @@ test('a request reaches each chosen office bank once, with one real reference, a
   assert.match(r.body.reference, /^IQ-[A-F0-9]{8}$/);
   assert.deepEqual(r.body.offices.map((o) => o.officeId).sort(), [OFFICE_A, OFFICE_B].sort());
   for (const officeId of [OFFICE_A, OFFICE_B]) {
-    const rows = requestsOf(officeId, r.body.reference);
-    assert.equal(rows.length, 1, `one request in ${officeId}`);
-    const row = rows[0];
-    assert.equal(row.officeId, officeId); assert.equal(row.opportunityKind, 'REQUEST'); assert.equal(row.propertyType, 'فيلا');
-    assert.equal(Number(row.priceOrBudget || row.budget), 5000000); assert.equal(row.district, 'درة العقيق');
-    assert.match(row.notes || '', /العزيزية/, 'the other chosen district is kept with the request');
-    assert.equal(row.consentContact, true); assert.equal(row.publicRequestSource, 'public_search');
-    assert.ok(!row.publicSearchVisible, 'a request is never published');
+    const rows = requestsOf(officeId, r.body.reference).sort((a, b) => a.district.localeCompare(b.district));
+    // One request per chosen district, so the matching engine (one district per record) matches each of them.
+    assert.deepEqual(rows.map((row) => row.district).sort(), ['العزيزية', 'درة العقيق'].sort(), `one request per district in ${officeId}`);
+    for (const row of rows) {
+      assert.equal(row.officeId, officeId); assert.equal(row.opportunityKind, 'REQUEST'); assert.equal(row.propertyType, 'فيلا');
+      assert.equal(Number(row.priceOrBudget || row.budget), 5000000);
+      const other = row.district === 'العزيزية' ? 'درة العقيق' : 'العزيزية';
+      assert.match(row.notes || '', new RegExp(other), 'the other chosen district stays named with the request');
+      assert.equal(row.consentContact, true); assert.equal(row.publicRequestSource, 'public_search');
+      assert.ok(!row.publicSearchVisible, 'a request is never published');
+    }
   }
   for (const officeId of [OFFICE_C, OFFICE_D]) assert.equal(requestsOf(officeId, r.body.reference).length, 0, `nothing reaches ${officeId}`);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const notices = h.store.list(`offices/${OFFICE_A}/notifications`).filter((n) => String(n.body || '').includes(r.body.reference));
+  assert.equal(notices.length, 1, 'one notice per office, not one per district');
   // Double tap / network retry with the same key: same reference, no second record anywhere.
   const again = await call('/os/public/requests', body);
   assert.equal(again.status, 200); assert.equal(again.body.reference, r.body.reference); assert.equal(again.body.duplicate, true);
-  for (const officeId of [OFFICE_A, OFFICE_B]) assert.equal(requestsOf(officeId, r.body.reference).length, 1);
-  // Concurrent duplicate taps with a fresh key still leave one record per office (same phone + same request).
+  for (const officeId of [OFFICE_A, OFFICE_B]) assert.equal(requestsOf(officeId, r.body.reference).length, 2);
+  // Concurrent duplicate taps with a fresh key still leave one record per office and district (same phone + same request).
   const key2 = key('race');
   const [x, y] = await Promise.all([call('/os/public/requests', { ...body, requestKey: key2 }), call('/os/public/requests', { ...body, requestKey: key2 })]);
   assert.equal(x.body.reference, y.body.reference);
   const active = h.store.list(`offices/${OFFICE_A}/opportunities`).filter((row) => row.opportunityKind === 'REQUEST' && row.contactPhone === '0557001100' && row.lifecycleStatus !== 'DELETED');
-  assert.equal(active.length, 1, 'no duplicate request records in the office bank');
+  assert.equal(active.length, 2, 'no duplicate request records in the office bank');
+});
+
+test('a resubmitted request with other criteria never overwrites the office record; the office is told instead', async () => {
+  const first = await call('/os/public/requests', fullRequest({ phone: '0557003300', officeIds: [OFFICE_B], criteria: { purpose: 'PURCHASE', propertyType: 'فيلا', city: 'المدينة المنورة', districts: ['الخالدية'], price: 3000000 } }));
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  const [row] = requestsOf(OFFICE_B, first.body.reference);
+  const second = await call('/os/public/requests', fullRequest({ phone: '0557003300', officeIds: [OFFICE_B], criteria: { purpose: 'PURCHASE', propertyType: 'فيلا', city: 'المدينة المنورة', districts: ['الخالدية'], price: 3600000 } }));
+  assert.equal(second.status, 200, JSON.stringify(second.body));
+  assert.equal(second.body.offices[0].changedForReview, true);
+  const after = h.store.get(`offices/${OFFICE_B}/opportunities/${row.id}`);
+  assert.equal(Number(after.priceOrBudget || after.budget), 3000000, 'the existing request keeps its criteria');
+  assert.equal(after.publicRequestReference, first.body.reference, 'the new reference is not attached to stale criteria');
+  // Sent after the answer (waitUntil), so it may land a moment later.
+  let notice;
+  for (let i = 0; i < 100 && !notice; i++) { notice = h.store.list(`offices/${OFFICE_B}/notifications`).find((n) => String(n.body || '').includes(second.body.reference)); if (!notice) await new Promise((r) => setTimeout(r, 10)); }
+  assert.ok(notice && /3,600,000/.test(notice.body), 'the office is told the new budget');
+  // Same criteria again: simply «already with the office», nothing flagged.
+  const third = await call('/os/public/requests', fullRequest({ phone: '0557003300', officeIds: [OFFICE_B], criteria: { purpose: 'PURCHASE', propertyType: 'فيلا', city: 'المدينة المنورة', districts: ['الخالدية'], price: 3000000 } }));
+  assert.equal(third.body.offices[0].duplicate, true); assert.equal(third.body.offices[0].changedForReview, false);
+});
+
+test('browse mode keeps «rooms+» and «area+» minima', async () => {
+  villa(OFFICE_C, 'c-small', 'الخالدية', 2000000, { rooms: 3, area: 250 });
+  villa(OFFICE_C, 'c-large', 'الخالدية', 2100000, { rooms: 6, area: 500 });
+  const r = await search({ scope: 'office', officeId: OFFICE_C, criteria: { districts: ['الخالدية'], rooms: 4, area: 300 } });
+  assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.mode, 'inventory');
+  const refs = r.body.results.map((x) => x.reference);
+  assert.ok(refs.includes(`${OFFICE_C}:c-large`)); assert.ok(!refs.includes(`${OFFICE_C}:c-small`), 'smaller rooms/area excluded');
 });
 
 test('a request needs explicit consent, a valid phone, chosen offices and the request criteria', async () => {

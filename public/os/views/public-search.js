@@ -10,7 +10,7 @@ import { h, ic, clear, field, append, surface, feedback } from '../core/dom.js';
 import { propertyTypeIcon } from '../core/icons.js';
 import { api, workerBase } from '../core/runtime.js';
 import { runAction, openSheet } from '../core/ui.js';
-import { formatNumber, whatsappDigits } from '../domain/format-domain.js';
+import { formatNumber, toNumber, whatsappDigits } from '../domain/format-domain.js';
 import { inventoryInquiry } from '../domain/inventory-query-domain.js';
 import { PROPERTY_TYPES } from '../domain/records-domain.js';
 import { GUEST_LIMITS, requestGaps, sameDistrict, toggleLimited, uniqueDistricts } from '../domain/guest-search-domain.js';
@@ -224,7 +224,8 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
   const criteria = () => {
     const out = { districts: districts.values() };
     for (const k of ['purpose', 'propertyType', 'city', 'price', 'rooms', 'area']) if (String(controls[k].value).trim()) out[k] = String(controls[k].value).trim();
-    if (out.price) out.price = Number(String(out.price).replace(/[^\d.]/g, '')) || '';
+    // Arabic-Indic and Persian digits and separators are read by the shared helper.
+    for (const k of ['price', 'rooms', 'area']) if (out[k]) out[k] = toNumber(out[k]) || '';
     return out;
   };
   function scope() {
@@ -377,7 +378,7 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
         h('span', { class: 'os-guest-empty-icon ok', 'aria-hidden': 'true' }, ic('check-circle')),
         h('h3', { class: 'os-h2', text: 'وصل طلبك للمكاتب' }),
         h('p', { class: 'os-guest-reference' }, 'الرقم المرجعي: ', h('b', { dir: 'ltr', 'data-request-reference': r.reference, text: r.reference })),
-        h('ul', { class: 'os-guest-sent' }, r.offices.map((o) => h('li', { 'data-request-office': o.officeId }, ic('office'), h('span', { text: o.officeName }), h('small', { text: o.duplicate ? 'طلبك موجود لديهم مسبقًا — حدّثناه' : 'وصل لبنك الطلبات' })))),
+        h('ul', { class: 'os-guest-sent' }, r.offices.map((o) => h('li', { 'data-request-office': o.officeId }, ic('office'), h('span', { text: o.officeName }), h('small', { text: o.changedForReview ? 'طلبك موجود لديهم مسبقًا — أبلغناهم بالتعديلات لمراجعتها' : o.duplicate ? 'طلبك موجود لديهم مسبقًا' : 'وصل لبنك الطلبات' })))),
         h('p', { class: 'os-sub', text: 'يتواصل معك المكتب عند توفر المناسب. احتفظ بالرقم المرجعي لمتابعة طلبك.' }),
         h('button', { type: 'button', class: 'os-btn secondary block', onClick: () => { requestKey = newKey(); reqForm.hidden = false; clear(reqOutcome); open('search'); } }, 'بحث جديد')));
     }, { onError: (error) => { if (error.details) { scopeBox.open = true; specs.open = true; } fail(error.message); } });
@@ -429,8 +430,11 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
     options = { ...r, offices: r.offices || [] };
     for (const city of r.cities || []) ensureCity(city);
     if (homeId && r.home) {
+      const home = r.offices.find((o) => o.id === homeId) || r.home;
       const untouched = offices.values().length === 1 && offices.values()[0].id === homeId;
-      if (untouched) offices.set([r.offices.find((o) => o.id === homeId) || r.home], { silent: true });
+      // A link kept to its own office always ends on that office, even if the guest cleared it while this loaded.
+      if (r.home.allowExpand === false) { offices.set([home], { silent: true }); scopeInput.value = 'office'; }
+      else if (untouched) offices.set([home], { silent: true });
       if (r.home.allowExpand === false) { offices.lock(true); scopeNote.textContent = 'هذا الرابط يعرض عروض هذا المكتب ويرسل الطلب له فقط.'; scopeNote.hidden = false; }
     }
     districts.redraw(); offices.redraw(); offerOffice.redraw();

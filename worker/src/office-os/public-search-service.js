@@ -112,6 +112,9 @@ export async function guestSearch(ctx,{input={},ip=''}){
   if((source.city&&!eq(row.city,source.city))||(source.propertyType&&!eq(row.propertyType,source.propertyType)))return null;
   if (browse && criteria.purpose && (criteria.purpose === 'PURCHASE' ? !['SALE','PURCHASE'].includes(row.purpose) : !['RENT','LEASE_REQUEST'].includes(row.purpose))) return null;
   if(check.value.price>0 && (criteria.priceExclusive === true ? priceOf(row)>=check.value.price : priceOf(row)>check.value.price))return null;
+  // «4 غرف+» / «300 م²+»: a known smaller value is not shown (an unknown one is kept, without that reason).
+  if (browse && check.value.rooms > 0 && Number(row.rooms) > 0 && Number(row.rooms) < check.value.rooms) return null;
+  if (browse && check.value.area > 0 && Number(row.area) > 0 && Number(row.area) < check.value.area) return null;
   const inside=districts.find(d=>sameDistrict(row.district,d));
   if(!districts.length||inside)return {same:true,km:null,district:inside||''};
   const to=point(row.coordinates);if(!to)return null;

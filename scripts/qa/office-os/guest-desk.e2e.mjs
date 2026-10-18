@@ -126,6 +126,40 @@ try {
     console.log('✔ office link: «وش عندك عروض في درة العقيق؟» → this office only, nothing assumed');
   }
 
+  // Review fixes: Arabic-Indic budget digits are read; a restricted office link always keeps its office.
+  {
+    const { page, ctx, errors } = await openPage(390);
+    await page.locator('[data-search-criteria] > summary').click();
+    await page.locator('[name=districtsQuery]').fill('درة العقيق');
+    await page.locator('[data-pick-free=districts], [data-picker=districts] [data-pick-option="درة العقيق"]').first().click();
+    await page.locator('[data-guest-specs] > summary').click();
+    await page.locator('[name=price]').fill('٤٫٧٠٠٫٠٠٠'.replace(/٫/g, ''));
+    await page.locator('[data-guest-search]').click();
+    await page.locator('[data-search-result]').first().waitFor();
+    const prices = await page.locator('[data-search-result] .os-guest-price').allInnerTexts();
+    assert.ok(prices.every((p) => Number(p.replace(/\D/g, '')) <= 4700000), `Arabic-Indic budget applied: ${prices}`);
+    assert.match(await page.locator('[data-search-summary]').innerText(), /4,700,000/);
+    assert.deepEqual(errors, []);
+    await ctx.close();
+    h.store.patch(`publicOffices/${OFFICE_A}`, { publicSearchExpand: false });
+    const slow = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: 'ar-SA' });
+    const p2 = await slow.newPage();
+    // Hold the office list so the guest can clear the office before it arrives.
+    let release; const held = new Promise((r) => { release = r; });
+    await p2.route('**/os/public/search/options', async (route) => { await held; await route.continue(); });
+    await p2.goto(`${h.origin}/m/sultan`); await p2.locator('[data-guest-desk]').waitFor();
+    await p2.locator('[data-search-criteria] > summary').click();
+    await p2.locator('[data-pick-all=offices]').click();
+    assert.equal(await p2.locator('[data-picked=offices] [data-chip]').count(), 0);
+    release();
+    await p2.locator('[data-scope-note]:not([hidden])').waitFor();
+    assert.equal(await p2.locator('[data-picked=offices] [data-chip]').count(), 1, 'the link office is restored');
+    assert.equal(await p2.locator('[name=scope]').inputValue(), 'office');
+    await slow.close();
+    h.store.patch(`publicOffices/${OFFICE_A}`, { publicSearchExpand: true });
+    console.log('✔ Arabic-Indic budget read; restricted link keeps its office');
+  }
+
   // 9–11, 17–18: no results → send to the chosen offices, saved in each office bank; double tap = one request; error then retry.
   {
     const { page, ctx, errors } = await openPage(390);
