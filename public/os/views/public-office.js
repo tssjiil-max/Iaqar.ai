@@ -1,4 +1,4 @@
-import { publicSearchForm, renderPlatformSearch } from "./public-search.js";
+import { guestDesk, guestHero, publicSearchForm, renderPlatformSearch } from "./public-search.js";
 /**
  * Public office page (/o/<slug>, ?office=<id>&view=public). No account needed.
  * The target office is the one resolved from the link (publicOffices), never a
@@ -310,8 +310,21 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
   return form;
 }
 
+/** Platform page «اعرض عقارك»: the chosen office's own owner form (same intake, same review, never published). */
+function platformOwnerForm(root) {
+  return async (card, host) => {
+    const office = await resolveOffice({ officeId: card.id });
+    if (!office || office.active === false) throw new Error("هذا المكتب غير متاح الآن — اختر مكتبًا آخر.");
+    host.append(h("p", { class: "os-public-office-name", text: office.officeName || card.officeName || "" }),
+      intakeForm(root, office, "owner", { switchKind: (_kind, carry) => {
+        renderPlatformSearch(root, { ownerForm: platformOwnerForm(root), initialText: carry?.text || "", notice: carry?.notice || "" });
+        if (carry?.text) root.querySelector("[data-guest-analyze]")?.click();
+      } }));
+  };
+}
+
 export async function renderPublicOffice(root, target) {
-  if (target?.platform) return renderPlatformSearch(root);
+  if (target?.platform) return renderPlatformSearch(root, { ownerForm: platformOwnerForm(root) });
   clear(root);
   const main = h("main", { class: "os-app os-public-shell" }, loadingState({ class: "os-skeleton", style: { height: "220px" } }));
   append(root, main);
@@ -327,33 +340,23 @@ export async function renderPublicOffice(root, target) {
     return;
   }
   document.title = office.officeName || "المكتب العقاري";
-  const request = (carry) => {
-    clear(main);
-    append(main, pageHeader('أرسل طلبي للمكتب', { description: 'خطوة أخيرة للتواصل معك، بدون إنشاء حساب.', backControl: h('button', { type: 'button', class: 'os-back', onClick: () => choose('client', carry) }, 'رجوع للبحث') }),
-      intakeForm(root, office, 'client', { switchKind: choose, carry }));
-    window.scrollTo({ top: 0 });
-  };
   const choose = (kind, carry = null) => {
     clear(main);
     append(main, 
       pageHeader(h("h1", { class: "os-page-title", text: kind === "owner" ? "لدي عقار" : "أبحث عن عقار" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => renderPublicOffice(root, target) }, ic("chev-right"), "رجوع"), action: h("span") }),
       h("p", { class: "os-public-office-name", text: office.officeName || "" }),
-      kind === "client" ? publicSearchForm(office, { initialText: carry?.text || "", notice: carry?.notice || "", onRequest: request }) : intakeForm(root, office, kind, { switchKind: choose, carry }));
+      kind === "client" ? publicSearchForm(office, { initialText: carry?.text || "", notice: carry?.notice || "", onOwner: () => choose("owner") }) : intakeForm(root, office, kind, { switchKind: choose, carry }));
     window.scrollTo({ top: 0 });
     // A request pasted on «لدي عقار» arrives here with its text: read it straight away.
     if (carry?.text && !carry?.criteria) main.querySelector("[data-smart-analyze], [data-guest-analyze]")?.click();
   };
   const wa = buildWhatsAppUrl(office.whatsapp || office.phone, `مرحبًا ${office.officeName || ""}`);
-  const path = (kind, iconName, title, sub) => h("button", { type: "button", class: "os-path-card", "data-path": kind, onClick: () => choose(kind) },
-    h("span", { class: "ic" }, ic(iconName)),
-    h("span", { class: "os-path-text" }, h("b", { text: title }), h("small", { text: sub })),
-    h("span", { class: "os-path-go", "aria-hidden": "true" }, ic("chev-left")));
-  main.classList.add("os-public-page");
+  main.classList.add("os-public-page", "os-guest-page");
   append(main,
     officeHeader(office),
-    publicSearchForm(office, { onRequest: request }),
-    h("div", { class: "os-paths" },
-      path("owner", "home", "عندك عقار وتبي تعرضه؟", "أرسل عرضك للمكتب · للبيع أو الإيجار")),
+    guestHero({ level: "h2" }),
+    // «اعرض عقارك» opens this office's own owner form; search and requests stay on the page.
+    guestDesk(office, { onOwner: () => choose("owner") }),
     h("p", { class: "os-public-trust", "data-public-trust": "" }, "بدون حساب · تصل بياناتك لهذا المكتب فقط · تراجعها قبل الإرسال"),
     h("p", { class: "os-public-coop", "data-coop-hint": "" }, ic("handshake"), " وسيط متعاون؟ اختر المسار ثم صفتك «وسيط عقاري متعاون»."),
     (office.phone || wa) ? h("div", { class: "os-public-contact" },
