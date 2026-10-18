@@ -54,7 +54,9 @@ service cloud.firestore {
         // (المدير يغيّر مفتاح الرد الآلي عبر الـ Worker، ويُسجَّل في التدقيق).
         'integrations', 'whatsappConversations', 'whatsappCases', 'whatsappOutbox', 'kapsoChats', 'kapsoInbound', 'kapsoDeliveryLog',
         // جلسات استكمال البيانات ومؤشرات المطابقة وتشخيصها وسجل الإرسال — للـ Worker فقط.
-        'completionSessions', 'matchCurrentPointers', 'matchDiagnostics', 'notificationDispatches'
+        'completionSessions', 'matchCurrentPointers', 'matchDiagnostics', 'notificationDispatches',
+        // حد المالك لكل عرض: لا يقرؤه أي متصفح، ويضبطه المدير عبر الـ Worker.
+        'mandates'
       ];
     }
     function validOfficeProfile() {

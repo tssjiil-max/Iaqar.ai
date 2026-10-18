@@ -27,6 +27,7 @@ import { saveRecord, pairRecords } from './records-service.js';
 import { notifyOffice } from './bot-notify.js';
 import { priceOf } from '../../../public/os/domain/records-domain.js';
 import { writeAudit } from './audit-log.js';
+import { mandateFloor } from './mandate-service.js';
 import { HELD_BY_APP, conversationView, mayRelease, mayTake, mayView } from '../../../public/os/domain/conversation-control-domain.js';
 
 const clean=(v,n=120)=>String(v??'').trim().slice(0,n);
@@ -247,7 +248,7 @@ async function agentTurn(ctx,job,c){
    if(!action.price||action.price<1000)return {messages:[askOfferMessage(item)],patch:{...base,awaiting:'offer_price'}};
    const kase=await ensureCase(ctx,job,c,item,index);
    // The owner's floor (if the office recorded one) only tells the office how to route it; the client never learns it.
-   const mandate=mandateDecision({floor:Number(listing.row.negotiationFloor)||null},action.price);
+   const mandate=mandateDecision({floor:await mandateFloor(ctx,listing.officeId,listing.recordId)},action.price);
    await updateCase(ctx,job.officeId,kase.id,cur=>{
     const offers=cur.negotiation?.offers||[];if(offers.some(o=>o.id===job.id))return null;
     return {stage:CASE_STAGE.NEGOTIATING,negotiation:{...cur.negotiation,status:'AWAITING_OWNER',offers:[...offers,{id:job.id,price:action.price,listedPrice:item.price,at:ctx.now().toISOString(),source:'client_whatsapp',mandate}].slice(-20)},events:[event(ctx,'CLIENT_OFFER',`عرض العميل ${action.price} ريال (المعلن ${item.price})`)]};

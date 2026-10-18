@@ -55,7 +55,9 @@ function fixture({ envPatch = {} } = {}) {
       priceOrBudget: price, salePrice: price, advertiserRole: 'OWNER', contactPhone: '0551234567', contactName: 'مالك سري', notes: 'ملاحظة داخلية سرية',
       lifecycleStatus: 'ACTIVE', publicSearchVisible: true, rooms: 5, area: 400, version: 1, brokerId: 'broker-1', ...extra
     });
-    await villa('v1', 1500000, { images: [IMG('office-a', 'v1', 'a'), IMG('office-a', 'other', 'b')], negotiationFloor: 1400000 });
+    await villa('v1', 1500000, { images: [IMG('office-a', 'v1', 'a'), IMG('office-a', 'other', 'b')] });
+    // The owner's floor lives apart from the record (Worker-only), set by the manager with its source.
+    await store.set(['offices', 'office-a', 'mandates', 'v1'], { officeId: 'office-a', recordId: 'v1', floor: 1400000, source: 'اتصال مع المالك', setBy: 'broker-1' });
     await villa('v2', 1800000);
     await villa('v3', 1900000);
     await villa('v4', 1950000);

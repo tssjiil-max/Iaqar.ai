@@ -1,3 +1,4 @@
+import { getRecordMandate, setRecordMandate } from "./mandate-service.js";
 import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue, listWhatsAppCases, actOnWhatsAppCase, listWhatsAppConversations, getWhatsAppConversation, controlWhatsAppConversation, replyInWhatsAppConversation } from "./whatsapp-agent-service.js";
 /**
  * /os/* routes — the office operating system API.
@@ -74,6 +75,9 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/whatsapp-agent/conversation/reply": (ctx, b, actor) => replyInWhatsAppConversation(ctx, {
     officeId: ctx.officeId, actor, conversationId: text(b.conversationId), text: typeof b.text === "string" ? b.text : "", requestKey: text(b.requestKey)
   }),
+  // «حد المالك» for one offer: the manager only; Worker-only storage, never on the record.
+  "/os/records/mandate": (ctx, b, actor) => getRecordMandate(ctx, { officeId: ctx.officeId, actor, recordId: text(b.recordId) }),
+  "/os/records/mandate/set": (ctx, b, actor) => setRecordMandate(ctx, { officeId: ctx.officeId, actor, recordId: text(b.recordId), floor: b.floor, source: b.source }),
   "/os/records/cooperation": (ctx, b, actor) => reviewExternalCooperation(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), input: b }),
   // «تعبئة ذكية» / «إضافة سريعة»: analysis only — the record is saved later through /os/records/save after review.
   "/os/smart-fill": (ctx, b, actor) => analyzeOfficeText(ctx, { officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", multi: b.multi !== false, ip: actor.uid }),

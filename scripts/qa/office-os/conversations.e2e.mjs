@@ -105,6 +105,31 @@ try {
   check("opening it directly is refused", (await broker.page.locator(".os-alert.bad").innerText()).includes("لوسيط آخر"));
   assert.deepEqual(broker.errors, []);
   await broker.ctx.close();
+
+  // «حد المالك» on an offer: the manager sets it with its source; it is stored apart from the record; a broker never sees it.
+  h.store.seed(`offices/${OFFICE_A}/opportunities/qa-villa`, { officeId: OFFICE_A, opportunityKind: "OFFER", purpose: "SALE", transactionType: "sale", propertyType: "فيلا", city: "الرياض", district: "الملقا", priceOrBudget: 1500000, salePrice: 1500000, area: 400, lifecycleStatus: "ACTIVE", brokerId: BROKER_A2, version: 1 });
+  const manager = await open(OWNER_A, 390);
+  await manager.page.goto(`${h.origin}/#/record/qa-villa`);
+  await manager.page.locator('[data-record-mandate] [data-mandate-current=""]').waitFor();
+  await manager.page.locator("[data-mandate-floor]").fill("1600000");
+  await manager.page.locator("[data-mandate-source]").fill("اتصال مع المالك اليوم");
+  await manager.page.locator("[data-mandate-save]").click();
+  await manager.page.locator(".os-toast, [role=alert], .os-alert").filter({ hasText: "لا يزيد عن السعر" }).first().waitFor();
+  check("a floor above the listed price is refused", !h.store.get(`offices/${OFFICE_A}/mandates/qa-villa`));
+  await manager.page.locator("[data-mandate-floor]").fill("1400000");
+  await manager.page.locator("[data-mandate-save]").click();
+  await manager.page.locator('[data-mandate-current="1400000"]').waitFor();
+  const mandate = h.store.get(`offices/${OFFICE_A}/mandates/qa-villa`);
+  check("the floor and its source are stored apart from the record", mandate?.floor === 1400000 && mandate.source === "اتصال مع المالك اليوم" && h.store.get(`offices/${OFFICE_A}/opportunities/qa-villa`).negotiationFloor === undefined);
+  check("RTL and no horizontal scroll on the record page", await noOverflow(manager.page));
+  await manager.page.screenshot({ path: path.join(OUT, "390-4-mandate.png"), fullPage: true });
+  assert.deepEqual(manager.errors, []);
+  await manager.ctx.close();
+  const agent = await open(BROKER_A2, 390);
+  await agent.page.goto(`${h.origin}/#/record/qa-villa`);
+  await agent.page.locator("[data-record-actions]").waitFor();
+  check("a broker's record page has no «حد المالك»", (await agent.page.locator("[data-record-mandate]").count()) === 0);
+  await agent.ctx.close();
   console.log(`Conversations: ${checks.length} checks passed.`);
 } catch (error) {
   console.error(error);

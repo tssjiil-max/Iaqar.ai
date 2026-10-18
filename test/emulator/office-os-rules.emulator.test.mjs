@@ -197,7 +197,7 @@ test("WhatsApp agent, Kapso and integration switches are Worker-only: no member 
   const paths = [
     "integrations/whatsapp", "whatsappConversations/c1", "whatsappCases/wc_1", "whatsappOutbox/o1",
     "kapsoChats/wa_1", "kapsoInbound/k1", "kapsoDeliveryLog/d1",
-    "completionSessions/s1", "matchCurrentPointers/p1", "matchDiagnostics/m1", "notificationDispatches/n1"
+    "completionSessions/s1", "matchCurrentPointers/p1", "matchDiagnostics/m1", "notificationDispatches/n1", "mandates/r1"
   ];
   await env.withSecurityRulesDisabled(async (ctx) => {
     for (const path of paths) await setDoc(doc(ctx.firestore(), `offices/office-a/${path}`), { officeId: "office-a", autoReplyEnabled: false, handoff: true, optedOut: true });
