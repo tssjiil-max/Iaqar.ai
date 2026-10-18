@@ -387,6 +387,27 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-inbox-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .os-inbox-foot { display: grid; gap: 2px; }
 
+/* «المحادثات» — who answers each WhatsApp conversation, and the thread. */
+.os-conv-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; text-align: start; font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--brand-line, #DCE8EB); }
+.os-conv-row-main, .os-conv-row-side { display: grid; gap: 3px; min-width: 0; }
+.os-conv-row-side { justify-items: end; }
+.os-conv-row-main b { overflow-wrap: anywhere; }
+.os-conv-mode { font-size: .78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; background: #e4f6ec; color: #17653a; }
+.os-conv-mode.is-human { background: #e6effc; color: #1d4f91; }
+.os-conv-mode.is-waiting { background: #fff4de; color: #7a5200; }
+.os-conv-mode.is-opted_out { background: #f1f3f4; color: #4d5a5e; }
+.os-conv-waiting { font-size: .78rem; font-weight: 700; color: #7a5200; }
+.os-conv-head { display: grid; gap: 6px; }
+.os-conv-thread { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 8px; }
+.os-conv-msg { display: grid; gap: 2px; max-width: min(88%, 560px); padding: 8px 12px; border-radius: 14px; background: var(--surface, #fff); border: 1px solid var(--brand-line, #DCE8EB); }
+.os-conv-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.os-conv-msg.is-customer { justify-self: start; }
+.os-conv-msg.is-assistant { justify-self: end; background: #f2f8f4; }
+.os-conv-msg.is-broker { justify-self: end; background: #eef3fc; }
+.os-conv-who { font-size: .78rem; font-weight: 700; color: #4d6a72; }
+.os-conv-event { justify-self: center; text-align: center; color: #4d6a72; font-size: .8rem; }
+.os-conv-reply { display: grid; gap: 8px; }
+
 /* «مركز التواصل والدعم» — channel chips and support actions inside the card (real states only). */
 .ref-support-card { display: grid; gap: 10px; }
 .ref-support-channels { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }

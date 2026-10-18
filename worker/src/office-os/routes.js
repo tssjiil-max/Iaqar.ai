@@ -1,4 +1,4 @@
-import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue, listWhatsAppCases, actOnWhatsAppCase } from "./whatsapp-agent-service.js";
+import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue, listWhatsAppCases, actOnWhatsAppCase, listWhatsAppConversations, getWhatsAppConversation, controlWhatsAppConversation, replyInWhatsAppConversation } from "./whatsapp-agent-service.js";
 /**
  * /os/* routes — the office operating system API.
  * Office routes: Firebase ID token → office membership (Worker-verified) → service.
@@ -64,6 +64,15 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/whatsapp-agent/case/action": (ctx, b, actor) => actOnWhatsAppCase(ctx, {
     officeId: ctx.officeId, actor, caseId: text(b.caseId), action: text(b.action),
     input: b.input && typeof b.input === "object" ? b.input : {}, requestKey: text(b.requestKey)
+  }),
+  // «المحادثات»: who answers each WhatsApp conversation, and the broker's take over / reply / hand back.
+  "/os/whatsapp-agent/conversations": (ctx, b, actor) => listWhatsAppConversations(ctx, { officeId: ctx.officeId, actor }),
+  "/os/whatsapp-agent/conversation": (ctx, b, actor) => getWhatsAppConversation(ctx, { officeId: ctx.officeId, actor, conversationId: text(b.conversationId) }),
+  "/os/whatsapp-agent/conversation/control": (ctx, b, actor) => controlWhatsAppConversation(ctx, {
+    officeId: ctx.officeId, actor, conversationId: text(b.conversationId), action: text(b.action), expectedVersion: Number(b.expectedVersion), requestKey: text(b.requestKey)
+  }),
+  "/os/whatsapp-agent/conversation/reply": (ctx, b, actor) => replyInWhatsAppConversation(ctx, {
+    officeId: ctx.officeId, actor, conversationId: text(b.conversationId), text: typeof b.text === "string" ? b.text : "", requestKey: text(b.requestKey)
   }),
   "/os/records/cooperation": (ctx, b, actor) => reviewExternalCooperation(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), input: b }),
   // «تعبئة ذكية» / «إضافة سريعة»: analysis only — the record is saved later through /os/records/save after review.

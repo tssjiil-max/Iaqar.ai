@@ -2714,11 +2714,14 @@ async function receiveMetaWebhook(request, env, requestId) {
   for (const entry of Array.isArray(payload.entry) ? payload.entry : []) {
     const wabaId = cleanText(entry && entry.id, 100);
     for (const change of Array.isArray(entry && entry.changes) ? entry.changes : []) {
-      if (change.field !== "messages") continue;
+      // «smb_message_echoes» (coexistence): what a person sent from the Business app. Only the agent offices read it,
+      // to stop the agent in that conversation; the legacy inbound path never treats it as a client message.
+      const echoes = change.field === "smb_message_echoes";
+      if (change.field !== "messages" && !echoes) continue;
       const value = change && change.value || {};
       const phoneNumberId = cleanText(value.metadata && value.metadata.phone_number_id, 100);
-      const messages = Array.isArray(value.messages) ? value.messages : [];
-      if (!phoneNumberId || (messages.length === 0 && !Array.isArray(value.statuses))) continue;
+      const messages = echoes ? [] : Array.isArray(value.messages) ? value.messages : [];
+      if (!phoneNumberId || (messages.length === 0 && !Array.isArray(value.statuses) && !(echoes && Array.isArray(value.message_echoes)))) continue;
 
       const mappingDoc = await getFirestoreDocument({
         projectId,

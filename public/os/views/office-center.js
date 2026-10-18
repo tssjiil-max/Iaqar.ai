@@ -75,6 +75,7 @@ export function renderInbox(container) {
     const shown = filterInbox(views, selected);
     append(body,
       h("p", { class: "os-sub", text: "كل ما يصل من قنوات المكتب يظهر هنا بتصنيفه. العروض والطلبات تُعالج تلقائيًا، أما التحية والاستفسار ومتابعة الصفقات فتبقى لك دون أن تتحول إلى سجلات." }),
+      h("button", { type: "button", class: "os-btn secondary", "data-open-conversations": "", onClick: () => go("conversations") }, ic("whatsapp"), "محادثات واتساب ومن يرد عليها"),
       views.length ? chips(options, selected, (id) => { selected = id; draw(); }, "data-inbox-filter") : null,
       shown.length ? h("div", { class: "os-center-list" }, ...shown.map(card))
         : emptyState("inbox-in", "لا توجد رسائل بعد", "عند ربط واتساب أو تيليجرام تظهر الرسائل الواردة هنا.",

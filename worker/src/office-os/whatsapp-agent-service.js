@@ -27,6 +27,7 @@ import { saveRecord, pairRecords } from './records-service.js';
 import { notifyOffice } from './bot-notify.js';
 import { priceOf } from '../../../public/os/domain/records-domain.js';
 import { writeAudit } from './audit-log.js';
+import { HELD_BY_APP, conversationView, mayRelease, mayTake, mayView } from '../../../public/os/domain/conversation-control-domain.js';
 
 const clean=(v,n=120)=>String(v??'').trim().slice(0,n);
 const digits=v=>String(v||'').replace(/\D/g,'');
@@ -86,10 +87,13 @@ export async function ingestWhatsAppEvents(ctx,payload) {
  if(!whatsappAgentAvailable(ctx.env)||payload?.object!=='whatsapp_business_account')return {received:0,ignored:true};
  let received=0,statuses=0;
  for(const entry of Array.isArray(payload.entry)?payload.entry:[])for(const change of Array.isArray(entry.changes)?entry.changes:[]){
-  if(change.field!=='messages')continue;
+  if(change.field!=='messages'&&change.field!=='smb_message_echoes')continue;
   const value=change.value||{},phoneNumberId=clean(value.metadata?.phone_number_id);
   if(!phoneNumberId)continue;
   const mapping=await mappingFor(ctx,phoneNumberId,clean(entry.id));if(!mapping)continue;
+  // Coexistence: what a person sent from the WhatsApp Business app on the office's number. It is never a customer
+  // message and never queued; it hands that one conversation to the person (the agent stops there).
+  if(change.field==='smb_message_echoes'){for(const echo of Array.isArray(value.message_echoes)?value.message_echoes:[])await receiveAppEcho(ctx,mapping,phoneNumberId,clean(entry.id),echo);continue;}
   for(const status of Array.isArray(value.statuses)?value.statuses:[]){await receiveStatus(ctx,mapping,phoneNumberId,status);statuses++;}
   const names=new Map((value.contacts||[]).map(c=>[digits(c.wa_id),clean(c.profile?.name,80)]));
   for(const message of Array.isArray(value.messages)?value.messages:[]){
@@ -105,7 +109,7 @@ export async function ingestWhatsAppEvents(ctx,payload) {
    if(!terminal.has(saved.waQueueState)){
     const text=inbound.kind==='text'?inbound.text:'';
     const flags=STOP.test(text)?{optedOut:true}:sensitive(text)?{handoff:true}:{};
-    await appendPending(ctx,officeId,conversationId,id,{...flags,lastInboundAt:receivedAt,phoneNumberId,wabaId:clean(entry.id),senderPhone});
+    await appendPending(ctx,officeId,conversationId,id,{...flags,lastInboundAt:receivedAt,phoneNumberId,wabaId:clean(entry.id),senderPhone,senderName:names.get(senderPhone)||''});
     await ctx.store.create([...queueRoot,'jobs',`${officeId}_${id}`],{officeId,inboxId:id,dueAt:ctx.now(),createdAt:ctx.now()});
    }
    if(created)received++;
@@ -381,13 +385,19 @@ async function buildReply(ctx,job,c){
 async function finish(ctx,job,queue,state,extra={}) {
  const stored=await ctx.store.get(path(job.officeId,job.id));
  await ctx.store.set(path(job.officeId,job.id),{waQueueState:state,processingState:state==='SENT'||state==='SIMULATED'?'processed':'pending_review',isProcessed:['SENT','SIMULATED','OPTED_OUT'].includes(state),...extra,updatedAt:ctx.now()});
+ const said={role:'customer',text:job.messageText||(job.mediaRef?'[وسائط]':''),at:new Date(job.receivedAt||ctx.now()).toISOString()};
  await ctx.store.update(conversationPath(job.officeId,job.conversationId),c=>({
   pending:(c.pending||[]).filter(id=>id!==job.id),
-  ...(['SENT','SIMULATED'].includes(state)&&(c.pending||[])[0]===job.id&&stored?.waReply?{...(stored.waDraftPatch||{}),turns:[...(c.turns||[]),{role:'customer',text:job.messageText},{role:'assistant',text:stored.waReply}].slice(-16)}:{}),
-  ...(['HUMAN_REVIEW','DELIVERY_UNKNOWN','DEAD_LETTER'].includes(state)?{handoff:true}:{}),updatedAt:ctx.now()
+  ...(['SENT','SIMULATED'].includes(state)&&(c.pending||[])[0]===job.id&&stored?.waReply?{...(stored.waDraftPatch||{}),turns:[...(c.turns||[]),said,{role:'assistant',text:stored.waReply,at:ctx.now().toISOString()}].slice(-16)}:{}),
+  // What the client said while no automated reply went out stays in the thread for the person (and for the agent later).
+  ...(!['SENT','SIMULATED'].includes(state)&&(c.pending||[]).includes(job.id)?{turns:[...(c.turns||[]),said].slice(-16)}:{}),
+  ...(['HUMAN_REVIEW','DELIVERY_UNKNOWN','DEAD_LETTER'].includes(state)?{handoff:true,...(c.handoff?{}:{handoffReason:'REVIEW',controlVersion:Number(c.controlVersion||0)+1})}:{}),updatedAt:ctx.now()
  }));
  await ctx.store.remove([...queueRoot,'jobs',queue.id]);
 }
+
+/** «موظف»: after the honest reply, the conversation waits for a person. */
+const clientAsked=c=>c.handoff?{handoff:true}:{handoff:true,handoffReason:'CLIENT_ASKED',controlVersion:Number(c.controlVersion||0)+1};
 
 const summaryOf=messages=>messages.map(m=>m.type==='text'?m.text.body:m.type==='interactive'?m.interactive.body.text:m.type==='image'?`[صورة] ${m.image.caption||''}`:'').filter(Boolean).join('\n—\n').slice(0,4000);
 
@@ -432,7 +442,7 @@ async function processJob(ctx,queue) {
   if(!whatsappAgentAvailable(ctx.env)||!await officeOn(ctx,job.officeId)||freshC.optedOut||freshC.handoff||!agentNumber(freshMapping)||freshMapping.officeId!==job.officeId||!recipientAllowed(ctx,job.senderPhone)||ctx.now().getTime()-millis(job.receivedAt)>=DAY){await finish(ctx,job,queue,'HUMAN_REVIEW',{waError:'policy_changed'});return;}
   if(economicModeActive(ctx.env)||ctx.env.WHATSAPP_AGENT_SEND!=='enabled'){
    await finish(ctx,job,queue,'SIMULATED');
-   if(reply.handoffAfterSend)await ctx.store.update(cp,()=>({handoff:true}));
+   if(reply.handoffAfterSend)await ctx.store.update(cp,clientAsked);
    return;
   }
   if(!whatsappAccessToken(ctx.env))throw Object.assign(Error('meta_token_missing'),{code:'meta_token_missing'});
@@ -453,7 +463,7 @@ async function processJob(ctx,queue) {
   await ctx.store.set(p,{outboundMessageIds:sentIds});
   const final=await ctx.store.get(p);
   await finish(ctx,job,queue,final.deliveryState==='failed'?'HUMAN_REVIEW':'SENT');
-  if(reply.handoffAfterSend)await ctx.store.update(cp,()=>({handoff:true}));
+  if(reply.handoffAfterSend)await ctx.store.update(cp,clientAsked);
  }catch(e){
   const current=await ctx.store.get(p);
   if(current?.outboundMessageId){
@@ -477,17 +487,19 @@ async function processJob(ctx,queue) {
  * Idempotent per key; the same gates as replies; outside the 24-hour window nothing is sent — an approved
  * template would be required, so the outbox says so instead of pretending.
  */
-async function deliverOfficeUpdate(ctx,{officeId,caseDoc,key,messages,conversationPatch=null}){
+async function deliverOfficeUpdate(ctx,{officeId,caseDoc,key,messages,conversationPatch=null,humanUid=''}){
  const id=`wo_${(await ctx.deps.sha256Hex(`${officeId}|${key}`)).slice(0,40)}`,op=outboxPath(officeId,id);
  const existing=await ctx.store.get(op);if(existing)return {id,state:existing.state,duplicate:true};
  const cp=conversationPath(officeId,caseDoc.conversationId),c=await ctx.store.get(cp)||{};
  const mapping=await mappingFor(ctx,caseDoc.phoneNumberId,caseDoc.wabaId);
  let state='';
- if(!whatsappAgentAvailable(ctx.env)||!await officeOn(ctx,officeId))state='AUTOMATION_OFF';
+ // A person's own reply does not depend on the auto-reply switch, only on still holding the conversation.
+ if(!whatsappAgentAvailable(ctx.env)||(!humanUid&&!await officeOn(ctx,officeId)))state='AUTOMATION_OFF';
+ else if(humanUid&&(!c.handoff||c.heldBy!==humanUid))state='NOT_HELD';
  else if(c.optedOut)state='OPTED_OUT';
  else if(!agentNumber(mapping)||mapping.officeId!==officeId||!recipientAllowed(ctx,caseDoc.senderPhone))state='NOT_AUTHORISED';
  else if(ctx.now().getTime()-millis(c.lastInboundAt)>=DAY)state='TEMPLATE_REQUIRED';
- const created=await ctx.store.create(op,{officeId,id,caseId:caseDoc.id,key:String(key).slice(0,200),state:state||'PENDING',summary:summaryOf(messages),createdAt:ctx.now()});
+ const created=await ctx.store.create(op,{officeId,id,caseId:caseDoc.id||'',conversationId:caseDoc.conversationId,by:humanUid||'whatsapp_agent',key:String(key).slice(0,200),state:state||'PENDING',summary:summaryOf(messages),createdAt:ctx.now()});
  if(!created)return {id,state:(await ctx.store.get(op))?.state,duplicate:true};
  if(state)return {id,state};
  if(economicModeActive(ctx.env)||ctx.env.WHATSAPP_AGENT_SEND!=='enabled'||!whatsappAccessToken(ctx.env)){
@@ -557,7 +569,7 @@ export async function actOnWhatsAppCase(ctx,{officeId,actor,caseId,action,input=
  if(!actor.isManager&&doc.assignedBrokerId&&doc.assignedBrokerId!==actor.uid)throw ctx.deps.appError('forbidden',403,'هذه الحالة لوسيط آخر');
  if((doc.actionKeys||[]).includes(key))return {ok:true,duplicate:true,case:CASE_VIEW(doc)};
  if(action===OFFICE_ACTION.RESUME_AGENT){
-  await ctx.store.update(conversationPath(officeId,doc.conversationId),()=>({handoff:false,awaiting:''}));
+  await ctx.store.update(conversationPath(officeId,doc.conversationId),c=>({...RELEASED,controlVersion:Number(c.controlVersion||0)+1}));
   await updateCase(ctx,officeId,caseId,cur=>({actionKeys:[...(cur.actionKeys||[]),key].slice(-50),events:[event(ctx,'AGENT_RESUMED','أعاد المكتب تشغيل الرد الآلي',actor.uid)]}));
   await writeAudit(ctx,{officeId,action:'WHATSAPP_AGENT_RESUMED',actorUid:actor.uid,entityType:'whatsapp_case',entityId:caseId,key});
   return {ok:true,resumed:true};
@@ -632,6 +644,111 @@ export async function actOnWhatsAppCase(ctx,{officeId,actor,caseId,action,input=
  const delivery=await deliverOfficeUpdate(ctx,{officeId,caseDoc:doc,key:`${action}:${caseId}:${key}`,messages:messages||[textMessage(body)],conversationPatch});
  await updateCase(ctx,officeId,caseId,()=>({events:[event(ctx,'CLIENT_UPDATE',`${action}: ${delivery.state}`,by)]}));
  return {ok:true,case:CASE_VIEW(next||doc),delivery};
+}
+
+// ------------------------------------------------------------------ the office's hand on a conversation
+
+/**
+ * A coexistence echo: a person replied from the WhatsApp Business app. Recorded once per message id, shown in the
+ * thread, and the conversation passes to a person — the agent never answers over them.
+ */
+async function receiveAppEcho(ctx,mapping,phoneNumberId,wabaId,echo){
+ const to=String(echo?.to||'');if(!clean(echo?.id,200)||!/^\d{8,15}$/.test(to))return;
+ const officeId=mapping.officeId,conversationId=(await ctx.deps.sha256Hex(`${phoneNumberId}|${to}`)).slice(0,40);
+ const text=echo.type==='text'?clean(echo.text?.body,1000):`[${clean(echo.type,20)||'رسالة'}]`;
+ const id=`we_${(await ctx.deps.sha256Hex(echo.id)).slice(0,40)}`;
+ if(!await ctx.store.create(outboxPath(officeId,id),{officeId,id,conversationId,by:HELD_BY_APP,key:'app_echo',state:'SENT_FROM_APP',summary:text,createdAt:ctx.now()}))return;
+ const cp=conversationPath(officeId,conversationId),at=ctx.now().toISOString();
+ await ctx.store.create(cp,{officeId,pending:[],turns:[],draft:{},createdAt:ctx.now(),phoneNumberId,wabaId,senderPhone:to});
+ let took=false;
+ await ctx.store.update(cp,c=>{
+  took=!c.handoff;
+  return {handoff:true,heldBy:c.heldBy||HELD_BY_APP,heldAt:c.handoff?c.heldAt||ctx.now():ctx.now(),handoffReason:c.handoff?c.handoffReason||'BROKER_REPLIED_IN_APP':'BROKER_REPLIED_IN_APP',
+   controlVersion:Number(c.controlVersion||0)+(took?1:0),awaiting:took?'':c.awaiting||'',
+   turns:[...(c.turns||[]),{role:'broker',via:'app',text,at}].slice(-16),
+   ...(took?{controlLog:[...(c.controlLog||[]),{type:'TAKEN_IN_APP',by:HELD_BY_APP,at}].slice(-30)}:{}),updatedAt:ctx.now()};
+ });
+ if(took)await writeAudit(ctx,{officeId,action:'WHATSAPP_CONVERSATION_TAKEN_IN_APP',actorUid:HELD_BY_APP,entityType:'whatsapp_conversation',entityId:conversationId,key:id}).catch(()=>{});
+}
+
+const conversationIdOf=(ctx,v)=>{const id=String(v||'');if(!/^[a-f0-9]{40}$/.test(id))throw ctx.deps.appError('conversation_invalid',400,'المحادثة غير صالحة');return id;};
+const requestKeyOf=(ctx,v)=>{const key=clean(v,100);if(!/^[a-zA-Z0-9_-]{8,100}$/.test(key))throw ctx.deps.appError('request_key_required',400,'أعد المحاولة');return key;};
+async function caseBrokersOf(ctx,officeId){
+ const map=new Map();
+ for(const k of await ctx.store.list(['offices',officeId,'whatsappCases'],300).catch(()=>[]))if(k.officeId===officeId)map.set(k.conversationId,[...(map.get(k.conversationId)||[]),k.assignedBrokerId||'']);
+ return map;
+}
+async function visibleConversationOrFail(ctx,officeId,actor,conversationId){
+ const c=await ctx.store.get(conversationPath(officeId,conversationId));
+ if(!c||c.officeId!==officeId||!c.senderPhone)throw ctx.deps.appError('conversation_not_found',404,'المحادثة غير موجودة');
+ if(!mayView(c,actor,(await caseBrokersOf(ctx,officeId)).get(conversationId)||[]))throw ctx.deps.appError('forbidden',403,'هذه المحادثة لوسيط آخر');
+ return c;
+}
+
+export async function listWhatsAppConversations(ctx,{officeId,actor}) {
+ if(!actor?.uid)throw ctx.deps.appError('forbidden',403,'غير مصرح');
+ const [rows,brokers]=await Promise.all([ctx.store.list(['offices',officeId,'whatsappConversations'],200),caseBrokersOf(ctx,officeId)]);
+ const now=ctx.now().getTime();
+ return {ok:true,conversations:rows.filter(c=>c.officeId===officeId&&c.senderPhone&&mayView(c,actor,brokers.get(c.id)||[]))
+  .sort((a,b)=>millis(b.updatedAt)-millis(a.updatedAt)).map(c=>conversationView(c,actor,now))};
+}
+
+export async function getWhatsAppConversation(ctx,{officeId,actor,conversationId}) {
+ if(!actor?.uid)throw ctx.deps.appError('forbidden',403,'غير مصرح');
+ const c=await visibleConversationOrFail(ctx,officeId,actor,conversationIdOf(ctx,conversationId));
+ return {ok:true,conversation:conversationView(c,actor,ctx.now().getTime())};
+}
+
+const RELEASED={handoff:false,heldBy:'',heldAt:null,handoffReason:'',awaiting:''};
+
+/**
+ * Take over («استلام») or hand back («إعادة للموظف الذكي»). First-wins on controlVersion: two brokers pressing at once
+ * → one succeeds, the other gets 409 and a fresh view. The draft, results and thread stay, so the agent resumes
+ * where it was and nothing the client already received is sent again. Every change is audited.
+ */
+export async function controlWhatsAppConversation(ctx,{officeId,actor,conversationId,action,expectedVersion,requestKey}) {
+ if(!actor?.uid)throw ctx.deps.appError('forbidden',403,'غير مصرح');
+ if(!['take','release'].includes(action))throw ctx.deps.appError('action_invalid',400,'إجراء غير معروف');
+ const id=conversationIdOf(ctx,conversationId),key=requestKeyOf(ctx,requestKey);
+ await visibleConversationOrFail(ctx,officeId,actor,id);
+ const at=ctx.now().toISOString();let outcome='';
+ const r=await ctx.store.update(conversationPath(officeId,id),c=>{
+  outcome='';
+  if((c.controlKeys||[]).includes(key)){outcome='duplicate';return null;}
+  if(Number(c.controlVersion||0)!==Number(expectedVersion)){outcome='stale';return null;}
+  const allowed=action==='take'?mayTake(c,actor):mayRelease(c,actor);
+  if(!allowed){outcome=c.optedOut?'opted_out':action==='take'?'held':'not_held';return null;}
+  const log={controlLog:[...(c.controlLog||[]),{type:action==='take'?'TAKEN':'RELEASED',by:actor.uid,at}].slice(-30),controlKeys:[...(c.controlKeys||[]),key].slice(-50),controlVersion:Number(c.controlVersion||0)+1,updatedAt:ctx.now()};
+  return action==='take'?{handoff:true,heldBy:actor.uid,heldAt:ctx.now(),handoffReason:'BROKER_TAKEOVER',awaiting:'',...log}:{...RELEASED,...log};
+ });
+ if(!r)throw ctx.deps.appError('conversation_not_found',404,'المحادثة غير موجودة');
+ const errors={stale:['conversation_changed','تغيّرت حالة المحادثة. حدّث الصفحة وحاول مجددًا'],held:['conversation_held','يرد على هذه المحادثة وسيط آخر'],not_held:['conversation_not_held','المحادثة ليست عند وسيط الآن'],opted_out:['client_opted_out','طلب العميل إيقاف الرسائل']};
+ if(errors[outcome])throw ctx.deps.appError(errors[outcome][0],409,errors[outcome][1]);
+ if(outcome!=='duplicate')await writeAudit(ctx,{officeId,action:action==='take'?'WHATSAPP_CONVERSATION_TAKEN':'WHATSAPP_CONVERSATION_RELEASED',actorUid:actor.uid,entityType:'whatsapp_conversation',entityId:id,key}).catch(()=>{});
+ const c=await ctx.store.get(conversationPath(officeId,id));
+ return {ok:true,duplicate:outcome==='duplicate',conversation:conversationView(c,actor,ctx.now().getTime())};
+}
+
+/**
+ * The broker's own words to the client, from the office screen. Only whoever holds the conversation, only inside the
+ * 24-hour window (outside it Meta requires an approved template), through the same gates as every send
+ * (Staging, number ownership, recipient allowlist, economic mode). Once per requestKey.
+ */
+export async function replyInWhatsAppConversation(ctx,{officeId,actor,conversationId,text,requestKey}) {
+ if(!actor?.uid)throw ctx.deps.appError('forbidden',403,'غير مصرح');
+ const id=conversationIdOf(ctx,conversationId),key=requestKeyOf(ctx,requestKey);
+ const body=String(text??'').trim().slice(0,1000);
+ if(!body)throw ctx.deps.appError('text_required',400,'اكتب ردك');
+ const c=await visibleConversationOrFail(ctx,officeId,actor,id);
+ if(c.optedOut)throw ctx.deps.appError('client_opted_out',409,'طلب العميل إيقاف الرسائل');
+ if(!c.handoff||c.heldBy!==actor.uid)throw ctx.deps.appError('conversation_not_held_by_you',409,'استلم المحادثة أولًا ثم اكتب ردك');
+ const delivery=await deliverOfficeUpdate(ctx,{officeId,caseDoc:{conversationId:id,phoneNumberId:c.phoneNumberId,wabaId:c.wabaId,senderPhone:c.senderPhone},key:`broker:${id}:${key}`,messages:[textMessage(body)],humanUid:actor.uid});
+ if(!delivery.duplicate&&['SENT','SIMULATED'].includes(delivery.state)){
+  await ctx.store.update(conversationPath(officeId,id),cur=>({turns:[...(cur.turns||[]),{role:'broker',text:body,by:actor.uid,state:delivery.state,at:ctx.now().toISOString()}].slice(-16),updatedAt:ctx.now()}));
+ }
+ if(!delivery.duplicate)await writeAudit(ctx,{officeId,action:'WHATSAPP_CONVERSATION_REPLIED',actorUid:actor.uid,entityType:'whatsapp_conversation',entityId:id,key,details:{state:delivery.state,length:body.length}}).catch(()=>{});
+ const fresh=await ctx.store.get(conversationPath(officeId,id));
+ return {ok:true,delivery,conversation:conversationView(fresh,actor,ctx.now().getTime())};
 }
 
 export async function configureWhatsAppAgent(ctx,{officeId,actor,enabled}) {

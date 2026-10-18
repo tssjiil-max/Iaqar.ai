@@ -31,6 +31,7 @@ import { renderChannelSettings, renderCooperationSettings, renderLinkSettings, r
 import { renderCommunity } from "./views/community.js";
 import { renderOfficeTool } from "./views/office-tools.js";
 import { renderAudit, renderInbox, renderSearch } from "./views/office-center.js";
+import { renderConversation, renderConversations } from "./views/conversations.js";
 import { renderDealHub } from "./views/deal-hub.js";
 import { renderScout, renderScoutFind, renderScoutNew, renderScoutSettings, renderScoutTask } from "./views/scout.js";
 import { renderPublicOffice, publicOfficeTarget } from "./views/public-office.js";
@@ -68,6 +69,9 @@ function view() {
   if (section === "library") return { name: "library", run: renderLibrary };
   if (section === "tools") return { name: "tool", run: (el) => renderOfficeTool(el, { tool: id }) };
   if (section === "inbox") return { name: "tool", run: renderInbox };
+  // «المحادثات»: who answers each WhatsApp conversation; the broker takes over, replies and hands back.
+  if (section === "conversations" && id) return { name: "tool", run: (el) => renderConversation(el, { conversationId: id }) };
+  if (section === "conversations") return { name: "tool", run: renderConversations };
   // «الباحث عن الفرص»: the board, a new search, one find, one search.
   if (section === "scout" && id === "new") return { name: "tool", run: renderScoutNew };
   if (section === "scout" && id === "opp" && sub) return { name: "tool", run: (el) => renderScoutFind(el, { id: sub }) };
@@ -86,7 +90,7 @@ function view() {
 
 // Each page wears the colour of its office tool («أدوات المكتب»), so a page is recognisable at a glance.
 const SECTION_TONES = {
-  tasks: "blue", task: "blue", inbox: "blue", audit: "blue", repo: "gold", record: "gold", "quick-add": "gold",
+  tasks: "blue", task: "blue", inbox: "blue", conversations: "blue", audit: "blue", repo: "gold", record: "gold", "quick-add": "gold",
   scout: "purple", search: "purple", library: "purple", review: "green", journey: "green", session: "green", deal: "green",
   community: "green", agent: "green", settings: "teal", office: "teal",
   "tools/guide": "blue", "tools/forms": "red", "tools/services": "gold", "tools/calculator": "blue", "tools/market": "gold"
