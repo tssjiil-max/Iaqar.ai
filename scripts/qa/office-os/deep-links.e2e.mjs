@@ -72,7 +72,7 @@ for (const t of NEW) {
 for (const [name, url] of [["/o/<slug> public office page", "/o/sultan"], ["?office=<id>&view=public public office page", `/?office=${OFFICE_A}&view=public`]]) {
   const { page, ctx } = await open(url);
   let ok = false;
-  try { await page.getByText("لدي عقار").first().waitFor(); ok = !page.url().includes("legacy"); } catch (_) { /* fail */ }
+  try { await page.locator("[data-guest-desk] [data-path=\"owner\"]").waitFor(); ok = !page.url().includes("legacy"); } catch (_) { /* fail */ }
   check(name, ok);
   await ctx.close();
 }

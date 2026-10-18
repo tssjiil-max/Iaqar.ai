@@ -170,3 +170,10 @@
 @media (prefers-reduced-motion: reduce) {
   .os-guest-path, .os-guest-scope > summary > svg { transition: none; }
 }
+
+/* Office link identity: the office name stays the main element and no text drops below 13px
+   (mobile-widths small-text rule; settings «office name above footer»). */
+.os-public-page .os-public-title { font-size: 24px; line-height: 1.4; }
+.os-public-page .os-public-powered { font-size: 13px; }
+.os-public-page :is(.os-license, .os-public-license, .os-public-trust, .os-public-coop) { font-size: 13px; }
+.os-guest-page .os-public-hero + .os-guest-hero .os-guest-title { font-size: clamp(20px, 5.4vw, 26px); }
