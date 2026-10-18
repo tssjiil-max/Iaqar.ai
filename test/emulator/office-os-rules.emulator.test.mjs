@@ -192,3 +192,22 @@ test('external cooperating intake: anonymous claims allowed but verification, me
  await assertFails(updateDoc(doc(as('owner-a'),'offices/office-a/opportunities/ext_review'),{submitterRole:'OWNER'}));
  await assertSucceeds(getDoc(doc(as('owner-a'),'offices/office-a/opportunities/ext_review')));
 });
+
+test("WhatsApp agent, Kapso and integration switches are Worker-only: no member reads or flips them from the browser", async () => {
+  const paths = [
+    "integrations/whatsapp", "whatsappConversations/c1", "whatsappCases/wc_1", "whatsappOutbox/o1",
+    "kapsoChats/wa_1", "kapsoInbound/k1", "kapsoDeliveryLog/d1",
+    "completionSessions/s1", "matchCurrentPointers/p1", "matchDiagnostics/m1", "notificationDispatches/n1"
+  ];
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    for (const path of paths) await setDoc(doc(ctx.firestore(), `offices/office-a/${path}`), { officeId: "office-a", autoReplyEnabled: false, handoff: true, optedOut: true });
+  });
+  for (const db of [as("owner-a"), as("broker-a"), as("owner-b"), anon()]) {
+    for (const path of paths) {
+      await assertFails(getDoc(doc(db, `offices/office-a/${path}`)));
+      await assertFails(setDoc(doc(db, `offices/office-a/${path}`), { officeId: "office-a", autoReplyEnabled: true, handoff: false, optedOut: false }));
+      await assertFails(updateDoc(doc(db, `offices/office-a/${path}`), { officeId: "office-a", autoReplyEnabled: true, handoff: false, optedOut: false }));
+      await assertFails(deleteDoc(doc(db, `offices/office-a/${path}`)));
+    }
+  }
+});

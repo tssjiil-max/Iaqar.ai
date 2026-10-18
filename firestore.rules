@@ -49,7 +49,12 @@ service cloud.firestore {
         // باحث الفرص — للـ Worker فقط (المتصفح يقرأ ويغيّر عبر مسارات /os/scout بعد التحقق من العضوية).
         'scoutSettings', 'scoutState', 'scoutTasks', 'scoutOpportunities', 'scoutFeed', 'scoutFixtures', 'scoutRuns', 'scoutPosts', 'scoutChats',
         // الاستقبال التلقائي لنتائج المساعد (Claude): المفاتيح (مخزّنة كبصمة فقط) والدفعات — للـ Worker فقط.
-        'scoutIngestKeys', 'scoutIngestBatches'
+        'scoutIngestKeys', 'scoutIngestBatches',
+        // وكيل واتساب وKapso ومفاتيح التكامل: المحادثات وحالة التحكم والتسليم للوسيط والصادر — للـ Worker فقط
+        // (المدير يغيّر مفتاح الرد الآلي عبر الـ Worker، ويُسجَّل في التدقيق).
+        'integrations', 'whatsappConversations', 'whatsappCases', 'whatsappOutbox', 'kapsoChats', 'kapsoInbound', 'kapsoDeliveryLog',
+        // جلسات استكمال البيانات ومؤشرات المطابقة وتشخيصها وسجل الإرسال — للـ Worker فقط.
+        'completionSessions', 'matchCurrentPointers', 'matchDiagnostics', 'notificationDispatches'
       ];
     }
     function validOfficeProfile() {
