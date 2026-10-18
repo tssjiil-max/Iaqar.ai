@@ -387,6 +387,11 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-inbox-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .os-inbox-foot { display: grid; gap: 2px; }
 
+/* «حد المالك» — folded until the manager opens it. */
+.os-mandate-edit > summary { list-style: none; display: inline-flex; width: auto; cursor: pointer; }
+.os-mandate-edit > summary::-webkit-details-marker { display: none; }
+.os-mandate-edit[open] > summary { margin-bottom: 10px; }
+
 /* «المحادثات» — who answers each WhatsApp conversation, and the thread. */
 .os-conv-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; text-align: start; font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--brand-line, #DCE8EB); }
 .os-conv-row-main, .os-conv-row-side { display: grid; gap: 3px; min-width: 0; }

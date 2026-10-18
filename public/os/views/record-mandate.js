@@ -30,11 +30,16 @@ export function recordMandatePanel(recordId) {
       const r = await api("/os/records/mandate/set", { officeId: session.officeId, recordId, floor: 0 });
       draw(r.mandate);
     }, { success: "أُزيل حد المالك — كل عرض سعر يحتاج رد المالك" }));
+    // The amount and its fields stay folded until the manager opens them (a secret value is not left on screen).
     append(body,
-      mandate ? h("p", { class: "os-sub", "data-mandate-current": String(mandate.floor), text: `الحد الحالي: ${formatNumber(mandate.floor)} ريال · المصدر: ${mandate.source}` }) : h("p", { class: "os-sub", "data-mandate-current": "", text: "لا يوجد حد مسجل: كل عرض سعر يحتاج رد المالك." }),
-      field("أقل سعر وافق عليه المالك (ريال)", floor),
-      field("مصدر موافقة المالك", source),
-      h("div", { class: "os-btn-row" }, save, remove));
+      h("p", { class: "os-sub", "data-mandate-current": mandate ? String(mandate.floor) : "", text: mandate ? `يوجد حد مسجل · المصدر: ${mandate.source}` : "لا يوجد حد مسجل: كل عرض سعر يحتاج رد المالك." }),
+      h("details", { class: "os-mandate-edit", "data-mandate-edit": "" },
+        h("summary", { class: "os-btn secondary", "data-mandate-open": "" }, ic("edit"), mandate ? "عرض الحد وتعديله" : "تحديد الحد"),
+        h("div", { class: "os-form" },
+          mandate ? h("p", { class: "os-sub", text: `الحد الحالي: ${formatNumber(mandate.floor)} ريال` }) : null,
+          field("أقل سعر وافق عليه المالك (ريال)", floor),
+          field("مصدر موافقة المالك", source),
+          h("div", { class: "os-btn-row" }, save, remove))));
   };
 
   api("/os/records/mandate", { officeId: session.officeId, recordId })

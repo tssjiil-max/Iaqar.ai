@@ -111,6 +111,8 @@ try {
   const manager = await open(OWNER_A, 390);
   await manager.page.goto(`${h.origin}/#/record/qa-villa`);
   await manager.page.locator('[data-record-mandate] [data-mandate-current=""]').waitFor();
+  check("the floor's fields stay folded until the manager opens them", !(await manager.page.locator("[data-mandate-floor]").isVisible()));
+  await manager.page.locator("[data-mandate-open]").click();
   await manager.page.locator("[data-mandate-floor]").fill("1600000");
   await manager.page.locator("[data-mandate-source]").fill("اتصال مع المالك اليوم");
   await manager.page.locator("[data-mandate-save]").click();
