@@ -6,7 +6,8 @@
  *   • Refused unless: this Worker is Staging, KAPSO_WEBHOOK_SECRET / KAPSO_OFFICE_ID / KAPSO_PHONE_NUMBER_ID are set,
  *     and X-Webhook-Signature = hex HMAC-SHA256(raw body, secret) (Kapso's documented scheme).
  *   • The office is the ONE configured office (KAPSO_OFFICE_ID) — never taken from the text or the sender.
- *     A message to another phone_number_id, or (when KAPSO_ALLOWED_SENDERS is set) from another sender, is ignored.
+ *     A message to another phone_number_id, or from a sender outside KAPSO_ALLOWED_SENDERS, is ignored; with no
+ *     allowed sender configured every message is ignored (fail closed).
  *   • Each WhatsApp message id is processed once (create-only document), so Kapso's retries never duplicate a record.
  *   • The text goes through the shared «تعبئة ذكية» understanding; one conversation per sender collects what is
  *     missing (one question at a time); nothing is saved before the sender answers «نعم» to the summary.
@@ -248,7 +249,8 @@ export async function handleKapsoWebhook({ raw, headers, env, makeCtx }) {
   for (const message of kapsoMessages(body)) {
     if (message.phoneNumberId !== cfg.phoneNumberId) { results.push({ status: "other_number" }); continue; }
     if (message.direction && message.direction !== "inbound") { results.push({ status: "not_inbound" }); continue; }
-    if (cfg.allowed.length && !cfg.allowed.includes(message.from)) { results.push({ status: "sender_not_allowed" }); continue; }
+    // Fail closed: with no allowed sender configured, nobody is answered.
+    if (!cfg.allowed.includes(message.from)) { results.push({ status: "sender_not_allowed" }); continue; }
     try {
       ctx.lastReply = "";
       const result = await handleKapsoMessage(ctx, cfg, message);

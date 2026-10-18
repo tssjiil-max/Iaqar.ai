@@ -18,6 +18,7 @@ import { LISTING_STATUS_LABEL, listingStatus } from "../domain/direct-match-doma
 import { imageGallery } from "./record-images.js";
 import { ANSWER, STATE, answerOptions, validityView } from "../domain/validity-domain.js";
 import { recordScoutRow } from "./scout.js";
+import { recordMandatePanel } from "./record-mandate.js";
 
 function fact(iconName, label, value) {
   if (!value) return null;
@@ -77,6 +78,7 @@ export function renderRecordDetail(container, { recordId }) {
   let botRowFor = "";
   // «الباحث عن الفرص» for this record: built once per visit (its state is asked from the server once, then follows the presses).
   let scoutRow = null;
+  let mandatePanel = null;
   const draw = () => {
     const record = recordById(recordId);
     clear(container);
@@ -137,6 +139,8 @@ export function renderRecordDetail(container, { recordId }) {
       reservation
     ));
     append(container, externalCooperationPanel(record));
+    // «حد المالك»: the manager's own, for this office's offers (asked from the server once per visit).
+    if (session.isManager && view.kind === RECORD_KIND.OFFER && view.state !== "DELETED" && !isExternalBroker(record)) append(container, (mandatePanel = mandatePanel || recordMandatePanel(view.id)));
     // «ابحث عن مشتري» / «ابحث عن عقار»: one press, everything read from this record.
     if (view.state === "ACTIVE" && !isExternalBroker(record)) append(container, (scoutRow = scoutRow || recordScoutRow(record)));
 

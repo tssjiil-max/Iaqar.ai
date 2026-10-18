@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { foldListing, kapsoConfig, kapsoMessages, saudiMobile, verifyKapsoSignature } from "../worker/src/office-os/kapso-service.js";
+import { foldListing, handleKapsoWebhook, kapsoConfig, kapsoMessages, saudiMobile, verifyKapsoSignature } from "../worker/src/office-os/kapso-service.js";
 
 test("Staging only, and only when configured", () => {
   assert.equal(kapsoConfig({ DEPLOYMENT_ENV: "production", KAPSO_WEBHOOK_SECRET: "s", KAPSO_OFFICE_ID: "o", KAPSO_PHONE_NUMBER_ID: "1" }).reason, "not_staging");
@@ -33,4 +33,15 @@ test("Saudi mobile only", () => {
 test("a conversation: short answers and corrections", () => {
   const l = foldListing([{ t: "مطلوب عمارة في الهجرة، الميزانية مليونين.", a: "" }, { t: "الرياض", a: "city" }, { t: "لا، الميزانية 2.1 مليون", a: "" }]);
   assert.deepEqual([l.kind, l.purpose, l.city, l.districts.join(), l.price, l.missing.length], ["REQUEST", "PURCHASE", "الرياض", "الهجرة", 2_100_000, 0]);
+});
+
+test("no allowed sender configured: every message is ignored, nothing is saved or answered", async () => {
+  const env = { DEPLOYMENT_ENV: "staging", KAPSO_WEBHOOK_SECRET: "secret", KAPSO_OFFICE_ID: "o", KAPSO_PHONE_NUMBER_ID: "597907523413541" };
+  const raw = JSON.stringify({ message: { id: "wamid.9", type: "text", from: "966500000001", text: { body: "مطلوب شقة" }, kapso: { direction: "inbound" } }, phone_number_id: "597907523413541" });
+  const headers = new Headers({ "x-webhook-signature": crypto.createHmac("sha256", "secret").update(raw).digest("hex"), "x-webhook-event": "whatsapp.message.received" });
+  const touched = [];
+  const store = new Proxy({}, { get: (_, name) => () => { touched.push(name); return null; } });
+  const out = await handleKapsoWebhook({ raw, headers, env, makeCtx: async () => ({ store, now: () => new Date(), deps: {} }) });
+  assert.deepEqual(out.body.results.map((r) => r.status), ["sender_not_allowed"]);
+  assert.deepEqual(touched, []);
 });

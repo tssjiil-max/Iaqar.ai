@@ -221,6 +221,13 @@ test("journey 1 — the owner proposes a price, the client answers, the agreed p
   assert.equal((await act(room.owner, "manual", { price: "1,170,000" })).status, 409, "not the owner's turn");
   assert.equal((await act(room.client, "manual", { price: "1,150,000" })).status, 200);
   assert.equal((await act(room.owner, "accept")).status, 200);
+  // Agreed, then the broker approves the price and terms; meanwhile the terms and «جاهز للاتفاق» wait.
+  const waiting = await view(room.client);
+  assert.equal(waiting.phase, "APPROVAL_WAIT");
+  assert.equal(waiting.room.canReady, false);
+  assert.equal((await act(room.client, "ready")).status, 409, "no readiness before the broker approves");
+  const approved = await call("/os/session/price-approval", { officeId: OFFICE_A, journeyId: room.journeyId, decision: "approve", price: 1150000, requestKey: "room-approve-1" }, OWNER_A);
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
   const agreed = (await view(room.client)).room.agreed.find((item) => item.id === "price");
   assert.equal(agreed.value, "1,150,000 ريال");
   assert.match(agreed.meta, /وافق المالك/);

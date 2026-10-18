@@ -20,7 +20,7 @@ import { cleanText, formatArea, formatDateTime, formatPrice, toDate, toNumber } 
 import { ROLE_LABEL, SESSION_ROLE, availableActions, isOpenJourney, roomMoveText } from "./session-domain.js";
 
 export { roomMoveText };
-import { PHASE, agreedItems, agreedPriceOf, journeyPhase } from "./deal-flow-domain.js";
+import { PHASE, agreedItems, agreedPriceOf, journeyPhase, priceApprovalPending } from "./deal-flow-domain.js";
 
 export const FAMILY = Object.freeze({ UNIT: "UNIT", VILLA: "VILLA", LAND: "LAND", BUILDING: "BUILDING", COMMERCIAL: "COMMERCIAL", OTHER: "OTHER" });
 
@@ -235,6 +235,8 @@ export function planTermAction(journey = {}, { role, action, termId, optionId = 
   const fail = (code, message) => ({ ok: false, code, message });
   if (!isParty(role)) return fail("role_invalid", "هذا الإجراء للمالك أو العميل فقط");
   if (!roomIsLive(journey)) return fail("room_not_live", "غرفة التفاوض متوقفة حاليًا");
+  // What the broker approves is the price with the terms as they stand: they do not move while he decides.
+  if (priceApprovalPending(journey)) return fail("price_approval_pending", "بانتظار اعتماد الوسيط للسعر والشروط — لا تتغير البنود الآن");
   const term = termDefinition(journey, termId);
   if (!term) return fail("term_unknown", "هذا البند غير متاح لهذا العقار");
   const row = termRows(journey, role).find((item) => item.id === term.id);
@@ -329,7 +331,7 @@ export function readiness(journey = {}) {
 /** A side may declare «جاهز للاتفاق» once the price is agreed and no proposal is waiting. */
 export function canMarkReady(journey = {}, role = "") {
   if (!isParty(role) || !roomIsLive(journey)) return false;
-  if (!agreedPriceOf(journey)) return false;
+  if (!agreedPriceOf(journey) || priceApprovalPending(journey)) return false;
   if (pendingTerms(journey).length) return false;
   return !readiness(journey)[role];
 }

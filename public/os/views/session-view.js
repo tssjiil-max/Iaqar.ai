@@ -15,7 +15,7 @@ import { newRequestKey, openWhatsApp, runAction, toast } from "../core/ui.js";
 import { ROLE_LABEL, parsePayload, sessionEventCard, sessionPrices, sessionStageLabel, isOpenJourney } from "../domain/session-domain.js";
 import { formatPrice, relativeAgo } from "../domain/format-domain.js";
 import { historyDetails, roomAgreedCard, roomPropertyCard, roomSidesCard, roomTermsList, sessionEventList } from "./session-parts.js";
-import { PRICE_STATUS_LABEL, normalizePriceStatus } from "../domain/deal-flow-domain.js";
+import { PRICE_STATUS_LABEL, normalizePriceStatus, priceApprovalPending } from "../domain/deal-flow-domain.js";
 import { REQUEST_DECISIONS, awaitingParties, openRequests, partyStatus, propertyFacts, readiness, relaySafeText, roomAgreedItems, roomSchema, termRows } from "../domain/negotiation-room-domain.js";
 import { recordById } from "../core/state.js";
 import { confirmDialog } from "../core/ui.js";
@@ -146,6 +146,31 @@ function requestsCard(journey, ui) {
   return card;
 }
 
+/**
+ * «اعتماد السعر» — both sides agreed on a price; the deal goes on (viewing, or the final agreement after one)
+ * only when the broker approves it. Not approved → the agreement is undone and the sides negotiate again.
+ */
+function approvalCard(journey) {
+  if (!priceApprovalPending(journey)) return null;
+  const jid = journey.journeyId || journey.id;
+  const price = Number(journey.session.agreedPrice);
+  const agreedBy = ROLE_LABEL[journey.session.priceApproval?.agreedBy] || "الطرف";
+  const reason = h("textarea", { class: "os-textarea", maxlength: "300", name: "approvalNote", rows: 2, placeholder: "سبب عدم الاعتماد (يراه الطرفان) — اختياري", "aria-label": "سبب عدم الاعتماد" });
+  const decide = (button, decision) => runAction(button, async () => {
+    await api("/os/session/price-approval", { officeId: session.officeId, journeyId: jid, decision, price, note: decision === "reject" ? reason.value : "", requestKey: newRequestKey() });
+  }, { success: decision === "approve" ? "اعتمدت السعر — يمكن للطرفين تحديد المعاينة" : "لم يُعتمد السعر — عاد الطرفان للتفاوض" });
+  const yes = h("button", { type: "button", class: "os-btn primary", "data-price-approve": "" }, ic("check-circle"), "اعتماد السعر");
+  yes.addEventListener("click", async () => {
+    if (await confirmDialog({ title: `اعتماد ${formatPrice(price)}؟`, text: "تأكد أن السعر والبنود المتفق عليها ضمن تفويض المالك. بعد الاعتماد ينتقل الطرفان لتحديد المعاينة.", confirmLabel: "اعتماد" })) decide(yes, "approve");
+  });
+  const no = h("button", { type: "button", class: "os-btn secondary", "data-price-reject": "" }, ic("x-circle"), "عدم الاعتماد");
+  no.addEventListener("click", () => decide(no, "reject"));
+  return officeSection({ title: "اعتماد السعر", iconName: "shield", attrs: { "data-price-approval": String(price) } },
+    h("p", { class: "os-sub", text: `وافق ${agreedBy} على ${formatPrice(price)}، واتفق الطرفان. الصفقة لا تنتقل للمعاينة قبل اعتمادك للسعر والبنود.` }),
+    reason,
+    controlGroup("div", { class: "os-btn-row" }, yes, no));
+}
+
 function composer(journey, draft) {
   const jid = journey.journeyId || journey.id;
   const seg = controlGroup("div", { class: "os-seg", role: "group", "aria-label": "إرسال إلى" });
@@ -216,6 +241,7 @@ export function renderSession(container, { journeyId }) {
         intervention: Boolean(journey.session?.intervention?.required), flagText: "تدخل مطلوب — راجع طلبات الطرفين أدناه"
       }),
       roomAgreedCard(roomAgreedItems(journey)),
+      approvalCard(journey),
       requestsCard(journey, state),
       officeSection({ title: "المالك مقابل العميل", iconName: "swap", className: "os-room-part os-deal-sides", attrs: { "aria-label": "المالك مقابل العميل", "data-room-part": "versus", "data-room-family": schema.family, "data-room-deal": schema.deal } },
       roomSidesCard({ sides: { owner: sideOf("owner"), client: sideOf("client") }, status: { owner: partyStatus(journey, "owner"), client: partyStatus(journey, "client") }, ready: { owner: ready.owner, client: ready.client }, viewer: "broker", priceLabel: schema.priceLabel }),

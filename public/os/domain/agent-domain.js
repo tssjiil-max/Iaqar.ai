@@ -50,6 +50,7 @@ export function needsYouReason(task = {}) {
   if (state === "FAILED") return "تعذر إرسال سؤال البوت — تواصل بنفسك";
   if (type === "SESSION_INTERVENTION") return "طرف طلب تدخل الوسيط";
   if (type === "SESSION_PRIVATE_PRICE") return "سعر خاص وصل للوسيط فقط";
+  if (type === "PRICE_APPROVAL") return "اتفق الطرفان على سعر ينتظر اعتمادك";
   if (type === "MATCH_REVIEW") return "مطابقة جديدة تنتظر قرارك";
   if (type === "PROPOSAL_REPLY") return "وصل رد يحتاج مراجعتك";
   if (/VIEWING/.test(type)) return "موعد معاينة يحتاج تأكيدك";
@@ -70,7 +71,7 @@ export function priorityScore(task = {}, now = new Date()) {
     else if (hours <= 72) score += 25;
   }
   const type = String(task.type || "").toUpperCase();
-  if (["SESSION_INTERVENTION", "SESSION_PRIVATE_PRICE", "DEAL_ACTION"].includes(type)) score += 40;
+  if (["SESSION_INTERVENTION", "SESSION_PRIVATE_PRICE", "PRICE_APPROVAL", "DEAL_ACTION"].includes(type)) score += 40;
   if (String(task.priority || "").toUpperCase() === "HIGH" || String(task.priority || "").toUpperCase() === "URGENT") score += 20;
   const since = toDate(task.updatedAt) || toDate(task.createdAt);
   if (since) score += Math.min(30, Math.floor((now.getTime() - since.getTime()) / 86400000) * 5);

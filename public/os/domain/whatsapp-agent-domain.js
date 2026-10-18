@@ -302,6 +302,14 @@ export function offerRecordedMessages(item, price) {
   ].join("\n"))];
 }
 
+/** A new number while the previous offer is still with the office: kept as it was, nothing new recorded. */
+export function offerPendingMessage(item, price) {
+  return textMessage([
+    `عرضك السابق ${money(price)} ريال على ${item.propertyType} في ${item.district} (المرجع ${item.reference}) ما زال لدى المكتب.`,
+    "بنبلغك برد المالك أولًا، وبعدها تقدر تعدّل عرضك."
+  ].join("\n"));
+}
+
 export const askViewingTimeMessage = (item) => textMessage(`متى يناسبك تعاين ${item.propertyType} في ${item.district}؟\nاكتب اليوم والوقت، مثل: «بكرة العصر الساعة 5» أو «الخميس 7 م».`);
 
 export function viewingRequestedMessages(item, preference, { reschedule = false } = {}) {

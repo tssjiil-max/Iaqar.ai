@@ -121,6 +121,10 @@ export function availableActions(journey = {}, role = "", { now = new Date() } =
   const base = { dealPhase };
   const viewing = journey.viewing || {};
   const at = toDate(viewing.at);
+  if (dealPhase === PHASE.PRICE_APPROVAL) {
+    const agreed = sessionPrices(journey).agreed;
+    return { ...base, phase: "APPROVAL_WAIT", waiting: true, actions: [intervention], note: `تم الاتفاق على ${formatPrice(agreed)} — بانتظار اعتماد الوسيط للسعر والشروط قبل تحديد المعاينة.` };
+  }
   if (dealPhase === PHASE.FINAL_AGREEMENT) {
     return { ...base, phase: "DOCUMENTS", waiting: true, actions: [intervention], note: "تم الاتفاق — الوسيط يتابع إنهاء الصفقة والمستندات." };
   }
@@ -213,6 +217,8 @@ export function moveText(move, { pct = 0 } = {}) {
     case "accept_fixed": return "وافق على السعر الثابت";
     case "decline_fixed": return "لم يوافق على السعر الثابت — أُغلقت هذه المطابقة";
     case "reject": return "رفض العرض الحالي";
+    case "price_approved": return "اعتمد الوسيط السعر المتفق عليه";
+    case "price_not_approved": return "لم يعتمد الوسيط السعر — يستمر التفاوض";
     case "opened": return "فتح رابط الغرفة";
     case "resolved": return "تابع الوسيط طلب التدخل";
     default: return "";

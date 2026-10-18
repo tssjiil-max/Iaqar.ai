@@ -1,4 +1,5 @@
-import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue, listWhatsAppCases, actOnWhatsAppCase } from "./whatsapp-agent-service.js";
+import { getRecordMandate, setRecordMandate } from "./mandate-service.js";
+import { configureWhatsAppAgent, whatsappAgentStatus, drainWhatsAppQueue, listWhatsAppCases, actOnWhatsAppCase, listWhatsAppConversations, getWhatsAppConversation, controlWhatsAppConversation, replyInWhatsAppConversation } from "./whatsapp-agent-service.js";
 /**
  * /os/* routes — the office operating system API.
  * Office routes: Firebase ID token → office membership (Worker-verified) → service.
@@ -32,7 +33,7 @@ import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, star
 import { actOnFind, controlSearch, createSearch, feedScout, findDetail, importScoutLink, liveSearchForTask, parseSearchText, recordSearch, runOfficeCycle, saveScoutSettings, scoutOverview, scoutRecordChanged, searchDetail } from "./scout-service.js";
 import { createIngestKey, ingestScoutBatch, listIngestKeys, revokeIngestKey } from "./scout-ingest.js";
 import { startScoutChatLink, unlinkScoutChat } from "./scout-telegram.js";
-import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
+import { decideSessionPrice, handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
   "/os/public/search/analyze": (ctx,b,meta) => analyzeGuestSearch(ctx,{officeId:b.officeId,text:typeof b.text === "string"?b.text:"",ip:meta.ip}),
@@ -65,6 +66,18 @@ const OFFICE_ROUTES = Object.freeze({
     officeId: ctx.officeId, actor, caseId: text(b.caseId), action: text(b.action),
     input: b.input && typeof b.input === "object" ? b.input : {}, requestKey: text(b.requestKey)
   }),
+  // «المحادثات»: who answers each WhatsApp conversation, and the broker's take over / reply / hand back.
+  "/os/whatsapp-agent/conversations": (ctx, b, actor) => listWhatsAppConversations(ctx, { officeId: ctx.officeId, actor }),
+  "/os/whatsapp-agent/conversation": (ctx, b, actor) => getWhatsAppConversation(ctx, { officeId: ctx.officeId, actor, conversationId: text(b.conversationId) }),
+  "/os/whatsapp-agent/conversation/control": (ctx, b, actor) => controlWhatsAppConversation(ctx, {
+    officeId: ctx.officeId, actor, conversationId: text(b.conversationId), action: text(b.action), expectedVersion: Number(b.expectedVersion), requestKey: text(b.requestKey)
+  }),
+  "/os/whatsapp-agent/conversation/reply": (ctx, b, actor) => replyInWhatsAppConversation(ctx, {
+    officeId: ctx.officeId, actor, conversationId: text(b.conversationId), text: typeof b.text === "string" ? b.text : "", requestKey: text(b.requestKey)
+  }),
+  // «حد المالك» for one offer: the manager only; Worker-only storage, never on the record.
+  "/os/records/mandate": (ctx, b, actor) => getRecordMandate(ctx, { officeId: ctx.officeId, actor, recordId: text(b.recordId) }),
+  "/os/records/mandate/set": (ctx, b, actor) => setRecordMandate(ctx, { officeId: ctx.officeId, actor, recordId: text(b.recordId), floor: b.floor, source: b.source }),
   "/os/records/cooperation": (ctx, b, actor) => reviewExternalCooperation(ctx, { actor, officeId: ctx.officeId, recordId: text(b.recordId), input: b }),
   // «تعبئة ذكية» / «إضافة سريعة»: analysis only — the record is saved later through /os/records/save after review.
   "/os/smart-fill": (ctx, b, actor) => analyzeOfficeText(ctx, { officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", multi: b.multi !== false, ip: actor.uid }),
@@ -113,6 +126,8 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/session/links": (ctx, b, actor) => sessionLinks(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), replace: text(b.replace) }),
   "/os/session/handoff": (ctx, b, actor) => recordSessionHandoff(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), role: text(b.role) }),
   "/os/session/message": (ctx, b, actor) => sendBrokerMessage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), audience: text(b.audience), text: b.text, requestKey: text(b.requestKey) }),
+  // «اعتماد السعر»: the manager or the assigned broker approves (or not) the price both sides agreed on.
+  "/os/session/price-approval": (ctx, b, actor) => decideSessionPrice(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), decision: text(b.decision), price: b.price, note: b.note, requestKey: text(b.requestKey) }),
   "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
   "/os/session/request": (ctx, b, actor) => handleSessionRequest(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), requestId: text(b.requestId), decision: text(b.decision), text: b.text, requestKey: text(b.requestKey) }),
   // Channels: every member sees the state; linking and unlinking are the manager's (checked in the service).

@@ -121,6 +121,9 @@ jobs:
       - name: Kapso WhatsApp Sandbox (signature, retries, office isolation, conversation, matching, room)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/kapso" node scripts/qa/office-os/kapso.e2e.mjs
+      - name: «المحادثات» (who answers each WhatsApp conversation, take over, honest reply state, hand back, stale screen, broker isolation)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/conversations" node scripts/qa/office-os/conversations.e2e.mjs
       - name: «الباحث عن الفرص» (home card, one-press searches, the three modes, finds, contact, pause, master switch, isolation)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/scout" node scripts/qa/office-os/scout.e2e.mjs
