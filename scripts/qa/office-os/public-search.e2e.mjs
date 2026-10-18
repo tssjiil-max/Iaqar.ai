@@ -41,7 +41,14 @@ try {
    await page.locator('[name=consentProcessing]').check(); await page.locator('[name=consentContact]').check();
    if (client === 'first') await page.screenshot({ path: path.join(OUT, `${width}-2-choose.png`) });
    await page.locator('[data-guest-select]').click();
-   const link = page.locator('[data-whatsapp-handoff]'); await link.waitFor();
+   const link = page.locator('[data-whatsapp-handoff]');
+   // When the hand-off does not appear, say what the sheet showed instead (error text, button state, worker calls).
+   await link.waitFor().catch(async (error) => {
+    const sheet = await page.locator('[data-guest-select-form]').evaluate((f) => ({ status: f.querySelector('.os-feedback')?.hidden === false ? f.querySelector('.os-feedback').textContent : '', busy: f.querySelector('[data-guest-select]')?.getAttribute('aria-busy') || '', hidden: f.hidden })).catch(() => null);
+    const calls = h.server.workerCalls.filter((c) => c.path.includes('/os/public/search/select')).slice(-3);
+    await page.screenshot({ path: path.join(OUT, `${width}-${client}-handoff-missing.png`), fullPage: true }).catch(() => {});
+    throw new Error(`${width}px ${client}: no WhatsApp hand-off — sheet ${JSON.stringify(sheet)}, select calls ${JSON.stringify(calls)}, errors ${JSON.stringify(errors)} (${error.message.split('\n')[0]})`);
+   });
    const href = new URL(await link.getAttribute('href'));
    assert.equal(href.hostname, 'wa.me'); assert.equal(href.pathname, '/966501111111', 'the office number');
    assert.match(href.searchParams.get('text'), new RegExp(`${OFFICE_A}:${id}`));
