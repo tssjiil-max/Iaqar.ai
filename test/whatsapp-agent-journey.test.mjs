@@ -460,3 +460,85 @@ test('a budget range on WhatsApp keeps both bounds: the saved request and the of
  assert.equal(saved.priceMin, 1_600_000); assert.equal(saved.priceMax, 1_900_000);
  assert.equal(f.paid(), 0);
 });
+
+// ------------------------------------------------------------------ P3: negotiation within the owner's mandate
+
+async function offerOn(f, reference, price) {
+  const i = (await f.shown()).findIndex(r => r.reference === reference);
+  await f.tap(`wa:NEGOTIATE:${i}`);
+  return f.say(String(price));
+}
+const sameWords = (text) => text.replace(/[\d,]+/g, '#');
+
+test('P3-1 above or below the floor, the client gets the same answer; only the office learns how it may answer', async () => {
+  const above = fixture(); await untilResults(above);
+  const below = fixture(); await untilResults(below);
+  const a = above.all(await offerOn(above, 'office-a:v1', 1450000));
+  const b = below.all(await offerOn(below, 'office-a:v1', 1300000));
+  assert.equal(sameWords(a), sameWords(b), 'the wording never depends on the floor');
+  for (const text of [a, b]) assert.ok(!/1,400,000|1400000|تفويض|حد المالك/.test(text), 'nothing about the floor reaches the client');
+  assert.equal((await above.cases())[0].negotiation.offers.at(-1).mandate, 'WITHIN_MANDATE');
+  assert.equal((await below.cases())[0].negotiation.offers.at(-1).mandate, 'OWNER_APPROVAL_REQUIRED');
+  const notes = async (f) => (await f.ctx.store.list(['offices', 'office-a', 'notifications'])).map(n => `${n.title} ${n.body}`).join('\n');
+  assert.match(await notes(above), /ضمن تفويض المالك/);
+  assert.match(await notes(below), /يحتاج رد المالك/);
+  for (const f of [above, below]) {
+    assert.ok(!/1,400,000|1400000/.test(await notes(f)), 'the amount is never in a notification');
+    const audit = (await f.ctx.store.list(['offices', 'office-a', 'auditLogs'])).map(x => JSON.stringify(x)).join('\n');
+    assert.ok(!/1400000/.test(audit), 'nor in the audit log');
+  }
+});
+
+test('P3-2 one offer at a time: a new number while the office has not answered is not recorded (no probing)', async () => {
+  const f = fixture(); await untilResults(f);
+  await offerOn(f, 'office-a:v1', 1300000);
+  const again = f.all(await offerOn(f, 'office-a:v1', 1350000));
+  assert.match(again, /ما زال لدى المكتب/);
+  const [kase] = await f.cases();
+  assert.equal(kase.negotiation.offers.length, 1, 'still the first offer only');
+  assert.equal(kase.negotiation.offers[0].price, 1300000);
+});
+
+test('P3-3 the office answers: within the mandate the assigned broker accepts on it; below it the owner must confirm', async () => {
+  const within = fixture(); await untilResults(within);
+  await offerOn(within, 'office-a:v1', 1450000);
+  const [k1] = await within.cases();
+  const answer = (f, kase, actor, input, key) => actOnWhatsAppCase(f.ctx, { officeId: 'office-a', actor, caseId: kase.id, action: 'negotiation_answer', input, requestKey: key });
+  await assert.rejects(answer(within, k1, { uid: 'other-broker', isManager: false }, { decision: 'accepted', useMandate: true }, 'answer-other-1'), e => e.status === 403, 'another broker cannot commit the office');
+  const ok = await answer(within, k1, { uid: 'broker-1', isManager: false }, { decision: 'accepted', useMandate: true }, 'answer-mandate-1');
+  assert.equal(ok.case.negotiation.status, 'ACCEPTED_BY_OWNER');
+  assert.equal(ok.case.negotiation.ownerDecisions.at(-1).viaMandate, true);
+  assert.equal(ok.case.negotiation.ownerDecisions.at(-1).source, 'تفويض المالك المسجل');
+  const below = fixture(); await untilResults(below);
+  await offerOn(below, 'office-a:v1', 1300000);
+  const [k2] = await below.cases();
+  await assert.rejects(answer(below, k2, { uid: 'broker-1', isManager: false }, { decision: 'accepted', useMandate: true }, 'answer-below-1'), e => e.code === 'owner_confirmation_required', 'below the floor the mandate does not apply');
+  await assert.rejects(answer(below, k2, { uid: 'broker-1', isManager: false }, { decision: 'accepted' }, 'answer-below-2'), e => e.code === 'owner_confirmation_required');
+  const owner = await answer(below, k2, { uid: 'broker-1', isManager: false }, { decision: 'accepted', ownerConfirmed: true, ownerConfirmationSource: 'اتصال مع المالك' }, 'answer-owner-1');
+  assert.equal(owner.case.negotiation.ownerDecisions.at(-1).viaMandate, false);
+  const refusal = fixture(); await untilResults(refusal);
+  await offerOn(refusal, 'office-a:v1', 1300000);
+  const [k3] = await refusal.cases();
+  const no = await answer(refusal, k3, { uid: 'broker-1', isManager: false }, { decision: 'rejected' }, 'answer-reject-1');
+  assert.equal(no.case.negotiation.status, 'REJECTED_BY_OWNER');
+  const after = refusal.all(await offerOn(refusal, 'office-a:v1', 1400000));
+  assert.doesNotMatch(after, /ما زال لدى المكتب/, 'after the owner answered, the client may offer again');
+});
+
+test('P3-4 the WhatsApp offer enters the deal\'s negotiation room as the client\'s own move', async () => {
+  const f = fixture(); await untilResults(f);
+  const conv = (await f.ctx.store.list(['offices', 'office-a', 'whatsappConversations']))[0];
+  assert.ok(conv.requestRecordId, 'the client request is in the CRM');
+  await f.ctx.store.set(['offices', 'office-a', 'journeys', 'jr_wa'], { officeId: 'office-a', journeyId: 'jr_wa', offerId: 'v1', requestId: conv.requestRecordId, status: 'ACTIVE', stage: 'NEGOTIATION', assignedBrokerId: 'broker-1', offerSummary: { price: 1500000, priceStatus: 'NEGOTIABLE', propertyType: 'فيلا' }, requestSummary: { price: 2000000 }, session: {}, openTasks: {} });
+  await offerOn(f, 'office-a:v1', 1450000);
+  const journey = await f.ctx.store.get(['offices', 'office-a', 'journeys', 'jr_wa']);
+  assert.equal(journey.session.prices.client.price, 1450000);
+  assert.equal(journey.session.lastMove.role, 'client');
+  assert.equal(journey.session.agreedPrice, null, 'a proposal, not an agreement');
+  const [kase] = await f.cases();
+  assert.equal(kase.negotiation.offers.at(-1).room, 'ENTERED');
+  assert.equal(kase.journeyId, 'jr_wa');
+  const events = await f.ctx.store.list(['offices', 'office-a', 'journeys', 'jr_wa', 'events']);
+  assert.ok(events.some(e => e.type === 'SESSION_MOVE' && JSON.stringify(e).includes('whatsapp_agent')), 'the room log says it came through WhatsApp');
+  assert.ok(!JSON.stringify(journey).includes('1400000'), 'the floor is not in the room');
+});

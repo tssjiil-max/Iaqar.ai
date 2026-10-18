@@ -18,7 +18,7 @@ import {
   effectOfViewingResult, isJourneyOpen, viewingResultOf, canMoveStage
 } from "../../../public/os/domain/journey-domain.js";
 import { lifecycleOf, priceOf, LIFECYCLE } from "../../../public/os/domain/records-domain.js";
-import { PHASE, VIEWING_MINUTES, brokerBusy, checkBrokerAvailability, journeyPhase, phaseInfo } from "../../../public/os/domain/deal-flow-domain.js";
+import { PHASE, VIEWING_MINUTES, brokerBusy, checkBrokerAvailability, journeyPhase, phaseInfo, priceApprovalPending } from "../../../public/os/domain/deal-flow-domain.js";
 import { cleanText, formatDateTime, toDate } from "../../../public/os/domain/format-domain.js";
 import { documentChecklist, documentSummary, prepareDocumentChange, sameDocumentEntry } from "../../../public/os/domain/deal-documents-domain.js";
 import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
@@ -443,6 +443,8 @@ export async function moveStage(ctx, { actor, officeId, journeyId, stage }) {
   const journey = await loadJourney(ctx, officeId, journeyId);
   assertCanActOn(ctx.deps, actor, journey);
   if (!canMoveStage(journey, stage)) throw ctx.deps.appError("stage_invalid", 409, "لا يمكن الانتقال لهذه المرحلة");
+  // An agreed price waiting for approval is decided with «اعتماد السعر» (recorded), not skipped by moving the stage.
+  if (priceApprovalPending(journey)) throw ctx.deps.appError("price_approval_pending", 409, "اعتمد السعر المتفق عليه أو ارفضه أولًا");
   const add = stage === STAGE.AGREEMENT
     ? [{ type: "DEAL_ACTION", ref: `agreement:stage:${ctx.now().toISOString()}`, reason: "انتقلت الفرصة لمتابعة الاتفاق", actionLabel: "متابعة الاتفاق" }]
     : [{ type: "SEND_PROPOSAL", ref: `stage:${stage}:${ctx.now().toISOString()}`, reason: stage === STAGE.VIEWING ? "اقترح موعد معاينة على الطرفين" : "أعيدت الفرصة للتفاوض — جهّز المقترح التالي", actionLabel: stage === STAGE.VIEWING ? "اقتراح موعد" : "تجهيز المقترح" }];

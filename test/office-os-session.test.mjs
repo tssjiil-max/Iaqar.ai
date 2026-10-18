@@ -181,6 +181,19 @@ test("broker free text reaches only the chosen party", async () => {
 test("accepting agrees on the price → viewing slots from the broker calendar → booked on agreement", async () => {
   const res = await act(ctx.ownerToken, "accept");
   assert.equal(res.status, 200, JSON.stringify(res.body));
+  // Agreed by both sides → the broker approves the price and terms before the viewing.
+  const pending = (await call("/os/session/view", { token: ctx.clientToken })).body.session;
+  assert.equal(pending.dealPhase, "PRICE_APPROVAL");
+  assert.deepEqual(pending.actions.map((a) => a.id), ["intervention"], "nothing to press while the broker decides");
+  assert.equal((await act(ctx.clientToken, "viewing_pick", { viewingAt: new Date(Date.now() + 86400000).toISOString() })).status, 409, "no viewing before approval");
+  assert.ok(ops().some((op) => op.type === "PRICE_APPROVAL" && active(op)), "the broker gets «اعتماد السعر»");
+  const decide = (body, uid = OWNER_A) => call("/os/session/price-approval", { officeId: OFFICE_A, journeyId: ctx.journeyId, decision: "approve", requestKey: "session-approve-1", ...body }, uid);
+  assert.equal((await decide({ price: 1150000 })).status, 409, "a decision on another price is refused");
+  assert.equal((await call("/os/session/price-approval", { officeId: OFFICE_A, journeyId: ctx.journeyId, decision: "approve", price: 1160000, requestKey: "foreign-approve" }, OWNER_B)).status, 403, "another office cannot approve");
+  assert.equal((await act(ctx.clientToken, "accept")).status, 409, "a side cannot approve its own deal");
+  assert.equal((await decide({ price: 1160000 })).status, 200);
+  assert.equal((await decide({ price: 1160000 })).body.changed, false, "a replay changes nothing");
+  assert.ok(!ops().some((op) => op.type === "PRICE_APPROVAL" && active(op)), "the approval task is done");
   const view = (await call("/os/session/view", { token: ctx.clientToken })).body.session;
   assert.equal(view.agreedPrice, 1160000);
   assert.equal(view.dealPhase, "VIEWING_SCHEDULING");

@@ -189,9 +189,19 @@ await step("task and deep link open the same session", async () => {
 });
 
 
-await step("price accepted → both pages show the slot picker; picking a free slot books it", async () => {
+await step("price accepted → the broker approves it on his page → both pages show the slot picker; picking a free slot books it", async () => {
   // the owner accepts the client's last price (one tap from «قبول»)
   await owner.locator('[data-session-action="accept"]').click();
+  // agreed by both sides: nothing more for them until the broker approves the price and terms
+  await owner.locator(".os-session-note", { hasText: "بانتظار اعتماد الوسيط" }).waitFor({ timeout: 9000 });
+  await client.locator(".os-session-note", { hasText: "بانتظار اعتماد الوسيط" }).waitFor({ timeout: 9000 });
+  if (await client.locator('[data-session-action="viewing_pick"]').count()) throw new Error("no viewing before the broker approves");
+  await broker.locator("[data-price-approval]").waitFor({ timeout: 9000 });
+  await broker.locator("[data-price-approval]").scrollIntoViewIfNeeded();
+  await broker.screenshot({ path: path.join(OUT, "broker-price-approval.png") });
+  await broker.locator("[data-price-approve]").click();
+  await broker.locator(".os-dialog .os-btn-row button").first().click();
+  await broker.locator("[data-price-approval]").waitFor({ state: "detached", timeout: 9000 });
   await owner.locator(".os-session-note", { hasText: "تم الاتفاق على السعر" }).waitFor({ timeout: 9000 });
   await client.locator('[data-session-action="viewing_pick"]').waitFor({ timeout: 9000 });
   await client.locator('[data-session-action="viewing_pick"]').click();

@@ -33,7 +33,7 @@ import { announceRoom, partyLinkStatus, setBotEnabled, setJourneyBotPaused, star
 import { actOnFind, controlSearch, createSearch, feedScout, findDetail, importScoutLink, liveSearchForTask, parseSearchText, recordSearch, runOfficeCycle, saveScoutSettings, scoutOverview, scoutRecordChanged, searchDetail } from "./scout-service.js";
 import { createIngestKey, ingestScoutBatch, listIngestKeys, revokeIngestKey } from "./scout-ingest.js";
 import { startScoutChatLink, unlinkScoutChat } from "./scout-telegram.js";
-import { handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
+import { decideSessionPrice, handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
 const PUBLIC_ROUTES = Object.freeze({
   "/os/public/search/analyze": (ctx,b,meta) => analyzeGuestSearch(ctx,{officeId:b.officeId,text:typeof b.text === "string"?b.text:"",ip:meta.ip}),
@@ -126,6 +126,8 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/session/links": (ctx, b, actor) => sessionLinks(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), replace: text(b.replace) }),
   "/os/session/handoff": (ctx, b, actor) => recordSessionHandoff(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), role: text(b.role) }),
   "/os/session/message": (ctx, b, actor) => sendBrokerMessage(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), audience: text(b.audience), text: b.text, requestKey: text(b.requestKey) }),
+  // «اعتماد السعر»: the manager or the assigned broker approves (or not) the price both sides agreed on.
+  "/os/session/price-approval": (ctx, b, actor) => decideSessionPrice(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), decision: text(b.decision), price: b.price, note: b.note, requestKey: text(b.requestKey) }),
   "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
   "/os/session/request": (ctx, b, actor) => handleSessionRequest(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), requestId: text(b.requestId), decision: text(b.decision), text: b.text, requestKey: text(b.requestKey) }),
   // Channels: every member sees the state; linking and unlinking are the manager's (checked in the service).

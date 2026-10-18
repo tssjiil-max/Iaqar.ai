@@ -17,7 +17,7 @@ import { recordImages, keyBelongsTo } from '../../../public/os/domain/record-med
 import {
   ACTION, CASE_STAGE, OFFICE_ACTION, NO_RESULTS_TEXT, UNAVAILABLE_TEXT, HUMAN_TEXT,
   readInbound, detectAction, parseViewingTime, textMessage, buttonsMessage, imageMessage, actionId,
-  resultsMessages, detailsMessages, afterInterestMessages, askOfferMessage, offerRecordedMessages,
+  resultsMessages, detailsMessages, afterInterestMessages, askOfferMessage, offerRecordedMessages, offerPendingMessage,
   askViewingTimeMessage, viewingRequestedMessages, followUpQuestion, officeActionAllowed, viewingConflict,
   officeUpdateText, reminderText, listMessage
 } from '../../../public/os/domain/whatsapp-agent-domain.js';
@@ -28,6 +28,7 @@ import { notifyOffice } from './bot-notify.js';
 import { priceOf } from '../../../public/os/domain/records-domain.js';
 import { writeAudit } from './audit-log.js';
 import { mandateFloor } from './mandate-service.js';
+import { submitChannelOffer } from './session-service.js';
 import { HELD_BY_APP, conversationView, mayRelease, mayTake, mayView } from '../../../public/os/domain/conversation-control-domain.js';
 
 const clean=(v,n=120)=>String(v??'').trim().slice(0,n);
@@ -247,13 +248,20 @@ async function agentTurn(ctx,job,c){
   case ACTION.OFFER_PRICE:{
    if(!action.price||action.price<1000)return {messages:[askOfferMessage(item)],patch:{...base,awaiting:'offer_price'}};
    const kase=await ensureCase(ctx,job,c,item,index);
-   // The owner's floor (if the office recorded one) only tells the office how to route it; the client never learns it.
-   const mandate=mandateDecision({floor:await mandateFloor(ctx,listing.officeId,listing.recordId)},action.price);
+   // One offer at a time: while the office has not answered, a new number is not taken (no probing for the floor).
+   const pendingOffer=kase.doc.negotiation?.status==='AWAITING_OWNER'?(kase.doc.negotiation.offers||[]).at(-1):null;
+   if(pendingOffer&&pendingOffer.id!==job.id)return {messages:[offerPendingMessage(item,pendingOffer.price)],patch:{...base,selectedCaseId:kase.id,awaiting:''},inventory:true};
+   // The owner's floor only tells the office how it may answer; the client's reply is the same either way.
+   const mandate=mandateDecision({floor:listing.officeId===job.officeId?await mandateFloor(ctx,listing.officeId,listing.recordId):null},action.price);
+   // The same price enters the deal's negotiation room as the client's own move, when that deal is open.
+   const room=listing.officeId===job.officeId?await submitChannelOffer(ctx,{officeId:job.officeId,offerId:listing.recordId,requestId:c.requestRecordId||'',price:action.price,submissionId:`wa-${job.id.slice(3,43)}`}):{linked:false,reason:'other_office'};
    await updateCase(ctx,job.officeId,kase.id,cur=>{
     const offers=cur.negotiation?.offers||[];if(offers.some(o=>o.id===job.id))return null;
-    return {stage:CASE_STAGE.NEGOTIATING,negotiation:{...cur.negotiation,status:'AWAITING_OWNER',offers:[...offers,{id:job.id,price:action.price,listedPrice:item.price,at:ctx.now().toISOString(),source:'client_whatsapp',mandate}].slice(-20)},events:[event(ctx,'CLIENT_OFFER',`عرض العميل ${action.price} ريال (المعلن ${item.price})`)]};
+    return {stage:CASE_STAGE.NEGOTIATING,negotiation:{...cur.negotiation,status:'AWAITING_OWNER',offers:[...offers,{id:job.id,price:action.price,listedPrice:item.price,at:ctx.now().toISOString(),source:'client_whatsapp',mandate,room:room.linked?'ENTERED':room.reason||''}].slice(-20)},journeyId:room.journeyId||cur.journeyId||'',
+     events:[event(ctx,'CLIENT_OFFER',`عرض العميل ${action.price} ريال (المعلن ${item.price})${room.linked?' — دخل غرفة التفاوض':''}`)]};
    });
-   await tellOffice(ctx,job.officeId,{key:`offer:${job.id}`,title:'عرض سعر من عميل واتساب',body:`${action.price.toLocaleString('en-US')} ريال على ${item.propertyType} — ${item.district} (المرجع ${item.reference}). يحتاج رد المالك.`,brokerId:kase.doc.assignedBrokerId});
+   const route=mandate==='WITHIN_MANDATE'?'ضمن تفويض المالك: يمكن للوسيط المسؤول قبوله باسم التفويض.':'يحتاج رد المالك.';
+   await tellOffice(ctx,job.officeId,{key:`offer:${job.id}`,title:'عرض سعر من عميل واتساب',body:`${action.price.toLocaleString('en-US')} ريال على ${item.propertyType} — ${item.district} (المرجع ${item.reference}). ${route}`,brokerId:kase.doc.assignedBrokerId});
    return {messages:offerRecordedMessages(item,action.price),patch:{...base,selectedCaseId:kase.id,awaiting:''},inventory:true};
   }
   case ACTION.VIEWING:
@@ -585,10 +593,17 @@ export async function actOnWhatsAppCase(ctx,{officeId,actor,caseId,action,input=
    const last=(doc.negotiation.offers||[]).at(-1);
    const price=decision==='counter'?Number(input.price):Number(last?.price);
    if(decision==='counter'&&!(price>0))throw ctx.deps.appError('price_required',400,'اكتب السعر المقترح من المالك');
-   // The owner's answer must come from the owner (or a mandate holder) and say how it was obtained.
-   if(decision!=='rejected'&&(input.ownerConfirmed!==true||clean(input.ownerConfirmationSource,200).length<3))throw ctx.deps.appError('owner_confirmation_required',400,'وثّق موافقة المالك ومصدرها قبل إبلاغ العميل');
+   // Telling the client «accepted» or a counter price commits the office: the manager or the broker on the case only.
+   if(decision!=='rejected'&&!actor.isManager&&actor.uid!==doc.assignedBrokerId)throw ctx.deps.appError('forbidden',403,'رد المالك بالقبول أو بسعر مقابل للمدير أو الوسيط المسؤول');
+   // The owner's answer comes from the owner (with how it was obtained) — or, at or above the floor the manager
+   // recorded with its source, from that standing mandate. Below it, only the owner's own confirmation.
+   const floor=decision!=='rejected'&&input.useMandate===true&&doc.listingOfficeId===officeId?await mandateFloor(ctx,officeId,doc.recordId):null;
+   if(input.useMandate===true&&decision!=='rejected'&&!(floor&&price>=floor))throw ctx.deps.appError('owner_confirmation_required',400,'هذا السعر خارج تفويض المالك المسجل — وثّق موافقة المالك ومصدرها');
+   const viaMandate=Boolean(floor&&price>=floor);
+   if(decision!=='rejected'&&!viaMandate&&(input.ownerConfirmed!==true||clean(input.ownerConfirmationSource,200).length<3))throw ctx.deps.appError('owner_confirmation_required',400,'وثّق موافقة المالك ومصدرها قبل إبلاغ العميل');
    const status={accepted:'ACCEPTED_BY_OWNER',rejected:'REJECTED_BY_OWNER',counter:'COUNTERED_BY_OWNER'}[decision];
-   patch={negotiation:{...doc.negotiation,status,ownerDecisions:[...(doc.negotiation.ownerDecisions||[]),{decision,price,offerId:last?.id||'',source:clean(input.ownerConfirmationSource,200),by,at}].slice(-20),...(decision==='accepted'?{agreedPrice:price}:{})},events:[event(ctx,'OWNER_ANSWER',`رد المالك: ${decision} ${price||''}`,by)]};
+   const source=viaMandate?'تفويض المالك المسجل':clean(input.ownerConfirmationSource,200);
+   patch={negotiation:{...doc.negotiation,status,ownerDecisions:[...(doc.negotiation.ownerDecisions||[]),{decision,price,offerId:last?.id||'',source,viaMandate,by,at}].slice(-20),...(decision==='accepted'?{agreedPrice:price}:{})},events:[event(ctx,'OWNER_ANSWER',`رد المالك: ${decision} ${price||''}${viaMandate?' (ضمن التفويض)':''}`,by)]};
    clientInput={decision,price};
    if(decision==='counter')conversationPatch={awaiting:'offer_price',selectedCaseId:caseId};
    break;

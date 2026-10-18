@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const { startOfficeOsHarness, idTokenFor, OFFICE_A, OWNER_A } = await import(path.join(ROOT, "scripts/qa/office-os/server.mjs"));
+const { startOfficeOsHarness, idTokenFor, OFFICE_A, OWNER_A, BROKER_A2 } = await import(path.join(ROOT, "scripts/qa/office-os/server.mjs"));
 const { PHASE, journeyPhase, checkBrokerAvailability, brokerBusy, availableSlots, VIEWING_MINUTES } = await import(path.join(ROOT, "public/os/domain/deal-flow-domain.js"));
 const h = await startOfficeOsHarness();
 test.after(() => h.server.close());
@@ -24,6 +24,11 @@ const activeOp = (op) => ["OPEN", "IN_PROGRESS", "WAITING_EXTERNAL_RESPONSE"].in
 let seq = 0;
 const act = (token, action, extra = {}) => call("/os/session/act", { token, action, submissionId: `flow-${++seq}-${action}`.replace(/_/g, "-"), ...extra });
 const view = async (token) => (await call("/os/session/view", { token })).body.session;
+/** «اعتماد السعر»: the broker approves the price both sides agreed on. */
+async function approve(d, price) {
+  const r = await call("/os/session/price-approval", { officeId: OFFICE_A, journeyId: d.journeyId, decision: "approve", price, requestKey: `approve-${++seq}` }, OWNER_A);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+}
 
 /** One approved deal in its own district (so deals never cross-match). */
 async function deal(district, { fixed = false, ownerPrice = "1,200,000", clientPrice = "1,100,000" } = {}) {
@@ -67,6 +72,9 @@ test("the offer keeps the owner's price decision (السعر ثابت / قابل
 test("TEST 1 — fixed price accepted → PRICE_NEGOTIATION skipped → VIEWING_SCHEDULING", async () => {
   const res = await act(ctx.fixed.client, "accept_fixed");
   assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(journeyPhase(journeyDoc(ctx.fixed.journeyId)), PHASE.PRICE_APPROVAL, "agreed — the broker approves before the viewing");
+  assert.equal((await view(ctx.fixed.client)).waiting, true);
+  await approve(ctx.fixed, 1200000);
   const j = journeyDoc(ctx.fixed.journeyId);
   assert.equal(journeyPhase(j), PHASE.VIEWING_SCHEDULING);
   assert.equal(j.session.agreedPrice, 1200000);
@@ -97,6 +105,8 @@ test("TEST 2 — negotiable: client offers a price, owner accepts → «تم ا�
   const owner = await view(ctx.neg.owner);
   assert.deepEqual(owner.actions.filter((a) => a.group === "main").map((a) => a.id), ["accept", "adjust", "reject"], "قبول / تعديل العرض / رفض");
   assert.equal((await act(ctx.neg.owner, "accept")).status, 200);
+  assert.equal(journeyPhase(journeyDoc(ctx.neg.journeyId)), PHASE.PRICE_APPROVAL);
+  await approve(ctx.neg, 1150000);
   const j = journeyDoc(ctx.neg.journeyId);
   assert.equal(j.session.agreedPrice, 1150000);
   assert.equal(journeyPhase(j), PHASE.VIEWING_SCHEDULING);
@@ -115,6 +125,7 @@ test("TEST 3 — a slot that clashes with the broker's other viewing is not offe
   const c = await deal("الوادي");
   assert.equal((await act(c.client, "manual", { price: "1,150,000" })).status, 200);
   assert.equal((await act(c.owner, "accept")).status, 200);
+  await approve(c, 1150000);
   const cSlots = (await view(c.client)).slots;
   const shared = cSlots[0].slots.find((s) => b.slots.some((d) => d.slots.includes(s)));
   assert.equal((await act(c.client, "viewing_pick", { viewingAt: shared })).status, 200);
@@ -165,6 +176,8 @@ test("TEST 6 — result «يحتاج تفاوض» reopens the price only (no res
   assert.deepEqual(v.agreed.map((a) => a.id), ["viewing"], "only the price left «تم الاتفاق عليه»");
   assert.equal((await act(d.client, "manual", { price: "1,120,000" })).status, 200);
   assert.equal((await act(d.owner, "accept")).status, 200);
+  assert.equal(journeyPhase(journeyDoc(d.journeyId)), PHASE.PRICE_APPROVAL, "agreed after the viewing — the broker approves first");
+  await approve(d, 1120000);
   assert.equal(journeyPhase(journeyDoc(d.journeyId)), PHASE.FINAL_AGREEMENT, "no second viewing scheduling");
 });
 
@@ -172,6 +185,7 @@ test("TEST 7 — result «غير مناسب» closes this match only; offer and 
   const d = await deal("الملز");
   assert.equal((await act(d.client, "manual", { price: "1,150,000" })).status, 200);
   assert.equal((await act(d.owner, "accept")).status, 200);
+  await approve(d, 1150000);
   await book(d);
   const res = await call("/os/journeys/viewing/result", { officeId: OFFICE_A, journeyId: d.journeyId, result: "not_suitable" }, OWNER_A);
   assert.equal(res.status, 200, JSON.stringify(res.body));
@@ -234,4 +248,25 @@ test("a push link with only openDailyTask opens the task like openOperation does
   assert.equal(operationIdFromParams(new URLSearchParams("openDailyTask=op_1")), "op_1");
   assert.equal(operationIdFromParams(new URLSearchParams("openOperation=op_2&openDailyTask=op_1")), "op_2");
   assert.equal(operationIdFromParams(new URLSearchParams("officeId=x")), "");
+});
+
+test("«اعتماد السعر»: not approved → the agreement is undone and the negotiation goes on; nobody skips it", async () => {
+  const d = await deal("السليمانية");
+  assert.equal((await act(d.client, "manual", { price: "1,150,000" })).status, 200);
+  assert.equal((await act(d.owner, "accept")).status, 200);
+  const decide = (body, uid = OWNER_A) => call("/os/session/price-approval", { officeId: OFFICE_A, journeyId: d.journeyId, price: 1150000, ...body }, uid);
+  assert.equal((await decide({ decision: "approve", requestKey: "not-assigned-1" }, BROKER_A2)).status, 403, "a broker who does not own the deal cannot approve");
+  const skip = await call("/os/journeys/stage", { officeId: OFFICE_A, journeyId: d.journeyId, stage: "VIEWING" }, OWNER_A);
+  assert.equal(skip.status, 409, "moving the stage does not skip the approval");
+  assert.equal(skip.body.error, "price_approval_pending", JSON.stringify(skip.body));
+  const no = await decide({ decision: "reject", note: "السعر أقل من تفويض المالك", requestKey: "reject-0001" });
+  assert.equal(no.status, 200, JSON.stringify(no.body));
+  const j = journeyDoc(d.journeyId);
+  assert.equal(journeyPhase(j), PHASE.PRICE_NEGOTIATION);
+  assert.equal(j.session.agreedPrice, null);
+  assert.equal(j.session.priceApproval.state, "NOT_APPROVED");
+  const client = await view(d.client);
+  assert.ok(client.events.some((e) => /لم يعتمد الوسيط السعر/.test(e.text)), "both sides are told");
+  assert.ok(client.actions.some((a) => a.id === "adjust"), "the client can move again");
+  assert.equal((await decide({ decision: "approve", requestKey: "late-approve-1" })).status, 409, "nothing left to approve");
 });

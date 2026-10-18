@@ -28,6 +28,7 @@ export const TASK_TYPES = Object.freeze({
   SESSION_INTERVENTION: { badge: "تدخل مطلوب", button: "فتح غرفة التفاوض", icon: "alert", opens: "session", needsBroker: true },
   SESSION_AGREED: { badge: "تفاوض", button: "فتح غرفة التفاوض", icon: "handshake", opens: "session", needsBroker: true },
   SESSION_PRIVATE_PRICE: { badge: "تفاوض", button: "فتح غرفة التفاوض", icon: "coins", opens: "session", needsBroker: true },
+  PRICE_APPROVAL: { badge: "اعتماد السعر", button: "اعتماد السعر", icon: "check-circle", opens: "session", needsBroker: true },
   SESSION_VIEWING_COUNTER: { badge: "معاينة", button: "فتح غرفة التفاوض", icon: "calendar", opens: "session", needsBroker: true },
   MISSING_DATA: { badge: "استكمال بيانات", button: "استكمال البيانات", icon: "edit", opens: "record", needsBroker: true },
   OPPORTUNITY_REVIEW: { badge: "سجل جديد", button: "مراجعة السجل", icon: "inbox-in", opens: "record", needsBroker: true },

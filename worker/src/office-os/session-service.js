@@ -20,7 +20,7 @@ import {
 import { EVENT_SOURCE, VIEWING_STATE } from "../../../public/os/domain/journey-domain.js";
 import {
   PHASE, PRICE_STATUS_LABEL, VIEWING_MINUTES, availableSlots, brokerBusy, checkBrokerAvailability,
-  isOfferedSlot, journeyPhase, priceStatusOf
+  isOfferedSlot, journeyPhase, priceApprovalPending, priceStatusOf
 } from "../../../public/os/domain/deal-flow-domain.js";
 import { buildWhatsAppUrl, cleanText, formatDateTime, formatPrice, localPhone, parseRiyadhLocal, toDate } from "../../../public/os/domain/format-domain.js";
 import {
@@ -193,6 +193,46 @@ export async function resolveIntervention(ctx, { actor, officeId, journeyId }) {
     // Only the side that asked (and the broker) sees that its request was followed up.
     event: { type: "SESSION_RESOLVED", key: ["resolved", j2key(journey)], text: "تابع الوسيط طلب التدخل", payload: { audience: ROLES.includes(journey.session?.intervention?.by) ? journey.session.intervention.by : "broker" } }
   });
+}
+
+/**
+ * «اعتماد السعر»: both sides agreed on a price; the deal moves on (viewing, or the final agreement after one) only on
+ * the broker's word — the manager or the assigned broker (assertCanActOn). `price` is the price the broker saw: if it
+ * changed meanwhile the decision is refused (409), never applied to another price. Not approved → the agreement is
+ * undone and the negotiation goes on. Once per requestKey; every decision is in the deal's log, seen by both sides.
+ */
+export async function decideSessionPrice(ctx, { actor, officeId, journeyId, decision, price, note = "", requestKey = "" }) {
+  const journey = await loadOwnJourney(ctx, { actor, officeId, journeyId });
+  if (!isOpenJourney(journey)) throw ctx.deps.appError("journey_closed", 409, "الصفقة مغلقة");
+  if (!["approve", "reject"].includes(decision)) throw ctx.deps.appError("decision_invalid", 400, "اختر: اعتماد السعر أو عدم اعتماده");
+  const key = String(requestKey || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) throw ctx.deps.appError("request_key_required", 400, "أعد المحاولة");
+  const expected = Number(price);
+  const approve = decision === "approve";
+  const reason = cleanText(note, 300);
+  const now = ctx.now();
+  const afterViewing = journey.viewing?.state === VIEWING_STATE.DONE;
+  const result = await applyJourneyChange(ctx, {
+    officeId, journeyId, actor,
+    finish: (task) => task.type === "PRICE_APPROVAL",
+    mutate: (j) => {
+      if ((j.session?.approvalKeys || []).includes(key)) return null;
+      if (!priceApprovalPending(j)) throw ctx.deps.appError("price_approval_not_pending", 409, "لا يوجد سعر بانتظار الاعتماد — حدّث الصفحة");
+      if (Number(j.session.agreedPrice) !== expected) throw ctx.deps.appError("session_changed", 409, "تغيّر السعر المتفق عليه — حدّث الصفحة");
+      const decided = { ...j.session.priceApproval, state: approve ? "APPROVED" : "NOT_APPROVED", by: actor.uid, decidedAt: now.toISOString(), ...(approve ? {} : { note: reason }) };
+      const session = { ...j.session, priceApproval: decided, approvalKeys: [...(j.session.approvalKeys || []), key].slice(-20) };
+      if (approve) return { session, stage: afterViewing ? "AGREEMENT" : "VIEWING" };
+      // Not approved: nothing was agreed after all; both sides can move again from the prices on the table.
+      return { session: { ...session, agreedPrice: null, agreedAt: null, lastMove: null, ready: {} } };
+    },
+    add: approve && afterViewing ? [{ type: "DEAL_ACTION", ref: `agreement:after-viewing:${expected}`, reason: `اعتمدت السعر ${formatPrice(expected)} بعد المعاينة — أنهِ الصفقة`, actionLabel: "إنهاء الصفقة" }] : [],
+    event: {
+      type: "SESSION_MOVE", key: ["price-approval", key], source: EVENT_SOURCE.BROKER, actorRole: "broker",
+      text: approve ? `اعتمد الوسيط السعر ${formatPrice(expected)}` : `لم يعتمد الوسيط السعر ${formatPrice(expected)}${reason ? ` — ${reason}` : ""}`,
+      payload: { role: "broker", move: approve ? "price_approved" : "price_not_approved", price: expected, text: approve ? null : reason || null, audience: "all" }
+    }
+  });
+  return { ok: true, changed: result.changed, approved: approve };
 }
 
 /**
@@ -452,10 +492,35 @@ function cleanSubmissionId(value) {
 }
 
 /** One party action (price move, viewing answer or intervention request). */
-export async function submitSessionAction(ctx, { token, action, price = "", viewingAt = "", termId = "", optionId = "", topicId = "", message = "", submissionId = "", ip = "unknown" }) {
+export async function submitSessionAction(ctx, { token, ip = "unknown", ...move }) {
   rateLimit(ctx, "os/session/act", ip);
   const resolved = await resolveLink(ctx, token);
   if (resolved.state !== "ACTIVE") return { ok: false, state: resolved.state, message: STATE_MESSAGES[resolved.state] || STATE_MESSAGES.INVALID };
+  return applyPartyAction(ctx, resolved, move);
+}
+
+/**
+ * The client's own price, received by the office's WhatsApp agent, entered in the deal's room as the client's move —
+ * exactly as if the client pressed «إدخال سعر» on their link: same rules, same turn, same «اعتماد السعر» later.
+ * Only when this office has an open deal for this very offer and request; otherwise (or when it is not the client's
+ * turn) nothing is written and the reason is returned. The owner's floor is never part of it.
+ */
+export async function submitChannelOffer(ctx, { officeId, offerId, requestId, price, submissionId }) {
+  if (!offerId || !requestId) return { linked: false, reason: "no_deal" };
+  const journeys = await ctx.store.list(["offices", officeId, "journeys"], 300).catch(() => []);
+  const journey = journeys.find((j) => j.offerId === offerId && j.requestId === requestId && String(j.officeId || officeId) === officeId && isOpenJourney(j));
+  if (!journey) return { linked: false, reason: "no_open_deal" };
+  const journeyId = journeyIdOf(journey);
+  const resolved = { state: "ACTIVE", link: { officeId, journeyId, role: SESSION_ROLE.CLIENT }, journey: { ...journey, journeyId } };
+  try {
+    const result = await applyPartyAction(ctx, resolved, { action: "manual", price: String(price), submissionId, via: "whatsapp_agent" });
+    return { linked: !result.duplicate, duplicate: Boolean(result.duplicate), journeyId };
+  } catch (error) {
+    return { linked: false, reason: /^[a-z_]{2,40}$/.test(error?.code || "") ? error.code : "room_refused", journeyId };
+  }
+}
+
+async function applyPartyAction(ctx, resolved, { action, price = "", viewingAt = "", termId = "", optionId = "", topicId = "", message = "", submissionId = "", via = "" }) {
   const { link } = resolved;
   const role = link.role;
   const officeId = link.officeId;
@@ -506,8 +571,8 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
     add.push({ type: "SESSION_INTERVENTION", ref: `request:${room.requestId}`, priority: "HIGH", reason: `طلب ${who} معلومة: ${applied.topicLabel}`, actionLabel: "فتح غرفة التفاوض" });
   } else if (applied.move === "ready" && applied.both) {
     add.push({ type: "DEAL_ACTION", ref: `ready:${now.toISOString().slice(0, 16)}`, priority: "HIGH", reason: "المالك والعميل جاهزان للاتفاق النهائي — أكمل الصفقة", actionLabel: "إكمال الصفقة" });
-  } else if ((applied.move === "accept" || applied.move === "accept_fixed") && resolved.journey.viewing?.state === VIEWING_STATE.DONE) {
-    add.push({ type: "DEAL_ACTION", ref: `agreement:after-viewing:${applied.price}`, reason: `اتفق الطرفان على ${formatPrice(applied.price)} بعد المعاينة — أنهِ الصفقة`, actionLabel: "إنهاء الصفقة" });
+  } else if (applied.move === "accept" || applied.move === "accept_fixed") {
+    add.push({ type: "PRICE_APPROVAL", ref: `approval:${applied.price}`, priority: "HIGH", reason: `اتفق الطرفان على ${formatPrice(applied.price)} — اعتمد السعر والشروط قبل المعاينة`, actionLabel: "اعتماد السعر" });
   } else if (applied.move === "to_broker") {
     add.push({ type: "SESSION_PRIVATE_PRICE", ref: `private:${role}:${subId}`, priority: "HIGH", reason: `أرسل ${who} سعرًا للوسيط فقط: ${formatPrice(applied.price)}`, actionLabel: "فتح غرفة التفاوض" });
   } else if (applied.move === "viewing_ok") {
@@ -541,7 +606,7 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
       type: "SESSION_MOVE", key: [role, subId], source: EVENT_SOURCE.REPLY_LINK, actorRole: role,
       text: `${who} (غرفة التفاوض): ${card.text}${card.detail ? ` — ${card.detail}` : ""}`,
       payload: {
-        role, move: applied.move, price: applied.price || null, pct: applied.pct || 0, base: applied.base || null,
+        role, move: applied.move, price: applied.price || null, pct: applied.pct || 0, base: applied.base || null, via: via || null,
         viewingAt: applied.viewingAt || null, viewingAtLabel: applied.viewingAt ? formatDateTime(applied.viewingAt, now) : "",
         // Room moves: the term and option, the request, readiness.
         termId: applied.termId || null, termLabel: applied.termLabel || null, option: applied.option || null, optionLabel: applied.optionLabel || null,
@@ -581,6 +646,8 @@ export async function submitSessionAction(ctx, { token, action, price = "", view
   return { ok: true, state: "SAVED" };
 }
 
+const pendingApproval = (price, role, now) => ({ state: "PENDING", price, agreedBy: role, at: now.toISOString() });
+
 /** Validate an action against the given journey and build its journey patch. */
 function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, now, room = {} }) {
   if (Object.hasOwn(ROOM_ACTIONS, actionId)) return planRoomAction(ctx, journey, { role, actionId, now, room });
@@ -596,9 +663,6 @@ function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, no
     const value = move.typed ? typedPrice : move.price(prices, role);
     if (!(value > 0)) throw ctx.deps.appError("price_unavailable", 409, "لا يوجد سعر لحساب هذا الخيار");
     applied = { move: actionId, price: value, pct: move.pct || 0, base: actionId === "compromise" ? null : prices[role === "owner" ? "client" : "owner"] || null };
-    if (!move.private && actionId === "accept") {
-      patch.stage = journey.viewing?.state === VIEWING_STATE.DONE ? "AGREEMENT" : "VIEWING";
-    }
     if (move.private) {
       session.privatePrices = { ...(session.privatePrices || {}), [role]: { price: value, at: now.toISOString() } };
     } else {
@@ -606,6 +670,8 @@ function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, no
       session.lastMove = { role, move: actionId, price: value, at: now.toISOString() };
       session.agreedPrice = actionId === "accept" ? value : null;
       session.agreedAt = actionId === "accept" ? now.toISOString() : null;
+      // Both sides agreeing is not yet the deal: the broker approves the price and terms first (no stage moves here).
+      session.priceApproval = actionId === "accept" ? pendingApproval(value, role, now) : null;
       // Any price move resets «جاهز للاتفاق»: readiness is given for the price agreed now.
       session.ready = {};
     }
@@ -614,6 +680,7 @@ function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, no
     session.lastMove = { role, move: "reject", price: null, at: now.toISOString() };
     session.agreedPrice = null;
     session.agreedAt = null;
+    session.priceApproval = null;
     session.ready = {};
   } else if (actionId === "accept_fixed") {
     const value = prices.owner;
@@ -623,8 +690,8 @@ function planAction(ctx, journey, { role, actionId, typedPrice, typedViewing, no
     session.lastMove = { role, move: "accept_fixed", price: value, at: now.toISOString() };
     session.agreedPrice = value;
     session.agreedAt = now.toISOString();
+    session.priceApproval = pendingApproval(value, role, now);
     session.ready = {};
-    patch.stage = journey.viewing?.state === VIEWING_STATE.DONE ? "AGREEMENT" : "VIEWING";
   } else if (actionId === "decline_fixed") {
     applied = { move: "decline_fixed" };
     session.lastMove = { role, move: "decline_fixed", price: null, at: now.toISOString() };

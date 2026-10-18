@@ -16,6 +16,8 @@ export const PHASE = Object.freeze({
   MATCHED: "MATCHED",
   PRICE_DECISION: "PRICE_DECISION",
   PRICE_NEGOTIATION: "PRICE_NEGOTIATION",
+  // Both sides agreed on a price: the broker approves the price and terms before anything that follows from it.
+  PRICE_APPROVAL: "PRICE_APPROVAL",
   VIEWING_SCHEDULING: "VIEWING_SCHEDULING",
   VIEWING: "VIEWING",
   VIEWING_RESULT: "VIEWING_RESULT",
@@ -31,6 +33,7 @@ export const PHASE_INFO = Object.freeze({
   MATCHED: { stage: "تطابق", step: 0, action: "مراجعة المطابقة", route: "review" },
   PRICE_DECISION: { stage: "تفاوض", step: 2, action: "فتح التفاوض", route: "session" },
   PRICE_NEGOTIATION: { stage: "تفاوض", step: 2, action: "فتح التفاوض", route: "session" },
+  PRICE_APPROVAL: { stage: "تفاوض", step: 2, action: "اعتماد السعر", route: "session" },
   VIEWING_SCHEDULING: { stage: "معاينة", step: 3, action: "تحديد موعد", route: "journey" },
   VIEWING: { stage: "معاينة", step: 3, action: "تفاصيل المعاينة", route: "journey" },
   VIEWING_RESULT: { stage: "معاينة", step: 3, action: "تسجيل النتيجة", route: "journey" },
@@ -69,6 +72,14 @@ export function agreedPriceOf(journey = {}) {
   return toNumber(journey.session?.agreedPrice) || 0;
 }
 
+/**
+ * The agreed price still waits for the broker. Deals agreed before this rule existed carry no approval record
+ * and stay as they were.
+ */
+export function priceApprovalPending(journey = {}) {
+  return String(journey.session?.priceApproval?.state || "") === "PENDING" && agreedPriceOf(journey) > 0;
+}
+
 /** The single current phase of a deal. */
 export function journeyPhase(journey = {}, now = new Date()) {
   if (!journey || !isOpen(journey)) return PHASE.CLOSED;
@@ -76,9 +87,11 @@ export function journeyPhase(journey = {}, now = new Date()) {
   const state = String(viewing.state || "NONE").toUpperCase();
   if (String(journey.stage || "") === "AGREEMENT") return PHASE.FINAL_AGREEMENT;
   const agreed = agreedPriceOf(journey);
+  const pending = priceApprovalPending(journey);
   if (state === "DONE") {
-    if (viewing.result === "interested") return PHASE.FINAL_AGREEMENT;
-    // After «يحتاج تفاوض» only the price is open again; once agreed, the deal moves to the final step.
+    if (viewing.result === "interested" && !pending) return PHASE.FINAL_AGREEMENT;
+    // After «يحتاج تفاوض» only the price is open again; once agreed (and approved), the deal moves to the final step.
+    if (pending) return PHASE.PRICE_APPROVAL;
     if (agreed) return PHASE.FINAL_AGREEMENT;
     return priceStatusOf(journey) === PRICE_STATUS.FIXED ? PHASE.PRICE_DECISION : PHASE.PRICE_NEGOTIATION;
   }
@@ -88,6 +101,7 @@ export function journeyPhase(journey = {}, now = new Date()) {
   }
   if (state === "PROPOSED" || state === "ACCEPTED") return PHASE.VIEWING_SCHEDULING;
   // «معاينة أخرى» / «لم يحضر»: a new time is needed, whatever the price state.
+  if (pending) return PHASE.PRICE_APPROVAL;
   if (viewing.rescheduleRequested === true) return PHASE.VIEWING_SCHEDULING;
   if (agreed) return PHASE.VIEWING_SCHEDULING;
   return priceStatusOf(journey) === PRICE_STATUS.FIXED ? PHASE.PRICE_DECISION : PHASE.PRICE_NEGOTIATION;

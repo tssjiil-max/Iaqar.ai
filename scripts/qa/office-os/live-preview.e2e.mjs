@@ -378,7 +378,14 @@ try {
     check("live: an accepted term moves to «ما تم الاتفاق عليه» with who accepted", (await clientParty.locator('[data-agreed="term:payment_method"]').innerText()).includes("وافق العميل"));
     await shot(clientParty, "17-fixed-price-client");
     await clientParty.locator('[data-session-action="accept_fixed"]').click();
-    await clientParty.locator('[data-session-action="viewing_pick"]').waitFor();
+    // Agreed by both sides → the broker approves the price and terms before any viewing (P3 «اعتماد السعر»).
+    await clientParty.locator(".os-session-note", { hasText: "بانتظار اعتماد الوسيط" }).waitFor({ timeout: 40000 });
+    check("live: an agreed price waits for the broker — no viewing before «اعتماد السعر»", (await clientParty.locator('[data-session-action="viewing_pick"]').count()) === 0);
+    const early = await api("/os/session/price-approval", { officeId: OFFICE, journeyId: jid, decision: "approve", price: 2300000, requestKey: `live-approve-wrong-${RUN}` });
+    check("live: an approval for a different price is refused", early.status === 409, String(early.status));
+    const approvedPrice = await api("/os/session/price-approval", { officeId: OFFICE, journeyId: jid, decision: "approve", price: 2400000, requestKey: `live-approve-${RUN}` });
+    check("live: the broker approves the agreed price", approvedPrice.status === 200 && approvedPrice.body.changed === true, `${approvedPrice.status} ${JSON.stringify(approvedPrice.body).slice(0, 120)}`);
+    await clientParty.locator('[data-session-action="viewing_pick"]').waitFor({ timeout: 40000 });
     await clientParty.locator('[data-session-action="viewing_pick"]').click();
     await clientParty.locator(".os-slot-picker").waitFor();
     check("live: viewing time is picked from free slots (no free typing)", (await clientParty.locator('input[type="datetime-local"]').count()) === 0 && (await clientParty.locator("[data-slot]").count()) > 0);
