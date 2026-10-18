@@ -441,3 +441,20 @@ test('parity: «وش عندك عروض في درة العقيق؟» returns the 
  assert.deepEqual(auto.results.map((x) => x.reference), whatsapp);
  assert.equal(f.paid(), 0);
 });
+
+test('a budget range on WhatsApp keeps both bounds: the saved request and the offers shown respect «من … إلى …»', async () => {
+ const f = fixture(); await f.seed();
+ // Past the earlier tests' rate-limit window for this same conversation (the limiter reads the request clock).
+ f.advance(120_000);
+ const first = f.all(await f.say('السلام عليكم أبحث عن فيلا للشراء في حي الملقا بالرياض ميزانيتي من 1.6 إلى 1.9 مليون'));
+ const second = f.all(await f.say('موافق'));
+ assert.match(first, /الميزانية: من 1,600,000 إلى 1,900,000/, 'the agent repeats the range, not its upper bound');
+ assert.doesNotMatch(second, /تعذر/, second);
+ const shown = await f.shown();
+ assert.ok(shown.length > 0, 'offers in range are shown');
+ assert.ok(shown.every((x) => x.price >= 1_600_000 && x.price <= 1_900_000), JSON.stringify(shown.map((x) => x.price)));
+ assert.ok(!shown.some((x) => x.reference === 'office-a:v1'), '1,500,000 is below the lower bound');
+ const saved = (await f.ctx.store.list(['offices', 'office-a', 'opportunities'])).find((r) => r.opportunityKind === 'REQUEST');
+ assert.equal(saved.priceMin, 1_600_000); assert.equal(saved.priceMax, 1_900_000);
+ assert.equal(f.paid(), 0);
+});

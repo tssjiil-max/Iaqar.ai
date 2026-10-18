@@ -112,6 +112,9 @@ export function validateRecordInput(input = {}, { requireName = false } = {}) {
   const price = toNumber(input.price ?? input.priceOrBudget ?? input.budget);
   if (!(price > 0)) errors.price = kind === RECORD_KIND.REQUEST ? "اكتب الميزانية" : "اكتب السعر";
   else if (price > 10_000_000_000) errors.price = "القيمة غير منطقية";
+  // A request may give its budget as a range: the lower bound sits beside the budget (never above it).
+  const priceMin = kind === RECORD_KIND.REQUEST ? toNumber(input.priceMin ?? input.budgetMin) : 0;
+  if (priceMin && price > 0 && priceMin >= price) errors.priceMin = "الحد الأدنى للميزانية أقل من الحد الأعلى";
   const areaRaw = input.area;
   const area = toNumber(areaRaw);
   if (areaRaw !== undefined && areaRaw !== null && String(areaRaw).trim() !== "" && !(area > 0)) {
@@ -133,6 +136,7 @@ export function validateRecordInput(input = {}, { requireName = false } = {}) {
     city,
     district,
     price,
+    priceMin: priceMin > 0 ? priceMin : null,
     area: area > 0 ? area : null,
     rooms: rooms > 0 ? Math.round(rooms) : null,
     contactName,
@@ -166,6 +170,7 @@ export function recordFields(value, { officeId, brokerId, sourceType = "BROKER_D
     annualRent: value.purpose === "RENT" || value.purpose === "LEASE_REQUEST" ? value.price : null,
     budget: isOffer ? null : value.price,
     priceMax: isOffer ? null : value.price,
+    priceMin: isOffer ? null : (value.priceMin || null),
     area: value.area,
     rooms: value.rooms,
     contactName: value.contactName,
@@ -321,7 +326,8 @@ export function filterRecords(records = [], filters = {}) {
     if (min && view.price < min) return false;
     if (max && view.price > max) return false;
     if (query) {
-      const hay = norm([view.title, view.location, view.contactName, view.contactPhone, view.notes, view.reference, view.propertyType].join(" "));
+      // The short reference a visitor quotes («IQ-XXXXXX») finds its record too.
+      const hay = norm([view.title, view.location, view.contactName, view.contactPhone, view.notes, view.reference, view.propertyType, record.publicReference, record.publicRequestReference].join(" "));
       const digits = query.replace(/\D/g, "");
       if (!hay.includes(query) && !(digits.length >= 4 && hay.replace(/\D/g, "").includes(digits))) return false;
     }

@@ -26,7 +26,7 @@ const clean = (v,n=100) => String(v ?? '').trim().slice(0,n);
 const eq = (a,b) => normalizeArabicText(a) === normalizeArabicText(b);
 const SESSION_TTL_MS = 86400000;
 function officeIdOf(ctx,value){ const id=clean(value,80); if(id && !/^[a-zA-Z0-9_-]+$/.test(id)) throw ctx.deps.appError('office_invalid',400,'رابط المكتب غير صالح');return id; }
-function rate(ctx,ip,action,limit=30){if(!consumePublicRateLimit(publicRateLimitKey({route:`public-search-${action}`,ip,officeId:''}),{limit,windowMs:60000}).ok) throw ctx.deps.appError('rate_limited',429,'محاولات كثيرة، حاول بعد قليل');}
+function rate(ctx,ip,action,limit=30){if(!consumePublicRateLimit(publicRateLimitKey({route:`public-search-${action}`,ip,officeId:''}),{limit,windowMs:60000,now:ctx.now().getTime()}).ok) throw ctx.deps.appError('rate_limited',429,'محاولات كثيرة، حاول بعد قليل');}
 async function publicOffice(ctx,id){const o=await ctx.store.get(['publicOffices',id]);if(!o||o.active===false)throw ctx.deps.appError('office_not_found',404,'رابط المكتب غير متاح');return {...o,id};}
 export async function analyzeGuestSearch(ctx,{officeId='',text='',ip=''}){
  rate(ctx,ip,'analyze');const id=officeIdOf(ctx,officeId);if(id)await publicOffice(ctx,id);
@@ -100,7 +100,7 @@ export async function guestSearch(ctx,{input={},ip=''}){
  const errorsOf=(only)=>Object.entries(check.errors).filter(([k])=>!['contactPhone','contactName','kind'].includes(k)&&(!only||Boolean(criteria[k])));
  const browse = input.mode === 'inventory' || (input.mode === 'auto' && errorsOf(false).length > 0);
  const criteriaErrors=errorsOf(browse);
- if (browse && !['propertyType','district','city','price','purpose'].some(k => Boolean(criteria[k]))) throw ctx.deps.appError('request_invalid',400,'حدد حيًا أو نوع عقار أو ميزانية للبحث');
+ if (browse && !['propertyType','district','city','price','priceMin','purpose'].some(k => Boolean(criteria[k]))) throw ctx.deps.appError('request_invalid',400,'حدد حيًا أو نوع عقار أو ميزانية للبحث');
  if(criteriaErrors.length)throw ctx.deps.appError('request_invalid',400,criteriaErrors[0][1]);
  const viewerKey=/^[a-f0-9]{32}$/.test(String(input.viewerKey||''))?String(input.viewerKey):'';
  if (browse && !check.value.city && home?.city && scope==='office') check.value.city = home.city;
@@ -112,9 +112,11 @@ export async function guestSearch(ctx,{input={},ip=''}){
   if((source.city&&!eq(row.city,source.city))||(source.propertyType&&!eq(row.propertyType,source.propertyType)))return null;
   if (browse && criteria.purpose && (criteria.purpose === 'PURCHASE' ? !['SALE','PURCHASE'].includes(row.purpose) : !['RENT','LEASE_REQUEST'].includes(row.purpose))) return null;
   if(check.value.price>0 && (criteria.priceExclusive === true ? priceOf(row)>=check.value.price : priceOf(row)>check.value.price))return null;
-  // «4 غرف+» / «300 م²+»: a known smaller value is not shown (an unknown one is kept, without that reason).
-  if (browse && check.value.rooms > 0 && Number(row.rooms) > 0 && Number(row.rooms) < check.value.rooms) return null;
-  if (browse && check.value.area > 0 && Number(row.area) > 0 && Number(row.area) < check.value.area) return null;
+  // «من 2,500,000 إلى 3,500,000»: the lower bound is part of the request (the same range the central matcher reads).
+  if(check.value.priceMin>0 && priceOf(row)<check.value.priceMin)return null;
+  // «4 غرف+» / «مساحة لا تقل عن 500 م²»: a known smaller value is not shown (an unknown one is kept, without that reason).
+  if (check.value.rooms > 0 && Number(row.rooms) > 0 && Number(row.rooms) < check.value.rooms) return null;
+  if (check.value.area > 0 && Number(row.area) > 0 && Number(row.area) < check.value.area) return null;
   const inside=districts.find(d=>sameDistrict(row.district,d));
   if(!districts.length||inside)return {same:true,km:null,district:inside||''};
   const to=point(row.coordinates);if(!to)return null;

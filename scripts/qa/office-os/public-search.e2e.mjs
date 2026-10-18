@@ -44,7 +44,7 @@ try {
    const link = page.locator('[data-whatsapp-handoff]');
    // When the hand-off does not appear, say what the sheet showed instead (error text, button state, worker calls).
    await link.waitFor().catch(async (error) => {
-    const sheet = await page.locator('[data-guest-select-form]').evaluate((f) => ({ status: f.querySelector('.os-feedback')?.hidden === false ? f.querySelector('.os-feedback').textContent : '', busy: f.querySelector('[data-guest-select]')?.getAttribute('aria-busy') || '', hidden: f.hidden })).catch(() => null);
+    const sheet = await page.evaluate(() => ({ sheets: document.querySelectorAll('[data-guest-select-form]').length, active: document.activeElement?.name || document.activeElement?.tagName || '', forms: [...document.querySelectorAll('[data-guest-select-form]')].map((f) => ({ status: f.querySelector('.os-feedback')?.hidden === false ? f.querySelector('.os-feedback').textContent.trim() : '', busy: f.querySelector('[data-guest-select]')?.getAttribute('aria-busy') || '', hidden: f.hidden, name: f.querySelector('[name=contactName]')?.value || '', phone: f.querySelector('[name=contactPhone]')?.value || '', processing: f.querySelector('[name=consentProcessing]')?.checked, contact: f.querySelector('[name=consentContact]')?.checked })) })).catch(() => null);
     const calls = h.server.workerCalls.filter((c) => c.path.includes('/os/public/search/select')).slice(-3);
     await page.screenshot({ path: path.join(OUT, `${width}-${client}-handoff-missing.png`), fullPage: true }).catch(() => {});
     throw new Error(`${width}px ${client}: no WhatsApp hand-off — sheet ${JSON.stringify(sheet)}, select calls ${JSON.stringify(calls)}, errors ${JSON.stringify(errors)} (${error.message.split('\n')[0]})`);

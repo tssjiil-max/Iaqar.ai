@@ -8,6 +8,7 @@
  *   • The result has ONE shape (normalizeAnalysis) whether it came from the rules or the rules + a model.
  */
 
+import { priceRangeFrom } from "./price-range-domain.js";
 import { CITIES, detailLines, extractFacts } from "./visitor-domain.js";
 import { PROPERTY_TYPES } from "./records-domain.js";
 
@@ -122,10 +123,12 @@ const STOP_WORDS = new Set(["في", "فى", "ب", "و", "او", "أو", "مع", 
   "الحي", "حي", "احياء", "أحياء", "الاحياء", "الأحياء", "افضل", "يفضل", "ويفضل", "فقط", "كاش", "بنك", "تمويل", "عمر", "العمر", "سنه", "سنة", "سنوات", "تقريبا", "تقريبًا", "موقع", "مكان", "حاله", "وضع", "ممتاز", "ممتازه", "مميز", "مميزه", "نفس", "اي", "أي", "كل", "داخل", "خارج", "وسط", "شمال", "جنوب", "شرق", "غرب", "ايش", "وش"]);
 const CITY_NORMS = CITIES.map(norm);
 const CITY_ALIASES = { "المدينه": "المدينة المنورة", "المدينه المنوره": "المدينة المنورة", "مكه": "مكة المكرمة", "جده": "جدة" };
+/** Words that describe districts without naming one: «الأحياء القريبة»، «المجاورة»، «الشمالية» — never a district. */
+const DESCRIPTOR = /^(?:ال)?(?:قريب|قريبه|قريبة|مجاور|مجاوره|مجاورة|محيط|محيطه|محيطة|اخرى|اخري|مناسب|مناسبه|مناسبة|مشابه|مشابهه|مماثل|مماثله|راقي|راقيه|هادي|هاديه|شماليه|جنوبيه|شرقيه|غربيه|جديده|قديمه|حوله|حولها|منها|القريبه)$/;
 const TYPE_WORDS = /^(عقار|عقارات|شقه|شقق|فيلا|فله|فيلل|دوبلكس|ارض|اراضي|عماره|عمائر|محل|محلات|مكتب|استراحه|مستودع|غرفه|ملحق|بيت|منزل|قصر|مزرعه|شاليه)$/;
 
 const STOP_PREFIX = /^(مساح|سعر|بسعر|السعر|ميزاني|الميزاني|بميزاني|تواصل|التواصل|للتواصل|واتس|الواتس|جوال|الجوال|كامل|الكامل|التقسيط|تقسيط|التمويل|الكاش|السوم|الشهر|السنه|اليوم|الاتفاق|التفاوض|مستعجل|عاجل|ضروري|غرف|صال|دور|حمام|مطبخ)/;
-const isStop = (word) => STOP_WORDS.has(word) || STOP_WORDS.has(norm(word)) || STOP_PREFIX.test(norm(word)) || /\d/.test(word) || TYPE_WORDS.test(norm(word));
+const isStop = (word) => DESCRIPTOR.test(norm(word)) || STOP_WORDS.has(word) || STOP_WORDS.has(norm(word)) || STOP_PREFIX.test(norm(word)) || /\d/.test(word) || TYPE_WORDS.test(norm(word));
 const isCityWord = (word) => CITY_NORMS.includes(norm(word)) || Boolean(CITY_ALIASES[norm(word)]) || CITY_NORMS.some((c) => c.startsWith(`${norm(word)} `));
 
 function readNameAt(tokens, i) {
@@ -177,6 +180,11 @@ export function districtsFrom(raw = "") {
     i = Math.max(i, j - 1);
   }
   return out.slice(0, 6);
+}
+
+/** «الأحياء القريبة» / «أو ما يجاورها»: the person accepts nearby districts (a wish, not a district). */
+export function acceptsNearby(raw = "") {
+  return /(?:الاحياء|احياء|حي|الحي)\s+(?:ال)?(?:قريبه|مجاوره|محيطه)|القريبه\s+منها|ما\s+(?:يجاورها|حولها|جاورها)|او\s+قريب\s+منه/.test(norm(toLatinDigits(raw)));
 }
 
 // ------------------------------------------------------------------ the rest
@@ -246,7 +254,9 @@ export function analyzeListing(raw = "") {
   for (const [re, label] of FEATURES) { const m = norm(text).match(re); if (m && !features.includes(label(m))) features.push(label(m)); }
   // A request with a written budget in the hundreds of thousands or more and no rent word reads as a purchase
   // (shown in the review and confirmed by the person, never saved on its own).
-  const budget = amountFrom(text) || facts.price || 0;
+  // «من 2,500,000 إلى 3,500,000»: a request keeps both bounds (the lower one is never read as the budget).
+  const range = kind === "REQUEST" ? priceRangeFrom(text) : null;
+  const budget = range?.max || amountFrom(text) || facts.price || 0;
   const impliedPurchase = kind === "REQUEST" && budget >= 500_000 && /ميزاني|حدود/.test(norm(text)) && !/(ايجار|استئجار|استاجر|تاجير|سنوي|شهري)/.test(norm(text)) ? "PURCHASE" : "";
   const listing = normalizeListing({
     kind,
@@ -255,7 +265,9 @@ export function analyzeListing(raw = "") {
     city: facts.city || "",
     districts,
     area: facts.area || 0,
-    price: amountFrom(text) || facts.price || 0,
+    price: range ? range.max : (amountFrom(text) || facts.price || 0),
+    priceMin: range?.min || 0,
+    nearby: acceptsNearby(text),
     rooms: facts.rooms || 0,
     features,
     urgent: urgencyFrom(text),
@@ -304,6 +316,9 @@ export function normalizeListing(input = {}) {
     districts: (Array.isArray(input.districts) ? input.districts : []).map((d) => str(d, 60)).filter((d) => d.length >= 2 && /^[\u0621-\u064A\u0640\s]+$/.test(d)).slice(0, 6),
     area: num(input.area, 10_000_000),
     price: num(input.price, 10_000_000_000),
+    // A request's lower budget bound; never above the budget itself.
+    priceMin: kind !== "OFFER" && num(input.priceMin, 10_000_000_000) && (!num(input.price, 10_000_000_000) || num(input.priceMin, 10_000_000_000) < num(input.price, 10_000_000_000)) ? num(input.priceMin, 10_000_000_000) : 0,
+    nearby: input.nearby === true,
     rooms: num(input.rooms, 50),
     features: (Array.isArray(input.features) ? input.features : []).map((f) => str(f, 60)).filter(Boolean).slice(0, 12),
     urgent: input.urgent === true ? true : input.urgent === false ? false : null,

@@ -11,9 +11,10 @@ import { propertyTypeIcon } from '../core/icons.js';
 import { api, workerBase } from '../core/runtime.js';
 import { runAction, openSheet } from '../core/ui.js';
 import { formatNumber, toNumber, whatsappDigits } from '../domain/format-domain.js';
-import { inventoryInquiry } from '../domain/inventory-query-domain.js';
+import { inventoryInquiry, normalizeInventoryDistrict } from '../domain/inventory-query-domain.js';
+import { priceRangeLabel } from '../domain/price-range-domain.js';
 import { PROPERTY_TYPES } from '../domain/records-domain.js';
-import { GUEST_LIMITS, requestGaps, sameDistrict, toggleLimited, uniqueDistricts } from '../domain/guest-search-domain.js';
+import { GUEST_LIMITS, districtKey, requestGaps, sameDistrict, toggleLimited, uniqueDistricts } from '../domain/guest-search-domain.js';
 import { districtsForCity } from '../../js/reference-catalog.js';
 
 const VIEWER_KEY = 'iaqar.guestInterestKey';
@@ -184,7 +185,8 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
     purpose: h('select', { class: 'os-input', name: 'purpose' }, h('option', { value: '', text: 'شراء أو استئجار' }), h('option', { value: 'PURCHASE', text: 'شراء' }), h('option', { value: 'LEASE_REQUEST', text: 'استئجار' })),
     propertyType: h('select', { class: 'os-input', name: 'propertyType' }, h('option', { value: '', text: 'كل الأنواع' }), PROPERTY_TYPES.map((t) => h('option', { value: t, text: t }))),
     city: h('select', { class: 'os-input', name: 'city' }, h('option', { value: '', text: 'كل المدن' })),
-    price: h('input', { class: 'os-input', name: 'price', inputmode: 'decimal', placeholder: 'الميزانية القصوى بالريال' }),
+    priceMin: h('input', { class: 'os-input', name: 'priceMin', inputmode: 'decimal', placeholder: 'مثال: 2,500,000' }),
+    price: h('input', { class: 'os-input', name: 'price', inputmode: 'decimal', placeholder: 'مثال: 3,500,000' }),
     rooms: h('input', { class: 'os-input', name: 'rooms', inputmode: 'numeric', placeholder: 'اختياري' }),
     area: h('input', { class: 'os-input', name: 'area', inputmode: 'decimal', placeholder: 'اختياري' })
   };
@@ -215,7 +217,7 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
   const specs = h('details', { class: 'os-guest-more', 'data-guest-specs': '' }, h('summary', {}, ic('filter'), 'مواصفات إضافية'),
     h('div', { class: 'os-form-grid' },
       field('الغرض', controls.purpose), field('نوع العقار', controls.propertyType),
-      field('الميزانية (ريال)', controls.price, { optional: true }),
+      field('الميزانية من (ريال)', controls.priceMin, { optional: true }), field('الميزانية إلى (ريال)', controls.price, { optional: true }),
       field('المساحة (م²)', controls.area, { optional: true }), field('عدد الغرف', controls.rooms, { optional: true })));
   const scopeBox = h('details', { class: 'os-guest-scope', 'data-search-criteria': '' },
     h('summary', {}, h('span', { class: 'os-guest-scope-icon', 'aria-hidden': 'true' }, ic('pin')), h('span', {}, h('b', { text: 'تحديد نطاق البحث' }), h('small', { text: 'المدينة، حتى 3 أحياء، حتى 3 مكاتب' })), ic('chev-down')),
@@ -223,9 +225,12 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
 
   const criteria = () => {
     const out = { districts: districts.values() };
-    for (const k of ['purpose', 'propertyType', 'city', 'price', 'rooms', 'area']) if (String(controls[k].value).trim()) out[k] = String(controls[k].value).trim();
+    for (const k of ['purpose', 'propertyType', 'city', 'priceMin', 'price', 'rooms', 'area']) if (String(controls[k].value).trim()) out[k] = String(controls[k].value).trim();
     // Arabic-Indic and Persian digits and separators are read by the shared helper.
-    for (const k of ['price', 'rooms', 'area']) if (out[k]) out[k] = toNumber(out[k]) || '';
+    for (const k of ['priceMin', 'price', 'rooms', 'area']) if (out[k]) out[k] = toNumber(out[k]) || '';
+    // Bounds typed the wrong way round are read as the range they describe; equal bounds are one budget.
+    if (out.priceMin && out.price && out.priceMin > out.price) [out.priceMin, out.price] = [out.price, out.priceMin];
+    if (out.priceMin && out.priceMin === out.price) delete out.priceMin;
     return out;
   };
   function scope() {
@@ -237,20 +242,24 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
   const summary = h('div', { class: 'os-guest-summary', 'data-search-summary': '', hidden: true });
   const drawSummary = () => {
     const c = criteria();
-    const parts = [PURPOSE_LABEL[c.purpose], c.propertyType, c.city, ...(c.districts || []), c.price ? `حتى ${formatNumber(c.price)} ريال` : '', c.area ? `${formatNumber(c.area)} م²+` : '', c.rooms ? `${c.rooms} غرف+` : '',
+    const parts = [PURPOSE_LABEL[c.purpose], c.propertyType, c.city, ...(c.districts || []), nearby ? 'والأحياء القريبة (حتى 5 كم)' : '', priceRangeLabel({ min: c.priceMin, max: c.price }, formatNumber), c.area ? `مساحة ${formatNumber(c.area)} م² فأكثر` : '', c.rooms ? `${c.rooms} غرف فأكثر` : '',
       offices.values().length ? offices.values().map((o) => o.officeName).join('، ') : 'جميع المكاتب المشاركة'].filter(Boolean);
     clear(summary);
     append(summary, h('span', { class: 'os-sub', text: 'فهمنا طلبك:' }), ...parts.map((p) => h('span', { class: 'os-guest-tag', text: p })),
       h('button', { type: 'button', class: 'os-guest-edit', 'data-edit-criteria': '', onClick: () => { scopeBox.open = true; specs.open = true; scopeBox.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); } }, ic('edit'), 'تعديل'));
     summary.hidden = false;
   };
-  const applyFacts = (facts = {}) => {
+  let nearby = false;
+  // Only what the text says or the guest picks: a district not written in the text is never added from an analysis.
+  const applyFacts = (facts = {}, text = '') => {
+    nearby = facts.nearby === true;
     controls.purpose.value = facts.purpose === 'RENT' || facts.purpose === 'LEASE_REQUEST' ? 'LEASE_REQUEST' : facts.purpose === 'SALE' || facts.purpose === 'PURCHASE' ? 'PURCHASE' : '';
     if (facts.propertyType && ![...controls.propertyType.options].some((o) => o.value === facts.propertyType)) controls.propertyType.append(h('option', { value: facts.propertyType, text: facts.propertyType }));
     controls.propertyType.value = facts.propertyType || '';
     ensureCity(facts.city); controls.city.value = facts.city || '';
-    for (const k of ['price', 'rooms', 'area']) controls[k].value = facts[k] ? String(facts[k]) : '';
-    const named = uniqueDistricts(facts.districts?.length ? facts.districts : [facts.district].filter(Boolean));
+    for (const k of ['priceMin', 'price', 'rooms', 'area']) controls[k].value = facts[k] ? String(facts[k]) : '';
+    const written = normalizeInventoryDistrict(text);
+    const named = uniqueDistricts(facts.districts?.length ? facts.districts : [facts.district].filter(Boolean)).filter((d) => !text || written.includes(districtKey(d)));
     districts.set(named.slice(0, GUEST_LIMITS.districts));
     return named.length > GUEST_LIMITS.districts;
   };
@@ -259,12 +268,12 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
   const understand = async (box) => {
     const text = description.value.trim();
     const inquiry = inventoryInquiry(text);
-    if (inquiry) { applyFacts(inquiry); analyzedText = text; return { mode: 'inventory', priceExclusive: inquiry.priceExclusive === true }; }
+    if (inquiry) { applyFacts(inquiry, text); analyzedText = text; return { mode: 'inventory', priceExclusive: inquiry.priceExclusive === true }; }
     say(box, 'info', 'نفهم طلبك…');
     const r = await api('/os/public/search/analyze', { officeId: homeId, text }, { authenticated: false });
     const l = r.listings?.[0];
     if (!l?.understood) { scopeBox.open = true; specs.open = true; throw new Error('ما فهمنا الطلب بدقة — وضّحه أو أكمل التفاصيل يدويًا.'); }
-    const extra = applyFacts(l);
+    const extra = applyFacts(l, text);
     analyzedText = text;
     return { mode: 'auto', note: extra ? 'ذكرت أكثر من ثلاثة أحياء — بحثنا في أول ثلاثة، وتقدر تغيّرها.' : '' };
   };
@@ -348,7 +357,7 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
     const c = criteria(), gaps = requestGaps(c), chosen = offices.values();
     clear(reqCriteria);
     append(reqCriteria, h('span', { class: 'os-sub', text: 'طلبك:' }),
-      ...[PURPOSE_LABEL[c.purpose], c.propertyType, c.city, ...c.districts, c.price ? `حتى ${formatNumber(c.price)} ريال` : ''].filter(Boolean).map((p) => h('span', { class: 'os-guest-tag', text: p })),
+      ...[PURPOSE_LABEL[c.purpose], c.propertyType, c.city, ...c.districts, priceRangeLabel({ min: c.priceMin, max: c.price }, formatNumber), c.area ? `مساحة ${formatNumber(c.area)} م² فأكثر` : ''].filter(Boolean).map((p) => h('span', { class: 'os-guest-tag', text: p })),
       gaps.length ? h('p', { class: 'os-guest-gap', 'data-request-gaps': gaps.map((g) => g.key).join(','), text: `أكمل قبل الإرسال: ${gaps.map((g) => g.label).join('، ')}.` }) : null,
       h('p', { class: 'os-guest-gap', 'data-request-offices': String(chosen.length), text: chosen.length ? `يصل الطلب إلى: ${chosen.map((o) => o.officeName).join('، ')}` : 'اختر من «المكاتب العقارية» حتى ثلاثة مكاتب يصلها طلبك.' }));
   };
@@ -378,8 +387,10 @@ export function guestDesk(office = null, { initialText = '', notice = '', initia
         h('span', { class: 'os-guest-empty-icon ok', 'aria-hidden': 'true' }, ic('check-circle')),
         h('h3', { class: 'os-h2', text: 'وصل طلبك للمكاتب' }),
         h('p', { class: 'os-guest-reference' }, 'الرقم المرجعي: ', h('b', { dir: 'ltr', 'data-request-reference': r.reference, text: r.reference })),
-        h('ul', { class: 'os-guest-sent' }, r.offices.map((o) => h('li', { 'data-request-office': o.officeId }, ic('office'), h('span', { text: o.officeName }), h('small', { text: o.changedForReview ? 'طلبك موجود لديهم مسبقًا — أبلغناهم بالتعديلات لمراجعتها' : o.duplicate ? 'طلبك موجود لديهم مسبقًا' : 'وصل لبنك الطلبات' })))),
-        h('p', { class: 'os-sub', text: 'يتواصل معك المكتب عند توفر المناسب. احتفظ بالرقم المرجعي لمتابعة طلبك.' }),
+        h('ul', { class: 'os-guest-sent' }, r.offices.map((o) => h('li', { 'data-request-office': o.officeId }, ic('office'), h('span', { text: o.officeName }), h('small', { 'data-request-status': o.status || '', text: [o.changedForReview ? 'طلبك موجود لديه مسبقًا — المواصفات الجديدة أُرسلت للمراجعة' : o.duplicate ? 'طلبك موجود لديه مسبقًا' : 'محفوظ في بنك الطلبات · بانتظار مراجعة المكتب', o.notified ? 'وصل المكتبَ تنبيه' : 'التنبيه لم يُؤكَّد بعد — الطلب محفوظ'].join(' · ') })))),
+        // Only what exists: the request is in the office bank and the office was alerted; the office decides when to call.
+        h('p', { class: 'os-sub', text: 'المكتب هو من يراجع طلبك ويقرر التواصل معك على الرقم الذي كتبته. لا نرسل لك رسائل آلية.' }),
+        h('p', { class: 'os-field-note', text: 'احتفظ بالرقم المرجعي، واذكره للمكتب عند المتابعة.' }),
         h('button', { type: 'button', class: 'os-btn secondary block', onClick: () => { requestKey = newKey(); reqForm.hidden = false; clear(reqOutcome); open('search'); } }, 'بحث جديد')));
     }, { onError: (error) => { if (error.details) { scopeBox.open = true; specs.open = true; } fail(error.message); } });
   });

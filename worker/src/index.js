@@ -2,6 +2,7 @@ import { readWebhookBody } from "./office-os/whatsapp-agent-transport.js";
 import { whatsappAgentAvailable, ingestWhatsAppEvents, drainWhatsAppQueue } from "./office-os/whatsapp-agent-service.js";
 import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
 import { externalBrokerClaim, isExternalBroker } from "../../public/os/domain/external-broker-domain.js";
+import { guestReference } from "../../public/os/domain/guest-search-domain.js";
 import { notifyOffice as notifyExternalIntakeOffice } from "./office-os/bot-notify.js";
 import { createStore as createExternalIntakeStore } from "./office-os/store.js";
 import { runCooperationBrokerAction } from "./cooperation-brokers-service.js";
@@ -2309,6 +2310,8 @@ async function handlePublicIntakeMatching(request, env, requestId) {
     ...commonFields,
     city: firestoreString(parsed.city || DEFAULT_CITY),
     sourceIntakeId: firestoreString(intakeId),
+    // The short reference the visitor was shown («IQ-XXXXXX»), so the office finds this record by it.
+    publicReference: firestoreString(guestReference(intakeId)),
     sourceCollection: firestoreString(targetCollection),
     sourceRecordId: firestoreString(recordId),
     workflowStage: firestoreString("new"),

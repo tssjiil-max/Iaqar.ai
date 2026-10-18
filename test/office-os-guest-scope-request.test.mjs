@@ -55,7 +55,7 @@ test('domain: limits, district spelling, gaps and reasons never invent anything'
   assert.deepEqual(requestGaps({ district: 'درة العقيق' }).map((g) => g.key), ['purpose', 'propertyType', 'city', 'price']);
   assert.deepEqual(requestGaps({ purpose: 'PURCHASE', propertyType: 'فيلا', city: 'المدينة المنورة', districts: ['درة العقيق'], price: 5e6 }), []);
   assert.deepEqual(browseReasons({ district: 'درة العقيق' }, {}, { inDistrict: true }), ['في الحي المطلوب'], 'no type, purpose or budget reason when none was given');
-  assert.match(guestReference('ab12cd34ef'), /^IQ-AB12CD34$/);
+  assert.match(guestReference('ab12cd34ef'), /^IQ-[2-9A-HJKMNP-Z]{6}$/); assert.equal(guestReference('ab12cd34ef'), guestReference('ab12cd34ef'), 'stable on retries');
 });
 
 test('three districts are searched together; a fourth is refused by the server', async () => {
@@ -147,7 +147,7 @@ test('a request reaches each chosen office bank once, with one real reference, a
   const body = fullRequest();
   const r = await call('/os/public/requests', body);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.match(r.body.reference, /^IQ-[A-F0-9]{8}$/);
+  assert.match(r.body.reference, /^IQ-[2-9A-HJKMNP-Z]{6}$/);
   assert.deepEqual(r.body.offices.map((o) => o.officeId).sort(), [OFFICE_A, OFFICE_B].sort());
   for (const officeId of [OFFICE_A, OFFICE_B]) {
     const rows = requestsOf(officeId, r.body.reference).sort((a, b) => a.district.localeCompare(b.district));
