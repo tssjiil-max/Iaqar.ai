@@ -1,7 +1,7 @@
 name: Staging WhatsApp office-link check (read-only, one-off)
 
-# Manual, admin-gated, one-off diagnostic. Requires:
-#   - write access to this repository (to dispatch a workflow run), AND
+# Admin-gated, one-off diagnostic. Requires:
+#   - write access to this repository (to dispatch a run, or to open/push the PR), AND
 #   - approval for the `staging` GitHub Actions environment, which is where
 #     the Staging Firebase service-account secret lives.
 # It performs Firestore READS only (see scripts/staging-whatsapp-office-link-check.mjs
@@ -9,6 +9,16 @@ name: Staging WhatsApp office-link check (read-only, one-off)
 # the office's own identity/status fields needed to verify its WhatsApp link.
 # This workflow file is meant to be removed once the one-off check it exists
 # for is done; it deploys nothing and never touches Cloudflare.
+#
+# Two triggers, same job:
+#   - pull_request against main, scoped to this file + the script + its unit
+#     tests: lets the check run on this PR's own branch WITHOUT merging to
+#     main first (same-repo PR, so GitHub runs the workflow version from the
+#     PR branch itself). Uses the office/phone values this one-off check was
+#     written for.
+#   - workflow_dispatch: for any later ad hoc run (different office/phone, or
+#     a re-run), once this file is on main — same office_slug/phone default
+#     here as a safety net, overridable via inputs.
 on:
   workflow_dispatch:
     inputs:
@@ -16,10 +26,19 @@ on:
         description: "Public office slug to resolve (e.g. the one in the office's /s/<slug>/... link)"
         type: string
         required: true
+        default: "sultan"
       whatsapp_phone_number_id:
         description: "Meta phone_number_id to check against whatsapp_accounts/<id>"
         type: string
         required: true
+        default: "356393440882303"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/staging-whatsapp-office-link-check.yml"
+      - "scripts/staging-whatsapp-office-link-check.mjs"
+      - "test/staging-whatsapp-office-link-check.test.mjs"
 
 permissions:
   contents: read
@@ -36,8 +55,8 @@ jobs:
     timeout-minutes: 10
     env:
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-      OFFICE_SLUG: ${{ github.event.inputs.office_slug }}
-      WHATSAPP_PHONE_NUMBER_ID: ${{ github.event.inputs.whatsapp_phone_number_id }}
+      OFFICE_SLUG: ${{ github.event.inputs.office_slug || 'sultan' }}
+      WHATSAPP_PHONE_NUMBER_ID: ${{ github.event.inputs.whatsapp_phone_number_id || '356393440882303' }}
       DIAGNOSTIC_OUT: artifacts/staging-diagnostics
 
     steps:
@@ -49,7 +68,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run read-only office/WhatsApp link check
+      - name: Run negative-case unit tests for the check's own logic (no network, no credentials)
+        run: node --test test/staging-whatsapp-office-link-check.test.mjs
+
+      - name: Run read-only office/WhatsApp link check against Staging Firestore
         run: node scripts/staging-whatsapp-office-link-check.mjs
 
       - name: Upload redacted report

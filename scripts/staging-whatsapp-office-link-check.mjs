@@ -5,24 +5,35 @@
  * Purpose: verify a specific office's public slug resolves to the officeId the
  * platform owner expects, and that it is genuinely linked to the WhatsApp Cloud
  * API phone number the owner expects, before anyone considers turning the
- * WhatsApp agent on for that office (WHATSAPP_AGENT_ENABLED /
- * WHATSAPP_AGENT_OFFICE_IDS in worker/wrangler.toml — this script does not set
- * those; a human reviews this report first).
+ * WhatsApp agent on for that office. This script never sets
+ * WHATSAPP_AGENT_ENABLED / WHATSAPP_AGENT_OFFICE_IDS (worker/wrangler.toml) and
+ * never flips an office's own autoReplyEnabled — a human reviews this report
+ * first, and (for autoReplyEnabled) the office's own manager opts in through
+ * the product itself, exactly as worker/src/office-os/whatsapp-agent-service.js
+ * (configureWhatsAppAgent) already requires.
  *
- * Self-contained on purpose (no imports from scripts/staging-credentials.mjs or
- * scripts/staging-qa-identity.mjs): this file is meant to live briefly on the
- * repository's default branch only so GitHub registers the companion
- * workflow_dispatch workflow, and those two helper files currently exist only
- * on codex/unified-staging-lineage-2026-08-29 — not on main.
+ * The readiness conditions below are copied from, and must stay in lockstep
+ * with, the real gates in worker/src/office-os/whatsapp-agent-service.js:
+ *   - mappingFor(): mapping.status === 'connected' (+ wabaId + office allowlist,
+ *     both platform-env concerns this script cannot see from Firestore alone)
+ *   - officeOn(): offices/{id}/integrations/whatsapp.autoReplyEnabled === true
+ *   - agentNumber(): mapping.platformType === 'CLOUD_API' &&
+ *     mapping.metaPhoneStatus === 'CONNECTED' &&
+ *     (mapping.isOnBizApp === true || mapping.isTestNumber === true)
+ * Firestore alone can never prove the platform-env half of readiness
+ * (WHATSAPP_AGENT_ENABLED / WHATSAPP_AGENT_OFFICE_IDS / WHATSAPP_AGENT_ALLOWED_RECIPIENTS
+ * in worker/wrangler.toml) — this script's `agentReady` therefore reports
+ * Firestore-side readiness only and is deliberately named `firestoreSideReady`
+ * in the output, so a human never mistakes "the office's data looks right"
+ * for "the agent is live end to end".
  *
- * This script performs Firestore **reads only** — `getDoc` / `runQuery` below
- * issue GET and :runQuery POST calls to the Firestore REST API. There is no
- * call to any Firestore write method (set/patch/commit) anywhere in this file.
- * It never prints FIREBASE_SERVICE_ACCOUNT_JSON, the derived access token, or
- * any Meta access token. It never prints a client's name, phone number or
- * message content — only the office's own identity (already supplied as the
- * input slug/phone number by the operator) and the boolean/status fields the
- * checklist needs.
+ * This script performs Firestore **reads only** — `getDoc` / `runQuery` issue
+ * GET and :runQuery POST calls to the Firestore REST API. There is no call to
+ * any Firestore write method (set/patch/commit) anywhere in this file. It
+ * never prints FIREBASE_SERVICE_ACCOUNT_JSON, the derived access token, or any
+ * Meta access token. It never prints a client's name, phone number or message
+ * content — only the office's own identity (already supplied as the input
+ * slug/phone number by the operator) and the boolean/status fields needed.
  *
  * Inputs (env):
  *   FIREBASE_SERVICE_ACCOUNT_JSON  Staging service account JSON (GitHub Actions secret; never logged)
@@ -36,16 +47,124 @@ import { createPrivateKey, createSign } from "node:crypto";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
-const STAGING_PROJECT_ID = "iaqar-ai-staging";
+export const STAGING_PROJECT_ID = "iaqar-ai-staging";
 const FIREBASE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const FIREBASE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 
-const OFFICE_SLUG = String(process.env.OFFICE_SLUG || "").trim();
-const WHATSAPP_PHONE_NUMBER_ID = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
-const outDir = process.env.DIAGNOSTIC_OUT || process.cwd();
+// ---------------------------------------------------------------- pure report logic (unit-testable, no I/O)
 
-if (!OFFICE_SLUG) throw new Error("OFFICE_SLUG is required");
-if (!WHATSAPP_PHONE_NUMBER_ID) throw new Error("WHATSAPP_PHONE_NUMBER_ID is required");
+/**
+ * Pure function: given already-fetched Firestore data (or null for a missing
+ * doc), compute the full diagnostic report. No network, no env access beyond
+ * the plain strings passed in — this is what the negative-case tests exercise
+ * directly, without touching Firestore or any credential.
+ *
+ * @param {object} input
+ * @param {string} input.officeSlug
+ * @param {string} input.whatsappPhoneNumberId
+ * @param {object|null} input.claim            officeSlugClaims/{slug}
+ * @param {object|null} input.office           offices/{officeId}
+ * @param {object|null} input.publicOffice     publicOffices/{officeId}
+ * @param {string[]}    input.conflictingOwnerIds  other officeIds whose publicOffices.publicSlug === officeSlug
+ * @param {object|null} input.integration      offices/{officeId}/integrations/whatsapp
+ * @param {object|null} input.account          whatsapp_accounts/{phoneNumberId}
+ */
+export function computeReport({ officeSlug, whatsappPhoneNumberId, claim, office, publicOffice, conflictingOwnerIds = [], integration, account }) {
+  const blockers = [];
+  const report = {
+    input: { officeSlug, whatsappPhoneNumberId },
+    officeId: null,
+    officeVerified: false,
+    officeName: null,
+    slugMatches: false,
+    conflictingOffice: false,
+    whatsappAccountFound: false,
+    mappingMatches: false,
+    metaStatus: null,
+    metaPhoneStatus: null,
+    platformType: null,
+    onboardingMode: null,
+    isOnBizApp: null,
+    isTestNumber: null,
+    agentNumberUsable: false,
+    autoReplyEnabled: false,
+    // Firestore-side only: does NOT include the platform-env gates
+    // (WHATSAPP_AGENT_ENABLED / WHATSAPP_AGENT_OFFICE_IDS / WHATSAPP_AGENT_ALLOWED_RECIPIENTS)
+    // that worker/wrangler.toml controls — those must be checked separately, from the repo,
+    // not from Firestore, and are reported alongside this script's output, not inside it.
+    firestoreSideReady: false,
+    blockers
+  };
+
+  if (!claim || !claim.officeId) {
+    blockers.push(`officeSlugClaims/${officeSlug} missing or has no officeId`);
+  } else {
+    report.officeId = String(claim.officeId);
+  }
+
+  if (report.officeId) {
+    if (!office) {
+      blockers.push(`offices/${report.officeId} does not exist`);
+    } else {
+      report.officeVerified = true;
+      report.officeName = String(office.businessName || office.officeName || office.name || "") || null;
+      report.slugMatches = String(office.publicSlug || "") === officeSlug;
+      if (!report.slugMatches) blockers.push(`offices/${report.officeId}.publicSlug ("${office.publicSlug || ""}") does not match claimed slug "${officeSlug}"`);
+    }
+
+    if (!publicOffice) blockers.push(`publicOffices/${report.officeId} does not exist`);
+    else if (String(publicOffice.publicSlug || "") !== officeSlug) blockers.push(`publicOffices/${report.officeId}.publicSlug does not match "${officeSlug}"`);
+
+    const otherOwners = (conflictingOwnerIds || []).filter((id) => id !== report.officeId);
+    if (otherOwners.length) {
+      report.conflictingOffice = true;
+      blockers.push(`publicSlug "${officeSlug}" is also claimed by: ${otherOwners.join(", ")}`);
+    }
+
+    report.autoReplyEnabled = integration?.autoReplyEnabled === true;
+    const linkedPhoneNumberId = String(integration?.phoneNumberId || "");
+    if (!linkedPhoneNumberId) blockers.push(`offices/${report.officeId}/integrations/whatsapp has no phoneNumberId`);
+    else if (linkedPhoneNumberId !== whatsappPhoneNumberId) blockers.push(`office's linked phoneNumberId ("${linkedPhoneNumberId}") does not match expected "${whatsappPhoneNumberId}"`);
+  }
+
+  if (!account) {
+    blockers.push(`whatsapp_accounts/${whatsappPhoneNumberId} does not exist`);
+  } else {
+    report.whatsappAccountFound = true;
+    report.metaStatus = String(account.status || "") || null;
+    report.platformType = String(account.platformType || "") || null;
+    report.onboardingMode = String(account.onboardingMode || "") || null;
+    report.isOnBizApp = account.isOnBizApp === true;
+    report.isTestNumber = account.isTestNumber === true;
+    report.metaPhoneStatus = String(account.metaPhoneStatus || "") || null;
+
+    report.mappingMatches = report.officeId ? String(account.officeId || "") === report.officeId : false;
+    if (!report.mappingMatches) blockers.push(`whatsapp_accounts/${whatsappPhoneNumberId}.officeId ("${account.officeId || ""}") does not match resolved officeId ("${report.officeId || ""}")`);
+
+    // Mirrors mappingFor() in whatsapp-agent-service.js: status must be exactly "connected".
+    if (report.metaStatus !== "connected") blockers.push(`whatsapp_accounts/${whatsappPhoneNumberId}.status is "${report.metaStatus}", not "connected"`);
+
+    // Mirrors agentNumber() in whatsapp-agent-service.js exactly: CLOUD_API + CONNECTED + (on the
+    // Business app OR a declared test number). A mapping missing all three is not a usable agent number
+    // even if "status" says connected — status and actual send-ability are two different things.
+    report.agentNumberUsable = report.platformType === "CLOUD_API" && report.metaPhoneStatus === "CONNECTED" && (report.isOnBizApp === true || report.isTestNumber === true);
+    if (!report.agentNumberUsable) {
+      if (report.platformType !== "CLOUD_API") blockers.push(`platformType is "${report.platformType}", not "CLOUD_API" (agentNumber() requires CLOUD_API)`);
+      if (report.metaPhoneStatus !== "CONNECTED") blockers.push(`metaPhoneStatus is "${report.metaPhoneStatus}", not "CONNECTED" (agentNumber() requires CONNECTED)`);
+      if (report.isOnBizApp !== true && report.isTestNumber !== true) blockers.push(`neither isOnBizApp nor isTestNumber is true (agentNumber() requires one of them)`);
+    }
+  }
+
+  if (!report.autoReplyEnabled) blockers.push(`offices/${report.officeId || "?"}/integrations/whatsapp.autoReplyEnabled is not true (the office itself has not opted in; only its own manager can set this, via the product)`);
+
+  report.firestoreSideReady = Boolean(
+    report.officeId && report.officeVerified && report.slugMatches && !report.conflictingOffice &&
+    report.whatsappAccountFound && report.mappingMatches && report.metaStatus === "connected" &&
+    report.agentNumberUsable && report.autoReplyEnabled
+  );
+
+  return report;
+}
 
 // ---------------------------------------------------------------- credentials
 
@@ -90,7 +209,7 @@ function validateFirebaseSecrets({ clientEmail, privateKeyId, privateKey }) {
   return [...new Set(invalidFields)];
 }
 
-function parseFirebaseServiceAccountJson(value, expectedProjectId) {
+export function parseFirebaseServiceAccountJson(value, expectedProjectId) {
   const invalid = (fields) => ({ serviceAccount: null, invalidFields: fields.map((f) => `FIREBASE_SERVICE_ACCOUNT_JSON${f ? `.${f}` : ""}`) });
   const raw = String(value ?? "").trim();
   if (!raw) return invalid([]);
@@ -139,7 +258,7 @@ function createServiceAccountJwt(serviceAccount, nowSeconds = Math.floor(Date.no
   return `${unsigned}.${signer.sign(serviceAccount.private_key).toString("base64url")}`; // pragma: allowlist secret
 }
 
-function assertStagingServiceAccount(serviceAccount) {
+export function assertStagingServiceAccount(serviceAccount) {
   const projectId = String(serviceAccount?.project_id || "");
   if (projectId !== STAGING_PROJECT_ID) throw new Error(`QA_GUARD_REFUSED: service account project ${projectId || "(none)"} is not ${STAGING_PROJECT_ID}`);
   return true;
@@ -202,101 +321,44 @@ function fieldValueToJs(value) {
   return null;
 }
 
-// ---------------------------------------------------------------- main
-
-const blockers = [];
-const report = {
-  runAt: new Date().toISOString(),
-  projectId: STAGING_PROJECT_ID,
-  input: { officeSlug: OFFICE_SLUG, whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID },
-  officeId: null,
-  officeVerified: false,
-  officeName: null,
-  slugMatches: false,
-  conflictingOffice: false,
-  whatsappAccountFound: false,
-  mappingMatches: false,
-  metaStatus: null,
-  metaPhoneStatus: null,
-  platformType: null,
-  onboardingMode: null,
-  isOnBizApp: null,
-  autoReplyEnabled: false,
-  agentReady: false,
-  blockers
-};
+// ---------------------------------------------------------------- main (I/O; not exercised by unit tests)
 
 async function main() {
+  const OFFICE_SLUG = String(process.env.OFFICE_SLUG || "").trim();
+  const WHATSAPP_PHONE_NUMBER_ID = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const outDir = process.env.DIAGNOSTIC_OUT || process.cwd();
+  if (!OFFICE_SLUG) throw new Error("OFFICE_SLUG is required");
+  if (!WHATSAPP_PHONE_NUMBER_ID) throw new Error("WHATSAPP_PHONE_NUMBER_ID is required");
+
   const parsed = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, STAGING_PROJECT_ID);
   if (parsed.invalidFields.length) throw new Error(`Invalid Staging credential fields: ${parsed.invalidFields.join(", ")}`);
   assertStagingServiceAccount(parsed.serviceAccount);
   const token = await accessToken(parsed.serviceAccount);
 
-  // 1) officeSlugClaims/{slug} -> officeId
   const claim = await getDoc(token, ["officeSlugClaims", OFFICE_SLUG]);
-  if (!claim || !claim.officeId) {
-    blockers.push(`officeSlugClaims/${OFFICE_SLUG} missing or has no officeId`);
-  } else {
-    report.officeId = String(claim.officeId);
-  }
-
-  if (report.officeId) {
-    const office = await getDoc(token, ["offices", report.officeId]);
-    if (!office) {
-      blockers.push(`offices/${report.officeId} does not exist`);
-    } else {
-      report.officeVerified = true;
-      report.officeName = String(office.businessName || office.officeName || office.name || "") || null;
-      report.slugMatches = String(office.publicSlug || "") === OFFICE_SLUG;
-      if (!report.slugMatches) blockers.push(`offices/${report.officeId}.publicSlug ("${office.publicSlug || ""}") does not match claimed slug "${OFFICE_SLUG}"`);
-    }
-
-    const publicOffice = await getDoc(token, ["publicOffices", report.officeId]);
-    if (!publicOffice) blockers.push(`publicOffices/${report.officeId} does not exist`);
-    else if (String(publicOffice.publicSlug || "") !== OFFICE_SLUG) blockers.push(`publicOffices/${report.officeId}.publicSlug does not match "${OFFICE_SLUG}"`);
-
-    const conflicting = await runQuery(token, {
-      collectionId: "publicOffices",
-      where: { fieldFilter: { field: { fieldPath: "publicSlug" }, op: "EQUAL", value: { stringValue: OFFICE_SLUG } } },
-      limit: 5
-    });
-    const otherOwners = conflicting.filter((row) => row.id !== report.officeId);
-    if (otherOwners.length) {
-      report.conflictingOffice = true;
-      blockers.push(`publicSlug "${OFFICE_SLUG}" is also claimed by: ${otherOwners.map((r) => r.id).join(", ")}`);
-    }
-
-    const integration = await getDoc(token, ["offices", report.officeId, "integrations", "whatsapp"]);
-    report.autoReplyEnabled = integration?.autoReplyEnabled === true;
-    const linkedPhoneNumberId = String(integration?.phoneNumberId || "");
-    if (!linkedPhoneNumberId) blockers.push(`offices/${report.officeId}/integrations/whatsapp has no phoneNumberId`);
-    else if (linkedPhoneNumberId !== WHATSAPP_PHONE_NUMBER_ID) blockers.push(`office's linked phoneNumberId ("${linkedPhoneNumberId}") does not match expected "${WHATSAPP_PHONE_NUMBER_ID}"`);
-  }
-
+  const officeId = claim?.officeId ? String(claim.officeId) : null;
+  const office = officeId ? await getDoc(token, ["offices", officeId]) : null;
+  const publicOffice = officeId ? await getDoc(token, ["publicOffices", officeId]) : null;
+  const conflicting = officeId
+    ? await runQuery(token, { collectionId: "publicOffices", where: { fieldFilter: { field: { fieldPath: "publicSlug" }, op: "EQUAL", value: { stringValue: OFFICE_SLUG } } }, limit: 5 })
+    : [];
+  const integration = officeId ? await getDoc(token, ["offices", officeId, "integrations", "whatsapp"]) : null;
   const account = await getDoc(token, ["whatsapp_accounts", WHATSAPP_PHONE_NUMBER_ID]);
-  if (!account) {
-    blockers.push(`whatsapp_accounts/${WHATSAPP_PHONE_NUMBER_ID} does not exist`);
-  } else {
-    report.whatsappAccountFound = true;
-    report.metaStatus = String(account.status || "") || null;
-    report.platformType = String(account.platformType || "") || null;
-    report.onboardingMode = String(account.onboardingMode || "") || null;
-    report.isOnBizApp = account.isOnBizApp === true;
-    const metaPhoneStatus = String(account.metaPhoneStatus || "") || null;
-    report.metaPhoneStatus = metaPhoneStatus;
-    report.mappingMatches = report.officeId ? String(account.officeId || "") === report.officeId : false;
-    if (!report.mappingMatches) blockers.push(`whatsapp_accounts/${WHATSAPP_PHONE_NUMBER_ID}.officeId ("${account.officeId || ""}") does not match resolved officeId ("${report.officeId || ""}")`);
-    if (report.metaStatus !== "connected") blockers.push(`whatsapp_accounts/${WHATSAPP_PHONE_NUMBER_ID}.status is "${report.metaStatus}", not "connected"`);
-    if (metaPhoneStatus && metaPhoneStatus !== "CONNECTED") blockers.push(`metaPhoneStatus is "${metaPhoneStatus}", not "CONNECTED"`);
-  }
 
-  if (!report.autoReplyEnabled) blockers.push(`offices/${report.officeId || "?"}/integrations/whatsapp.autoReplyEnabled is not true (the office itself has not opted in)`);
-
-  report.agentReady = Boolean(
-    report.officeId && report.officeVerified && report.slugMatches && !report.conflictingOffice &&
-    report.whatsappAccountFound && report.mappingMatches && report.metaStatus === "connected" &&
-    (!report.metaPhoneStatus || report.metaPhoneStatus === "CONNECTED") && report.autoReplyEnabled
-  );
+  const report = {
+    runAt: new Date().toISOString(),
+    projectId: STAGING_PROJECT_ID,
+    ...computeReport({
+      officeSlug: OFFICE_SLUG,
+      whatsappPhoneNumberId: WHATSAPP_PHONE_NUMBER_ID,
+      claim,
+      office,
+      publicOffice,
+      conflictingOwnerIds: conflicting.map((row) => row.id),
+      integration,
+      account
+    })
+  };
 
   await mkdir(outDir, { recursive: true });
   const outPath = path.join(outDir, "whatsapp-office-link-check.json");
@@ -305,7 +367,10 @@ async function main() {
   console.log(`\nWritten to ${outPath}`);
 }
 
-main().catch((error) => {
-  console.error(`FAILED: ${error.message}`);
-  process.exitCode = 1;
-});
+// Only run the network path when executed directly, not when imported by tests.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error(`FAILED: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
