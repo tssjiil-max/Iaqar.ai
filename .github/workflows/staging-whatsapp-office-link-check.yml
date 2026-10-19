@@ -42,6 +42,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write # only to post this run's own redacted report as a PR comment; nothing else
 
 concurrency:
   group: staging-whatsapp-office-link-check
@@ -82,3 +83,21 @@ jobs:
           path: artifacts/staging-diagnostics/whatsapp-office-link-check.json
           if-no-files-found: warn
           retention-days: 7
+
+      # Artifact/log downloads for this run are served from a signed blob-storage
+      # redirect that some network setups cannot reach even with a valid GitHub
+      # token. Posting the same already-redacted JSON as a plain PR comment uses
+      # the ordinary REST API instead, so the report is readable without that
+      # redirect. Report-only: never a secret, never a client name/phone/message.
+      - name: Post redacted report as a PR comment
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### WhatsApp office-link check — run ${{ github.run_id }}"
+            echo '```json'
+            cat artifacts/staging-diagnostics/whatsapp-office-link-check.json 2>/dev/null || echo '{"error":"no report file was written"}'
+            echo '```'
+          } > /tmp/report-comment.md
+          gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments -f body=@/tmp/report-comment.md
