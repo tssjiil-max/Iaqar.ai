@@ -27,8 +27,21 @@
   background: linear-gradient(160deg, #ffffffe6, var(--tool-bg, #e1f3f6)); box-shadow: 0 3px 12px rgb(23 70 93 / 8%);
   transition: border-color .16s ease, box-shadow .16s ease;
 }
-.os-guest-path-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--tool-bg, #e1f3f6); color: var(--tool-color, #03677a); --ico: currentColor; }
-.os-guest-path-icon svg { width: 30px; height: 30px; color: var(--tool-color, #03677a); }
+/* Premium icon badge: a glossy, lifted tile (gradient fill + inner sheen + soft shadow) around the
+   existing tone-colored glyph. Decorative only — the glyph underneath is unchanged and still
+   aria-hidden via its parent, so this never touches semantics or the three tiles' click behavior. */
+.os-guest-path-icon {
+  display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; position: relative; overflow: hidden;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--tool-color, #03677a) 16%, #fff) 0%, var(--tool-bg, #e1f3f6) 55%, color-mix(in srgb, var(--tool-color, #03677a) 26%, #fff) 100%);
+  color: var(--tool-color, #03677a); --ico: currentColor;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%), inset 0 -3px 6px rgb(0 0 0 / 7%), 0 4px 10px rgb(23 70 93 / 16%);
+}
+.os-guest-path-icon::after {
+  content: ""; position: absolute; inset: 2px 2px auto 2px; height: 46%; pointer-events: none;
+  border-radius: 13px 13px 50% 50% / 13px 13px 100% 100%;
+  background: linear-gradient(180deg, rgb(255 255 255 / 55%), rgb(255 255 255 / 0%));
+}
+.os-guest-path-icon svg { width: 30px; height: 30px; color: var(--tool-color, #03677a); position: relative; z-index: 1; }
 .os-guest-path-copy { display: grid; gap: 4px; min-width: 0; }
 .os-guest-path-copy strong { font-size: 15px; line-height: 1.4; font-weight: 800; overflow-wrap: anywhere; }
 .os-guest-path-copy small { font-size: 13px; line-height: 1.5; color: var(--guest-muted); overflow-wrap: anywhere; }
