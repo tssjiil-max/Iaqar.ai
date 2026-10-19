@@ -1,0 +1,62 @@
+name: Staging WhatsApp office-link check (read-only, one-off)
+
+# Manual, admin-gated, one-off diagnostic. Requires:
+#   - write access to this repository (to dispatch a workflow run), AND
+#   - approval for the `staging` GitHub Actions environment, which is where
+#     the Staging Firebase service-account secret lives.
+# It performs Firestore READS only (see scripts/staging-whatsapp-office-link-check.mjs
+# for the read-only guarantee) and never prints secrets or customer data — only
+# the office's own identity/status fields needed to verify its WhatsApp link.
+# This workflow file is meant to be removed once the one-off check it exists
+# for is done; it deploys nothing and never touches Cloudflare.
+on:
+  workflow_dispatch:
+    inputs:
+      office_slug:
+        description: "Public office slug to resolve (e.g. the one in the office's /s/<slug>/... link)"
+        type: string
+        required: true
+      whatsapp_phone_number_id:
+        description: "Meta phone_number_id to check against whatsapp_accounts/<id>"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-whatsapp-office-link-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Read-only office/WhatsApp link check (no writes, no deploy, no send)
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      OFFICE_SLUG: ${{ github.event.inputs.office_slug }}
+      WHATSAPP_PHONE_NUMBER_ID: ${{ github.event.inputs.whatsapp_phone_number_id }}
+      DIAGNOSTIC_OUT: artifacts/staging-diagnostics
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run read-only office/WhatsApp link check
+        run: node scripts/staging-whatsapp-office-link-check.mjs
+
+      - name: Upload redacted report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whatsapp-office-link-check-${{ github.run_id }}
+          path: artifacts/staging-diagnostics/whatsapp-office-link-check.json
+          if-no-files-found: warn
+          retention-days: 7
