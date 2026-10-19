@@ -7,8 +7,12 @@ name: Staging WhatsApp office-link check (read-only, one-off)
 # It performs Firestore READS only (see scripts/staging-whatsapp-office-link-check.mjs
 # for the read-only guarantee) and never prints secrets or customer data — only
 # the office's own identity/status fields needed to verify its WhatsApp link.
+# It also lists (by NAME only — Cloudflare's API cannot return a secret's value,
+# so nothing is copied into GitHub) which Meta-related secrets are bound on the
+# Staging Worker, to tell "Embedded Signup is configured but never completed for
+# this number" apart from "Embedded Signup itself is broken on Staging".
 # This workflow file is meant to be removed once the one-off check it exists
-# for is done; it deploys nothing and never touches Cloudflare.
+# for is done; it deploys nothing and never writes to Cloudflare.
 #
 # Two triggers, same job:
 #   - pull_request against main, scoped to this file + the script + its unit
@@ -38,6 +42,7 @@ on:
     paths:
       - ".github/workflows/staging-whatsapp-office-link-check.yml"
       - "scripts/staging-whatsapp-office-link-check.mjs"
+      - "scripts/staging-cloudflare-secret-names-check.mjs"
       - "test/staging-whatsapp-office-link-check.test.mjs"
 
 permissions:
@@ -75,12 +80,24 @@ jobs:
       - name: Run read-only office/WhatsApp link check against Staging Firestore
         run: node scripts/staging-whatsapp-office-link-check.mjs
 
+      # Cloudflare's Workers API only ever returns a secret binding's NAME —
+      # it has no "read secret value" endpoint, by design. So this cannot leak
+      # a Meta token or app secret; it only answers "is it bound at all on the
+      # Staging Worker", which is exactly what distinguishes a broken Embedded
+      # Signup setup from one that is simply waiting on the office manager.
+      - name: List (names only) which Meta-related secrets are bound on the Staging Worker
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/staging-cloudflare-secret-names-check.mjs
+
       - name: Upload redacted report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: whatsapp-office-link-check-${{ github.run_id }}
-          path: artifacts/staging-diagnostics/whatsapp-office-link-check.json
+          path: artifacts/staging-diagnostics/
           if-no-files-found: warn
           retention-days: 7
 
@@ -98,6 +115,11 @@ jobs:
             echo "### WhatsApp office-link check — run ${{ github.run_id }}"
             echo '```json'
             cat artifacts/staging-diagnostics/whatsapp-office-link-check.json 2>/dev/null || echo '{"error":"no report file was written"}'
+            echo '```'
+            echo
+            echo "### Staging Worker Meta secret bindings (names only — never values)"
+            echo '```json'
+            cat artifacts/staging-diagnostics/cloudflare-secret-names-check.json 2>/dev/null || echo '{"error":"no secret-names report was written"}'
             echo '```'
           } > /tmp/report-comment.md
           jq -n --rawfile body /tmp/report-comment.md '{body: $body}' > /tmp/report-comment.json
