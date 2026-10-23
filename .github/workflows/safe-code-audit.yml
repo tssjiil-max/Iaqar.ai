@@ -1,0 +1,39 @@
+name: iAqar safe code audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - maintenance/**
+    paths:
+      - 'worker/**'
+      - '.github/workflows/safe-code-audit.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safe-code-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-tests:
+    name: Worker unit tests (read only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: node --check src/index.js
+      - name: Run existing Worker tests
+        run: node --test test/worker.test.mjs
