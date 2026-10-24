@@ -258,8 +258,12 @@ function decodeFind(doc) {
   return { ...doc, sources: parse(doc.sourcesJson), links: parse(doc.linksJson), changes: parse(doc.changesJson), reasons: doc.reasons || [], warnings: doc.warnings || [] };
 }
 
-/** Newest first when the collection is listed by name. */
-const newFindId = async (ctx, candidate, now) => `so_${String(9_999_999_999_999 - now.getTime()).padStart(13, "0")}_${await shortHash(ctx, `${candidate.sourceId}|${candidate.externalId}|${now.getTime()}`, 8)}`;
+/**
+ * One ad → always the same find id, whichever round reads it first. A round cut off after its alert and before its
+ * writes, or two rounds of one office at once, then land on the same find and the same alert (deduplicated), never a
+ * second alert or an alert that opens nothing. Nothing reads the finds in name order (the index and board carry it).
+ */
+const newFindId = async (ctx, officeId, candidate) => `so_${await shortHash(ctx, `find|${officeId}|${candidate.sourceId}|${candidate.externalId}`, 24)}`;
 
 async function createNotification(ctx, officeId, { key, route, entityId, type, title, body, brokerId = "", push = false, now }) {
   const id = `nt_${(await ctx.deps.sha256Hex(`notif|${key}`)).slice(0, 40)}`;
@@ -564,7 +568,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
       outcome.stats.fresh += 1;
       const at = now.toISOString();
       entity = {
-        ...candidate, id: await newFindId(ctx, candidate, now), officeId, engine, firstSeenAt: at, lastSeenAt: at, status: OPP_STATUS.NEW, surface: SURFACE.HIDDEN, band: BAND.WEAK,
+        ...candidate, id: await newFindId(ctx, officeId, candidate), officeId, engine, firstSeenAt: at, lastSeenAt: at, status: OPP_STATUS.NEW, surface: SURFACE.HIDDEN, band: BAND.WEAK,
         sources: [{ sourceId: candidate.sourceId, label: sourceLabel(candidate.sourceId, ctx.env), ref: candidate.externalId, url: candidate.url || "", firstSeenAt: at, lastSeenAt: at }], sourceCount: 1, changes: [], links: []
       };
     }
@@ -661,9 +665,18 @@ export async function runScoutTick(ctx, { now = ctx.now(), maxOffices = SCOUT_LI
     if (nowMs - (Date.parse(schedule.health?.lastTickAt || "") || 0) > 30 * 60_000) await mutateSchedule(ctx, (s) => ({ ...s, health: beat(s.health, { lastIdleAt: now.toISOString() }) }));
     return { ok: true, offices: 0, waiting: due.length };
   }
-  await mutateSchedule(ctx, (s) => { for (const item of chosen) officeEntry(s.entries, item.officeId).l = nowMs + SCOUT_LIMITS.leaseMinutes * 60_000; return s; });
+  // The claim is checked again on the stored schedule (re-read on a concurrent change): a beat that overlaps another
+  // works only the offices it claimed itself, never one the other beat is already working on.
+  let claimed = [];
+  await mutateSchedule(ctx, (s) => {
+    claimed = chosen.filter((item) => Number(s.entries[item.officeId]?.l || 0) <= nowMs);
+    if (!claimed.length) return null;
+    for (const item of claimed) officeEntry(s.entries, item.officeId).l = nowMs + SCOUT_LIMITS.leaseMinutes * 60_000;
+    return s;
+  });
+  if (!claimed.length) return { ok: true, offices: 0, waiting: due.length };
   const outcomes = [];
-  for (const item of chosen) {
+  for (const item of claimed) {
     try {
       outcomes.push({ officeId: item.officeId, due: item.taskIds, ...(await runOfficeCycle(ctx, item.officeId, { taskIds: item.taskIds, runtime: schedule.entries[item.officeId]?.t || {}, sync: item.sync, now })) });
     } catch (error) {
