@@ -3,9 +3,11 @@
  *
  *   /auth/phone-login-resolve  retired: it returned the account's real email and officeId to anyone.
  *   /auth/phone-login          the only way in: phone + password → custom token. Every failure is the same
- *                              401 body, padded to the same minimum time, counted per phone (across IPs) and
- *                              per IP (across phones, unknown numbers included). The password check only
- *                              counts when Google's ID token is for THIS project and THIS account.
+ *                              401 body, padded to the same minimum time. Every attempt is counted atomically,
+ *                              before the password check, per phone (across IPs) and per IP (across phones,
+ *                              unknown numbers included), so a parallel burst cannot outrun the limit. The
+ *                              password check only counts when Google's ID token is for THIS project and THIS
+ *                              account.
  *   /auth/forgot-password      the same generic answer for every number; never a (masked) email.
  *
  * This is an interim control approved by the owner: it does not prove possession of the phone number.
@@ -138,9 +140,9 @@ test('per number: 10 wrong passwords from 10 different IPs lock that number, eve
   assert.equal(h.identityCalls.length, before, 'no password check is even attempted while locked');
 });
 
-test('per IP: 20 failures on different (unknown) numbers lock that IP for every number', async () => {
+test('per IP: 30 attempts on different (unknown) numbers lock that IP for every number', async () => {
   const from = ip();
-  for (let i = 0; i < 20; i += 1) assert.equal((await login(unknownPhone(), 'guess-1234', { from })).status, 401);
+  for (let i = 0; i < 30; i += 1) assert.equal((await login(unknownPhone(), 'guess-1234', { from })).status, 401);
   const account = newAccount();
   const blocked = await login(account.local, account.password, { from });
   assert.equal(blocked.status, 401);
@@ -155,12 +157,20 @@ test('a locked attempt is indistinguishable from a wrong password', async () => 
   assert.deepEqual(shape(locked), shape(wrong));
 });
 
-test('a successful sign-in clears that number\'s failure count', async () => {
+test('a few typos before the right password still sign in', async () => {
   const account = newAccount();
   for (let i = 0; i < 3; i += 1) await login(account.local, `typo-${i}-pass`, { from: ip() });
   assert.equal((await login(account.local, account.password, { from: ip() })).status, 200);
-  const bucket = h.store.get(`loginRateLimits/${sha(`phone|${account.canonical}`)}`);
-  assert.equal(Number(bucket.failureCount), 0);
+});
+
+test('a parallel burst cannot outrun the per-number limit: 40 at once → at most 10 password checks', async () => {
+  const account = newAccount();
+  const before = h.identityCalls.length;
+  const results = await Promise.all(Array.from({ length: 40 }, (_, i) => login(account.local, `burst-${i}-pass`, { from: ip() })));
+  const checks = h.identityCalls.slice(before).filter((c) => c.path.endsWith('accounts:signInWithPassword')).length;
+  assert.ok(checks <= 10, `${checks} password checks`);
+  for (const r of results) assert.equal(r.status, 401);
+  assert.equal((await login(account.local, account.password, { from: ip() })).status, 401, 'still locked for this window');
 });
 
 test('timing: unknown numbers and wrong passwords both wait for the same minimum time', async () => {

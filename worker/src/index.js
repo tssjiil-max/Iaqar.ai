@@ -1733,11 +1733,12 @@ async function lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, 
 
 // ── Phone login (D-021) ────────────────────────────────────────────────────────────────────────────
 // One failure answer for every reason, padded to the same minimum time, and guessing limits per number
-// (across IPs) and per IP (across numbers, unknown ones included). Interim control: it does not prove
-// possession of the phone number (no SMS/OTP on the free tier).
+// (across IPs) and per IP (across numbers, unknown ones included). Every attempt is counted with an atomic
+// Firestore increment BEFORE the password is checked, so parallel requests cannot outrun the limit.
+// Interim control: it does not prove possession of the phone number (no SMS/OTP on the free tier).
 const LOGIN_WINDOW_MS = 15 * 60_000;
-const LOGIN_PHONE_MAX_FAILURES = 10;
-const LOGIN_IP_MAX_FAILURES = 20;
+const LOGIN_PHONE_MAX_ATTEMPTS = 10;
+const LOGIN_IP_MAX_ATTEMPTS = 30;
 const RESET_IP_MAX_REQUESTS = 10;
 const LOGIN_FAILURE_MESSAGE = "رقم الجوال أو كلمة المرور غير صحيحة";
 
@@ -1751,37 +1752,37 @@ async function waitForFloor(startedAt, floorMs) {
   if (left > 0) await new Promise(resolve => setTimeout(resolve, left));
 }
 
-/** loginRateLimits/{sha256(key)} — Worker-only (no rules match). Keys: "phone|+9665…", "ip|…", "reset-ip|…". */
-async function readAttemptBucket({ projectId, accessToken, key }) {
-  const segments = ["loginRateLimits", await sha256Hex(key)];
-  const doc = await getFirestoreDocument({ projectId, segments, accessToken, allowMissing: true });
-  return { segments, state: doc ? firestoreFieldsToJs(doc.fields || {}) : {} };
-}
-
-function attemptBucketBlocked(bucket, now = Date.now()) {
-  const blockedUntil = bucket.state.blockedUntil ? Date.parse(bucket.state.blockedUntil) : 0;
-  return blockedUntil > now;
-}
-
-async function countAttempt({ projectId, accessToken, bucket, max }) {
-  const now = new Date();
-  const windowStartedAt = bucket.state.windowStartedAt ? Date.parse(bucket.state.windowStartedAt) : 0;
-  const inWindow = windowStartedAt && now.getTime() - windowStartedAt < LOGIN_WINDOW_MS;
-  const failureCount = inWindow ? Number(bucket.state.failureCount || 0) + 1 : 1;
-  await setFirestoreDocument({ projectId, segments: bucket.segments, accessToken, fields: {
-    failureCount: firestoreInteger(failureCount),
-    windowStartedAt: firestoreTimestamp(inWindow ? new Date(windowStartedAt) : now),
-    blockedUntil: firestoreTimestamp(failureCount >= max ? new Date(now.getTime() + LOGIN_WINDOW_MS) : now),
-    updatedAt: firestoreTimestamp(now)
-  }});
-}
-
-async function clearAttemptBucket({ projectId, accessToken, bucket }) {
-  const now = new Date();
-  await setFirestoreDocument({ projectId, segments: bucket.segments, accessToken, fields: {
-    failureCount: firestoreInteger(0), windowStartedAt: firestoreTimestamp(now),
-    blockedUntil: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now)
-  }});
+/**
+ * Adds one attempt to loginRateLimits/{sha256(key|window)} for the current fixed 15-minute window and returns
+ * the new count, using a server-side increment (no read-then-write race). Worker-only collection (no rules
+ * match). Keys: "phone|+9665…", "ip|…", "reset-ip|…". `expiresAt` lets a Firestore TTL policy remove old windows.
+ * Throws when Firestore does not confirm the count, so callers fail closed.
+ */
+async function countAttempt({ projectId, accessToken, key, now = Date.now() }) {
+  const windowIndex = Math.floor(now / LOGIN_WINDOW_MS);
+  const docId = await sha256Hex(`${key}|w${windowIndex}`);
+  const endpoint = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ writes: [{
+      update: {
+        name: `projects/${projectId}/databases/(default)/documents/loginRateLimits/${docId}`,
+        fields: {
+          windowStartedAt: firestoreTimestamp(new Date(windowIndex * LOGIN_WINDOW_MS)),
+          expiresAt: firestoreTimestamp(new Date((windowIndex + 2) * LOGIN_WINDOW_MS))
+        }
+      },
+      updateMask: { fieldPaths: ["windowStartedAt", "expiresAt"] },
+      updateTransforms: [{ fieldPath: "attempts", increment: { integerValue: "1" } }]
+    }] })
+  });
+  const payload = response.ok ? await response.json().catch(() => ({})) : {};
+  const count = Number(payload.writeResults?.[0]?.transformResults?.[0]?.integerValue);
+  if (!response.ok || !Number.isFinite(count) || count < 1) {
+    throw appError("rate_limit_unavailable", 503, "تعذر التحقق الآن — حاول بعد قليل");
+  }
+  return count;
 }
 
 /** Retired (D-021): it returned the account's real email and officeId to anyone who knew a phone number. */
@@ -1800,40 +1801,41 @@ async function handlePhoneLogin(request, env, requestId) {
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
   const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
-  const ipBucket = await readAttemptBucket({ projectId, accessToken, key: `ip|${ip}` });
-  const phoneBucket = phone ? await readAttemptBucket({ projectId, accessToken, key: `phone|${phone}` }) : null;
 
   const refuse = async () => {
     await waitForFloor(startedAt, loginFailureFloorMs(env));
     return jsonResponse({ ok: false, error: "invalid_login", message: LOGIN_FAILURE_MESSAGE, requestId }, 401);
   };
-  const refuseAndCount = async () => {
-    await countAttempt({ projectId, accessToken, bucket: ipBucket, max: LOGIN_IP_MAX_FAILURES });
-    if (phoneBucket) await countAttempt({ projectId, accessToken, bucket: phoneBucket, max: LOGIN_PHONE_MAX_FAILURES });
-    return refuse();
-  };
 
-  if (attemptBucketBlocked(ipBucket) || (phoneBucket && attemptBucketBlocked(phoneBucket))) return refuse();
-  if (!phone || !password || !apiKey) return refuseAndCount();
+  // Count first, check second: the attempt is spent before any password is tried (fail closed if uncounted).
+  let ipAttempts;
+  let phoneAttempts = 0;
+  try {
+    ipAttempts = await countAttempt({ projectId, accessToken, key: `ip|${ip}` });
+    if (phone) phoneAttempts = await countAttempt({ projectId, accessToken, key: `phone|${phone}` });
+  } catch (_) {
+    return refuse();
+  }
+  if (ipAttempts > LOGIN_IP_MAX_ATTEMPTS || phoneAttempts > LOGIN_PHONE_MAX_ATTEMPTS) return refuse();
+  if (!phone || !password || !apiKey) return refuse();
 
   const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
-  if (lookup.error) return refuseAndCount();
+  if (lookup.error) return refuse();
   const directory = lookup.directory;
 
   const signInResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: lookup.loginEmail, password, returnSecureToken: true })
   });
-  if (!signInResponse.ok) return refuseAndCount();
+  if (!signInResponse.ok) return refuse();
   const signedIn = await signInResponse.json().catch(() => ({}));
   // A key from another Firebase project would let that project's own user (same uid and email) "pass".
   // Google signs every project's tokens with the same keys, so the audience/issuer check is what binds it.
   let claims;
   try { claims = await verifyFirebaseIdToken(String(signedIn.idToken || ""), projectId); }
-  catch (_) { return refuseAndCount(); }
-  if (claims.sub !== directory.uid || signedIn.localId !== directory.uid) return refuseAndCount();
+  catch (_) { return refuse(); }
+  if (claims.sub !== directory.uid || signedIn.localId !== directory.uid) return refuse();
 
-  await clearAttemptBucket({ projectId, accessToken, bucket: phoneBucket });
   const customToken = await createFirebaseCustomToken({
     clientEmail: env.FIREBASE_CLIENT_EMAIL, privateKey: env.FIREBASE_PRIVATE_KEY,
     privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
@@ -1863,9 +1865,10 @@ async function handleForgotPassword(request, env, requestId) {
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
   const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
-  const ipBucket = await readAttemptBucket({ projectId, accessToken, key: `reset-ip|${ip}` });
-  if (attemptBucketBlocked(ipBucket)) return reply();
-  await countAttempt({ projectId, accessToken, bucket: ipBucket, max: RESET_IP_MAX_REQUESTS });
+  let resetRequests;
+  try { resetRequests = await countAttempt({ projectId, accessToken, key: `reset-ip|${ip}` }); }
+  catch (_) { return reply(); }
+  if (resetRequests > RESET_IP_MAX_REQUESTS) return reply();
 
   const phoneHash = await sha256Hex(phone);
   const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
