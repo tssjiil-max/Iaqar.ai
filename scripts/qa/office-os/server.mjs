@@ -26,10 +26,22 @@ function b64url(buf) { return Buffer.from(buf).toString("base64url"); }
 const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const jwk = { ...publicKey.export({ format: "jwk" }), kid: "e2e-kid", alg: "RS256", use: "sig" };
 
-export function idTokenFor(uid) {
+/** `extraClaims` adds custom claims (e.g. `{ platformAdmin: true }`); the standard claims always win. */
+export function idTokenFor(uid, extraClaims = {}) {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", kid: "e2e-kid", typ: "JWT" }));
-  const claims = b64url(JSON.stringify({ aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}`, sub: uid, iat: now, exp: now + 3600 }));
+  const claims = b64url(JSON.stringify({ ...extraClaims, aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}`, sub: uid, iat: now, exp: now + 3600 }));
+  return `${header}.${claims}.${b64url(crypto.sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), privateKey))}`;
+}
+
+/**
+ * A correctly signed ID token issued for ANOTHER Firebase project. Google signs every project's tokens with the
+ * same securetoken keys, so only the audience/issuer check tells them apart (D-021).
+ */
+export function foreignProjectIdTokenFor(uid, projectId = "attacker-project") {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: "RS256", kid: "e2e-kid", typ: "JWT" }));
+  const claims = b64url(JSON.stringify({ aud: projectId, iss: `https://securetoken.google.com/${projectId}`, sub: uid, iat: now, exp: now + 3600 }));
   return `${header}.${claims}.${b64url(crypto.sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), privateKey))}`;
 }
 
@@ -37,6 +49,23 @@ function sha256(value) { return crypto.createHash("sha256").update(value).digest
 
 export async function startOfficeOsHarness({ port = 0 } = {}) {
   const store = installMemoryFirestore({ jwk });
+  // Google Identity Toolkit stand-in for the Worker's server-side phone login (D-021): the same USERS the
+  // browser stub signs in against; tokens are signed by this harness's key for PROJECT, like the real ones.
+  const identityCalls = [];
+  const memoryFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input instanceof Request ? input.url : input));
+    if (url.hostname !== "identitytoolkit.googleapis.com") return memoryFetch(input, init);
+    const body = JSON.parse(init.body || "{}");
+    identityCalls.push({ path: url.pathname, apiKey: url.searchParams.get("key") || "", email: body.email || "" });
+    if (url.pathname.endsWith("accounts:signInWithPassword")) {
+      const entry = Object.entries(USERS).find(([, u]) => u.email === body.email && u.password === body.password);
+      if (!entry) return Response.json({ error: { message: "INVALID_LOGIN_CREDENTIALS" } }, { status: 400 });
+      return Response.json({ localId: entry[0], email: body.email, idToken: idTokenFor(entry[0]) });
+    }
+    if (url.pathname.endsWith("accounts:sendOobCode")) return Response.json({ email: body.email });
+    return Response.json({ error: { message: "UNSUPPORTED_IN_HARNESS" } }, { status: 400 });
+  };
   const sa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
   const env = {
     FIREBASE_PROJECT_ID: PROJECT,
@@ -164,7 +193,7 @@ export async function startOfficeOsHarness({ port = 0 } = {}) {
   server.workerCalls = [];
   await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
   origin.value = `http://127.0.0.1:${server.address().port}`;
-  return { server, store, env, worker, origin: origin.value, port: server.address().port };
+  return { server, store, env, worker, identityCalls, origin: origin.value, port: server.address().port };
 }
 
 if (process.argv[1] && import.meta.url.endsWith(path.basename(process.argv[1]))) {

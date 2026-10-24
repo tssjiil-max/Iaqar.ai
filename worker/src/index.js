@@ -256,6 +256,8 @@ import {
   handleAdminOfficeDetail,
   handleAdminOffices,
   handleAdminOverview,
+  handleAdminChannelRoutingIssues,
+  handleAdminOwnerTransfer,
   handleAdminReactivate,
   handleAdminSubscriptionUpdate,
   handleAdminSuspend
@@ -995,6 +997,14 @@ export default {
         return await handleAdminLicenseUpdate(request, env, requestId, getAdminHelpers());
       }
 
+      if (request.method === "GET" && url.pathname === "/admin/channel-routing-issues") {
+        return await handleAdminChannelRoutingIssues(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/office/owner-transfer") {
+        return await handleAdminOwnerTransfer(request, env, requestId, getAdminHelpers());
+      }
+
       if (request.method === "POST" && url.pathname === "/admin/office/note") {
         return await handleAdminNoteAdd(request, env, requestId, getAdminHelpers());
       }
@@ -1721,75 +1731,111 @@ async function lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, 
   };
 }
 
-async function handlePhoneLoginResolve(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const phone = normalizeLoginPhone(body.phone);
-  if (!phone) {
-    return jsonResponse({
-      ok: false, error: "invalid_login", reason: "invalid_input",
-      message: "رقم الجوال غير صحيح", requestId
-    }, 401);
-  }
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
-  if (lookup.error) return lookup.error;
-  return jsonResponse({
-    ok: true,
-    loginEmail: lookup.loginEmail,
-    officeId: firestoreOfficeId(lookup.directory.officeId),
-    requestId
+// ── Phone login (D-021) ────────────────────────────────────────────────────────────────────────────
+// One failure answer for every reason, padded to the same minimum time, and guessing limits per number
+// (across IPs) and per IP (across numbers, unknown ones included). Every attempt is counted with an atomic
+// Firestore increment BEFORE the password is checked, so parallel requests cannot outrun the limit.
+// Interim control: it does not prove possession of the phone number (no SMS/OTP on the free tier).
+const LOGIN_WINDOW_MS = 15 * 60_000;
+const LOGIN_PHONE_MAX_ATTEMPTS = 10;
+const LOGIN_IP_MAX_ATTEMPTS = 30;
+const RESET_IP_MAX_REQUESTS = 10;
+const LOGIN_FAILURE_MESSAGE = "رقم الجوال أو كلمة المرور غير صحيحة";
+
+function loginFailureFloorMs(env) {
+  const configured = Number(env.LOGIN_FAILURE_FLOOR_MS);
+  return Number.isFinite(configured) && configured >= 0 ? Math.min(configured, 5000) : 1200;
+}
+
+async function waitForFloor(startedAt, floorMs) {
+  const left = floorMs - (Date.now() - startedAt);
+  if (left > 0) await new Promise(resolve => setTimeout(resolve, left));
+}
+
+/**
+ * Adds one attempt to loginRateLimits/{sha256(key|window)} for the current fixed 15-minute window and returns
+ * the new count, using a server-side increment (no read-then-write race). Worker-only collection (no rules
+ * match). Keys: "phone|+9665…", "ip|…", "reset-ip|…". `expiresAt` lets a Firestore TTL policy remove old windows.
+ * Throws when Firestore does not confirm the count, so callers fail closed.
+ */
+async function countAttempt({ projectId, accessToken, key, now = Date.now() }) {
+  const windowIndex = Math.floor(now / LOGIN_WINDOW_MS);
+  const docId = await sha256Hex(`${key}|w${windowIndex}`);
+  const endpoint = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ writes: [{
+      update: {
+        name: `projects/${projectId}/databases/(default)/documents/loginRateLimits/${docId}`,
+        fields: {
+          windowStartedAt: firestoreTimestamp(new Date(windowIndex * LOGIN_WINDOW_MS)),
+          expiresAt: firestoreTimestamp(new Date((windowIndex + 2) * LOGIN_WINDOW_MS))
+        }
+      },
+      updateMask: { fieldPaths: ["windowStartedAt", "expiresAt"] },
+      updateTransforms: [{ fieldPath: "attempts", increment: { integerValue: "1" } }]
+    }] })
   });
+  const payload = response.ok ? await response.json().catch(() => ({})) : {};
+  const count = Number(payload.writeResults?.[0]?.transformResults?.[0]?.integerValue);
+  if (!response.ok || !Number.isFinite(count) || count < 1) {
+    throw appError("rate_limit_unavailable", 503, "تعذر التحقق الآن — حاول بعد قليل");
+  }
+  return count;
+}
+
+/** Retired (D-021): it returned the account's real email and officeId to anyone who knew a phone number. */
+async function handlePhoneLoginResolve(request, env, requestId) {
+  return jsonResponse({ ok: false, error: "endpoint_retired", message: "حدّث الصفحة ثم سجّل الدخول من جديد", requestId }, 410);
 }
 
 async function handlePhoneLogin(request, env, requestId) {
   assertFirebaseSecrets(env);
+  const startedAt = Date.now();
   const body = await request.json().catch(() => ({}));
   const phone = normalizeLoginPhone(body.phone);
   const password = cleanText(body.password, 200);
-  const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
-  if (!phone || password.length < 8 || !apiKey) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  // The server's own key first. Whatever key is used, only an ID token issued for THIS project counts (below).
+  const apiKey = cleanText(env.FIREBASE_WEB_API_KEY || body.apiKey, 200);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
   const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
-  const rateHash = await sha256Hex(`${phone}|${ip}`);
-  const rateSegments = ["loginRateLimits", rateHash];
-  const rateDoc = await getFirestoreDocument({ projectId, segments: rateSegments, accessToken, allowMissing: true });
-  const rate = rateDoc ? firestoreFieldsToJs(rateDoc.fields || {}) : {};
-  const blockedUntil = rate.blockedUntil ? Date.parse(rate.blockedUntil) : 0;
-  if (blockedUntil > Date.now()) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
-  if (lookup.error) {
-    const errorResponse = lookup.error;
-    if (typeof errorResponse.json === "function") return errorResponse;
-    throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+
+  const refuse = async () => {
+    await waitForFloor(startedAt, loginFailureFloorMs(env));
+    return jsonResponse({ ok: false, error: "invalid_login", message: LOGIN_FAILURE_MESSAGE, requestId }, 401);
+  };
+
+  // Count first, check second: the attempt is spent before any password is tried (fail closed if uncounted).
+  let ipAttempts;
+  let phoneAttempts = 0;
+  try {
+    ipAttempts = await countAttempt({ projectId, accessToken, key: `ip|${ip}` });
+    if (phone) phoneAttempts = await countAttempt({ projectId, accessToken, key: `phone|${phone}` });
+  } catch (_) {
+    return refuse();
   }
+  if (ipAttempts > LOGIN_IP_MAX_ATTEMPTS || phoneAttempts > LOGIN_PHONE_MAX_ATTEMPTS) return refuse();
+  if (!phone || !password || !apiKey) return refuse();
+
+  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
+  if (lookup.error) return refuse();
   const directory = lookup.directory;
-  const loginEmail = lookup.loginEmail;
+
   const signInResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: loginEmail, password, returnSecureToken: true })
+    body: JSON.stringify({ email: lookup.loginEmail, password, returnSecureToken: true })
   });
-  if (!signInResponse.ok) {
-    const windowStartedAt = rate.windowStartedAt ? Date.parse(rate.windowStartedAt) : 0;
-    const inWindow = windowStartedAt && Date.now() - windowStartedAt < 15 * 60_000;
-    const failureCount = inWindow ? Number(rate.failureCount || 0) + 1 : 1;
-    const now = new Date();
-    await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
-      failureCount: firestoreInteger(failureCount),
-      windowStartedAt: firestoreTimestamp(inWindow ? new Date(windowStartedAt) : now),
-      blockedUntil: firestoreTimestamp(failureCount >= 5 ? new Date(Date.now() + 15 * 60_000) : now),
-      updatedAt: firestoreTimestamp(now)
-    }});
-    throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  }
-  const signedIn = await signInResponse.json();
-  if (signedIn.localId !== directory.uid) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
-    failureCount: firestoreInteger(0), windowStartedAt: firestoreTimestamp(new Date()),
-    blockedUntil: firestoreTimestamp(new Date()), updatedAt: firestoreTimestamp(new Date())
-  }});
+  if (!signInResponse.ok) return refuse();
+  const signedIn = await signInResponse.json().catch(() => ({}));
+  // A key from another Firebase project would let that project's own user (same uid and email) "pass".
+  // Google signs every project's tokens with the same keys, so the audience/issuer check is what binds it.
+  let claims;
+  try { claims = await verifyFirebaseIdToken(String(signedIn.idToken || ""), projectId); }
+  catch (_) { return refuse(); }
+  if (claims.sub !== directory.uid || signedIn.localId !== directory.uid) return refuse();
+
   const customToken = await createFirebaseCustomToken({
     clientEmail: env.FIREBASE_CLIENT_EMAIL, privateKey: env.FIREBASE_PRIVATE_KEY,
     privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
@@ -1804,32 +1850,44 @@ async function handlePhoneLogin(request, env, requestId) {
   return jsonResponse({ ok: true, customToken, officeId: directory.officeId, requestId });
 }
 
+/** The same answer for every number (no masked email): whether a number is registered is not disclosed. */
 async function handleForgotPassword(request, env, requestId) {
   assertFirebaseSecrets(env);
+  const startedAt = Date.now();
+  const reply = async () => {
+    await waitForFloor(startedAt, loginFailureFloorMs(env));
+    return jsonResponse({ ok: true, requestId });
+  };
   const body = await request.json().catch(() => ({}));
   const phone = normalizeLoginPhone(body.phone);
-  const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
-  const generic = { ok: true, requestId };
-  if (!phone || !apiKey) return jsonResponse(generic);
+  const apiKey = cleanText(env.FIREBASE_WEB_API_KEY || body.apiKey, 200);
+  if (!phone || !apiKey) return reply();
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
+  const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
+  let resetRequests;
+  try { resetRequests = await countAttempt({ projectId, accessToken, key: `reset-ip|${ip}` }); }
+  catch (_) { return reply(); }
+  if (resetRequests > RESET_IP_MAX_REQUESTS) return reply();
+
   const phoneHash = await sha256Hex(phone);
   const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
-  if (!directoryDoc) return jsonResponse(generic);
+  if (!directoryDoc) return reply();
   const directory = firestoreFieldsToJs(directoryDoc.fields || {});
-  if (directory.active !== true || !directory.email) return jsonResponse(generic);
+  if (directory.active !== true || !directory.email) return reply();
   const cooldownDoc = await getFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken, allowMissing: true });
   const cooldown = cooldownDoc ? firestoreFieldsToJs(cooldownDoc.fields || {}) : {};
   const previous = cooldown.lastRequestedAt ? Date.parse(cooldown.lastRequestedAt) : 0;
-  if (previous && Date.now() - previous < 60_000) return jsonResponse({ ...generic, maskedEmail: maskEmail(directory.email), cooldown: true });
+  if (previous && Date.now() - previous < 60_000) return reply();
   const resetResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(apiKey)}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ requestType: "PASSWORD_RESET", email: directory.email })
   });
-  if (!resetResponse.ok) return jsonResponse(generic);
-  await setFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken,
-    fields: { lastRequestedAt: firestoreTimestamp(new Date()), phoneLast4: firestoreString(phone.slice(-4)) } });
-  return jsonResponse({ ...generic, maskedEmail: maskEmail(directory.email) });
+  if (resetResponse.ok) {
+    await setFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken,
+      fields: { lastRequestedAt: firestoreTimestamp(new Date()), phoneLast4: firestoreString(phone.slice(-4)) } });
+  }
+  return reply();
 }
 
 
@@ -2710,6 +2768,7 @@ async function receiveMetaWebhook(request, env, requestId) {
   const accessToken = await getGoogleAccessToken(env);
   let received = 0;
   let unlinked = 0;
+  let diagnosed = 0;
 
   for (const entry of Array.isArray(payload.entry) ? payload.entry : []) {
     const wabaId = cleanText(entry && entry.id, 100);
@@ -2735,6 +2794,15 @@ async function receiveMetaWebhook(request, env, requestId) {
       if (!officeId || mapping.status !== "connected") {
         unlinked += messages.length;
         console.warn("[iaqar-whatsapp] unlinked phone number", { phoneNumberId, wabaId });
+        // Still 200 for Meta (a retry cannot fix a missing mapping), but no longer silent (D-022): a content-free
+        // diagnostic per message and one open issue per receiving number, for the platform admin.
+        if (messages.length) {
+          try {
+            diagnosed += await recordUnroutedWhatsAppEvents({ projectId, accessToken, env, phoneNumberId, wabaId, mapping, officeId, messages });
+          } catch (error) {
+            console.error("[iaqar-whatsapp] routing diagnostic not saved", { phoneNumberId, code: error && error.code });
+          }
+        }
         continue;
       }
 
@@ -2772,7 +2840,68 @@ async function receiveMetaWebhook(request, env, requestId) {
     }
   }
 
-  return jsonResponse({ ok: true, received, unlinked, requestId });
+  return jsonResponse({ ok: true, received, unlinked, diagnosed, requestId });
+}
+
+// ── Unrouted channel diagnostics (D-022) ───────────────────────────────────────────────────────────
+// channelRoutingEvents/{eventId}  one per Meta message, create-only (Meta retries are recorded once)
+// channelRoutingIssues/{issueId}  one per receiving number: reason, first/last seen, count — the indicator
+// Both are Worker-only by the rules. Stored: the receiving channel (our own business number id), the reason,
+// the message type and times. Never stored: the text, the sender's number or name, Meta's message id or payload.
+// Firestore TTL on `expiresAt` deletes them (configured once by the owner); the admin view hides expired ones.
+const CHANNEL_DIAGNOSTIC_DEFAULT_DAYS = 14;
+const CHANNEL_DIAGNOSTIC_MAX_DAYS = 90;
+
+function channelDiagnosticRetentionDays(env) {
+  const configured = Number(env && env.CHANNEL_DIAGNOSTIC_RETENTION_DAYS);
+  return Number.isFinite(configured) && configured > 0 ? Math.min(configured, CHANNEL_DIAGNOSTIC_MAX_DAYS) : CHANNEL_DIAGNOSTIC_DEFAULT_DAYS;
+}
+
+async function recordUnroutedWhatsAppEvents({ projectId, accessToken, env, phoneNumberId, wabaId, mapping, officeId, messages }) {
+  const reason = officeId ? "mapping_not_connected" : "unmapped";
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + channelDiagnosticRetentionDays(env) * 86_400_000);
+  const issueId = `wa_${(await sha256Hex(`whatsapp|${phoneNumberId}`)).slice(0, 40)}`;
+  let recorded = 0;
+  for (const message of messages) {
+    const eventId = `wre_${(await sha256Hex(`whatsapp|${phoneNumberId}|${cleanText(message && message.id, 200)}`)).slice(0, 40)}`;
+    const created = await createFirestoreDocumentIfAbsent({
+      projectId, segments: ["channelRoutingEvents", eventId], accessToken,
+      fields: compactFields({
+        schemaVersion: firestoreInteger(1),
+        channel: firestoreString("whatsapp"),
+        issueId: firestoreString(issueId),
+        phoneNumberId: firestoreString(phoneNumberId),
+        reason: firestoreString(reason),
+        messageType: firestoreString(cleanText(message && message.type, 50) || "unknown"),
+        receivedAt: firestoreTimestamp(parseWhatsAppTimestamp(message && message.timestamp)),
+        recordedAt: firestoreTimestamp(now),
+        expiresAt: firestoreTimestamp(expiresAt)
+      })
+    });
+    if (created) recorded += 1;
+  }
+  if (!recorded) return 0;
+  const existing = await getFirestoreDocument({ projectId, segments: ["channelRoutingIssues", issueId], accessToken, allowMissing: true });
+  const previous = existing ? firestoreFieldsToJs(existing.fields || {}) : {};
+  await setFirestoreDocument({
+    projectId, segments: ["channelRoutingIssues", issueId], accessToken,
+    fields: compactFields({
+      schemaVersion: firestoreInteger(1),
+      channel: firestoreString("whatsapp"),
+      phoneNumberId: firestoreString(phoneNumberId),
+      wabaId: firestoreOptionalString(wabaId),
+      reason: firestoreString(reason),
+      mappedOfficeId: firestoreOptionalString(officeId),
+      mappingStatus: firestoreOptionalString(cleanText(mapping && mapping.status, 40)),
+      status: firestoreString("open"),
+      firstSeenAt: previous.firstSeenAt ? null : firestoreTimestamp(now),
+      lastSeenAt: firestoreTimestamp(now),
+      eventCount: firestoreInteger(Number(previous.eventCount || 0) + recorded),
+      expiresAt: firestoreTimestamp(expiresAt)
+    })
+  });
+  return recorded;
 }
 
 async function completeEmbeddedSignup(request, env, requestId) {
@@ -2972,6 +3101,7 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
   const receivedAt = parseWhatsAppTimestamp(message && message.timestamp);
   const messageType = cleanText(message && message.type, 50) || "unknown";
   const messageText = extractMessageText(message);
+  const media = whatsappMediaReference(message);
   const senderPhone = cleanText(message && message.from, 60);
   const now = new Date();
 
@@ -2993,6 +3123,13 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
     wabaId: firestoreString(wabaId),
     phoneNumberId: firestoreString(phoneNumberId),
     displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
+    // Meta's media reference only (the file is not downloaded yet): enough to fetch it later through the Graph API.
+    mediaType: firestoreOptionalString(media && media.type),
+    mediaId: firestoreOptionalString(media && media.id),
+    mediaMimeType: firestoreOptionalString(media && media.mimeType),
+    mediaSha256: firestoreOptionalString(media && media.sha256),
+    mediaFileName: firestoreOptionalString(media && media.fileName),
+    mediaIsVoice: media && media.voice ? firestoreBoolean(true) : null,
     receivedAt: firestoreTimestamp(receivedAt),
     createdAt: firestoreTimestamp(now),
     rawPayload: firestoreString(safeJsonStringify(rawPayload).slice(0, MAX_RAW_LENGTH))
@@ -3006,16 +3143,18 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
   // Meta media messages may arrive without a text/caption. Until the official
   // media downloader is wired, retain them for review instead of feeding an empty
   // text part into Canonical Intake and falsely marking the channel as failed.
+  // Other messages without text (reaction, contacts, unsupported…) wait for review too (D-022).
   if (!messageText) {
+    const reason = media ? "channel_media_requires_adapter" : "channel_non_text_message";
     await setFirestoreDocument({
       projectId,
       segments: ["offices", officeId, "inbox", documentId],
       accessToken,
       fields: {
-        processingState: firestoreString("needs_media_adapter"),
+        processingState: firestoreString(media ? "needs_media_adapter" : "pending_review"),
         status: firestoreString("pending_review"),
         isProcessed: firestoreBoolean(false),
-        processingError: firestoreString("channel_media_requires_adapter"),
+        processingError: firestoreString(reason),
         canonicalIntake: firestoreBoolean(true),
         sourceChannel: firestoreString("whatsapp"),
         updatedAt: firestoreTimestamp(new Date())
@@ -3025,7 +3164,7 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
       duplicate: false,
       documentId,
       deferred: true,
-      reason: "channel_media_requires_adapter"
+      reason
     };
   }
 
@@ -7589,6 +7728,9 @@ function getAdminHelpers() {
     firestoreFieldsToJs,
     firestoreString,
     firestoreTimestamp,
+    firestoreBoolean,
+    buildFirestoreUpdateWrite,
+    commitFirestoreWrites,
     firestoreDocumentUrl,
     cleanText,
     firestoreOfficeId,
@@ -7655,7 +7797,25 @@ function extractMessageText(message) {
   if (message.interactive && message.interactive.button_reply) return cleanText(message.interactive.button_reply.title, 12000);
   if (message.interactive && message.interactive.list_reply) return cleanText(message.interactive.list_reply.title, 12000);
   if (message.location) return `موقع: ${message.location.latitude}, ${message.location.longitude}`;
-  return `[رسالة ${cleanText(message.type, 50) || "غير نصية"}]`;
+  // No placeholder such as «[رسالة image]»: it used to reach Canonical Intake and become an empty record (B-07).
+  return "";
+}
+
+const WHATSAPP_MEDIA_TYPES = Object.freeze(["image", "video", "audio", "document", "sticker"]);
+
+/** Meta's reference to the file of a media message (never the file itself), or null for other messages. */
+function whatsappMediaReference(message) {
+  const type = cleanText(message && message.type, 50);
+  if (!WHATSAPP_MEDIA_TYPES.includes(type)) return null;
+  const part = message[type] && typeof message[type] === "object" ? message[type] : {};
+  return {
+    type,
+    id: cleanText(part.id, 200),
+    mimeType: cleanText(part.mime_type, 120),
+    sha256: cleanText(part.sha256, 200),
+    fileName: cleanText(part.filename, 240),
+    voice: part.voice === true
+  };
 }
 
 function parseWhatsAppTimestamp(value) {

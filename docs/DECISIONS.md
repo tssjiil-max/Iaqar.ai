@@ -502,6 +502,289 @@ be UI-only; no Deals page / bottom nav / auto-send; stop before production Phase
 **Why.** Isolates staging Auth/Firestore from production while keeping a real Worker +
 Hosting path for Phases 1–8, without CI user tokens or production Hosting overwrite.
 
+## D-019 — B-04: pin the legacy WhatsApp intake path with tests before changing it
+
+**Phase:** post-audit backlog B-04 (`docs/IMPLEMENTATION_BACKLOG_AR.md`), branch
+`audit/phase0-real-lineage-20261024`.
+**Directive:** Constitution §2.5 (a feature works only when the path is connected, data
+persists, access control is enforced and tests pass), §7 tenant isolation, §9 integration
+honesty; no behaviour change in this item.
+
+**Decision.**
+
+1. **Characterization tests, no code change.** `test/whatsapp-legacy-intake-journey.test.mjs`
+   drives the real Worker (`startOfficeOsHarness`) with HMAC-signed Meta events and pins the
+   legacy (non-agent) path: mapped number → `offices/{office}/inbox` → canonical intake →
+   `offices/{office}/opportunities` → the default records list (`filterRecords`). It covers
+   offer and request, two-office isolation, Meta re-delivery of the same message id, batches,
+   greetings kept for the broker, delivery-status-only events, a bad signature (401) and a
+   non-WhatsApp object (ignored).
+2. **Read access is tested on the emulator.**
+   `test/emulator/whatsapp-intake-rules.emulator.test.mjs` asserts that only active members of
+   the same office read the WhatsApp inbox and its records, that no browser writes the inbox,
+   and that `whatsapp_accounts` is closed to every browser.
+3. **Current defects are pinned under a `CURRENT (pre-B-xx)` label, not fixed here.** Two
+   behaviours are recorded as they are today so the later fix is a visible, reviewed test flip:
+   - an unlinked or non-`connected` number is acknowledged with 200 and the message is stored
+     nowhere (fix: B-03);
+   - caption-less media becomes an empty record, because `extractMessageText()` returns the
+     placeholder `[رسالة image]` and the `needs_media_adapter` branch in `saveInboundMessage()`
+     is unreachable (fix: B-07).
+4. **Gates.** The journey test joins `test:channels:gate`; the emulator file joins
+   `test:rules` (and therefore the `deploy-staging-rules` and `office-os-gate` workflows).
+
+**Why.** The WhatsApp fixes that follow (B-03, B-07, and any agent work) touch
+`receiveMetaWebhook` / `saveInboundMessage`. Without an end-to-end test, a regression that
+stops linked offices from receiving messages would pass every existing check: the only
+prior runtime test asserted that one inbox document exists. Each new assertion was checked
+against a deliberate mutation (ignoring the mapping status, removing the create-only
+dedupe, routing every message to another office, opening inbox reads to any signed-in user)
+and failed as expected.
+
+**Limits.** Local harness and emulator only. They do not prove that Meta delivers to the
+Staging or Production webhook; that needs the owner's live check (backlog M-01).
+
+## D-020 — B-01: office authority is the platform's and the owner's, through the Worker only
+
+**Phase:** backlog B-01, approved by the owner on 2026-10-24 («المالك يدير أدوار موظفي مكتبه عبر
+الخادم، ومدير المنصة وحده يدير نقل الملكية والاشتراكات، مع سجل تدقيق لكل عملية»).
+**Directive:** Constitution §7 (isolation enforced by rules **and** backend), §10 (prevent mass
+assignment of protected fields and direct edits to ownership fields; never weaken rules).
+
+**Findings fixed.**
+
+1. **Critical — any member could promote themself.** `members/{uid}` was not in
+   `isRestrictedOfficeCollection`, so the office catch-all (`create, update` for any member when
+   `officeId` matches) applied to it. A broker could write
+   `{role:"owner", officeId}` to their own member document, or add an outsider as `admin`. Both the
+   rules (`canManage`) and the Worker (`authorizeOfficeRequest`) then treated them as a manager.
+   Reproduced on the pre-fix rules (the phase-0 audit missed it: its probe omitted `officeId`).
+2. **High — a manager could take ownership and change platform state.** `offices/{id}` update was
+   `canManage && validOfficeProfile()`, with no limit on which fields change. A manager could set
+   `ownerUid` to themself, flip `subscriptionStatus`/`subscriptionExpiresAt`, clear a suspension
+   (`accountStatus`), or change approval and licence state. The `publicOffices` mirror had the same
+   gap for its status fields.
+
+**Decision.**
+
+1. **`members` is Worker-only** for every browser (owner and platform admin included). Reads are
+   unchanged: active members of the office.
+2. **Platform-controlled office fields** (`platformControlledOfficeKeys()` in `firestore.rules`):
+   - `ownerUid`
+   - subscription: `subscriptionStatus`, `subscriptionExpiresAt`, `subscriptionPlan`
+   - approval: `approvalStatus`, `approvedAt`, `approvedByUid`, `registeredAt`
+   - account and suspension: `accountStatus`, `suspendedAt`, `suspendedBy`, `suspensionReason`,
+     `reactivatedAt`, `reactivatedBy`
+   - licence: `licenseStatus`, `licenseExpiresAt`
+   - `pilotAuthorized`
+
+   No browser adds, changes or removes them on `offices/{id}` or `publicOffices/{id}`. Re-sending
+   the current value is not a change, so the existing profile saves that echo `ownerUid` still pass.
+3. **Server operations.**
+   - `POST /os/members/access` (`office-os/members-service.js`) lets the office **owner** set an
+     existing member to `broker` or `manager`, or change its active flag.
+     - Authority is `offices/{o}.ownerUid`; a member doc saying `owner` is not enough.
+     - The owner's own membership is out of reach, `owner`/`admin` are never granted, and no new
+       people are added.
+     - Each change writes `MEMBER_ACCESS_CHANGED` with before/after to `offices/{o}/auditLogs`.
+   - `POST /admin/office/owner-transfer` (`admin-service.js`) is **platform admin** only.
+     - The new owner must be an active member.
+     - `ownerUid` and both member documents change in one Firestore commit guarded by each
+       document's `updateTime`.
+     - The previous owner becomes `manager` (or `broker`/inactive on request).
+     - It is written to `adminAuditLogs` with before/after and a mandatory reason.
+   - Subscriptions keep the existing audited `/admin/office/subscription` route.
+4. **Browser change:** `public/js/office-settings.js` no longer sends `approvalStatus` /
+   `accountStatus` to `publicOffices` with the work-scope save. Readers already default a missing
+   value to approved/active (`suitable-offices-domain.js`, `opportunity-router-domain.js`).
+5. **Static test updated:** `test/firestore-rules.test.mjs` TEST 4 asserted the old
+   `allow create, update, delete: if canManage(officeId)` text for `publicOffices`. It now asserts
+   that each write still requires `canManage(officeId)` plus the new field guard.
+
+**Evidence.**
+- `test/emulator/office-authority-rules.emulator.test.mjs`: 20 tests. On the pre-fix rules
+  14 fail, one per exploit scenario; on the new rules 20/20 pass, including every legitimate
+  profile/scope/share-card/photo save shape the screens send.
+- `test/office-authority-service.test.mjs`: 15 Worker tests, all red before the routes existed
+  (one passed only through a 404).
+- Full gates after the change: `npm test` 2379/2379, `npm run test:rules` 78/78,
+  `npm run check` passed.
+- Limit: the in-memory Firestore double used by the Worker tests applies `:commit` writes but
+  ignores their `updateTime` preconditions. The transfer's all-or-nothing, conflict-guarded
+  behaviour therefore rests on real Firestore commit semantics; it is not proven by the local test.
+
+**Not changed (recorded as residual risk).**
+- An office **owner** can still delete `offices/{id}` from a browser, and a manager can delete
+  `publicOffices/{id}`.
+- Platform-admin office **creation** from a browser is still allowed by the rules. The approval
+  flow itself goes through the Worker.
+- Suspension does not update the `publicOffices` mirror: no Worker route writes it, as before.
+- There is no screen yet for `/os/members/access`; the route is ready for one.
+
+## D-021 — B-02: phone login without disclosure (interim, no proof of number possession)
+
+**Phase:** backlog B-02, option (ب) approved by the owner on 2026-10-24: a safe phone + password path
+that discloses neither the email nor the office, with attempt limits; **no paid SMS for now**; this is an
+interim control, not a replacement for proving possession of the number.
+**Directive:** Constitution §10 (validate identity, rate-limit public endpoints, no secrets in client).
+
+**Findings fixed.**
+
+1. **Disclosure.** `POST /auth/phone-login-resolve` returned the account's real email and `officeId`
+   for any phone number, with no sign-in and no rate limit. Its two refusal reasons
+   (`directory_missing` / `directory_inactive`) told registered numbers apart.
+2. **Critical — account takeover path in `/auth/phone-login`.** The route accepted `apiKey` from the
+   request body and trusted Google's `signInWithPassword` answer as long as `localId` matched the
+   directory uid.
+   - A key from another Firebase project, where an attacker created a user with the victim's uid and
+     email, would pass. The Worker would then mint a real custom token for the victim.
+   - Reproduced: before the fix, a correctly signed token for another project got `200` +
+     `customToken`.
+   - The uid is readable by any signed-in user (`officeNameClaims.ownerUid`). The email leaked
+     through finding 1.
+3. **Enumeration and guessing.**
+   - Refusals differed by reason, and an unknown number answered before any Google call (a timing
+     difference).
+   - Failures were counted per `phone|ip` only, so rotating either one reset the count. Unknown
+     numbers were never counted.
+   - `/auth/forgot-password` returned a masked email only for registered numbers.
+
+**Decision.**
+
+1. **`/auth/phone-login-resolve` is retired.** It answers `410 endpoint_retired` for every input.
+   Both login screens (`public/os/core/session.js`, `public/js/access-gate.js`) now call
+   `/auth/phone-login` with phone + password and sign in with the returned custom token
+   (`signInWithCustomToken`). The email never reaches the browser.
+2. **The password check is bound to this project.** After `signInWithPassword`, the Worker verifies
+   the returned ID token with `verifyFirebaseIdToken(…, projectId)`: Google signature, `aud`, `iss`,
+   expiry. `sub` and `localId` must both equal the directory uid. `env.FIREBASE_WEB_API_KEY` is
+   preferred over a body key. No secret is required for the fix: whatever key is used, only a token
+   for this project counts.
+3. **One refusal.** Every failure is the same `401 {ok:false, error:"invalid_login", message}`, with
+   no `reason`. It covers bad input, unknown number, inactive account, wrong password, a token
+   mismatch and a locked bucket. Each refusal waits until `LOGIN_FAILURE_FLOOR_MS` (default 1200 ms,
+   capped at 5000) has passed since the request started.
+4. **Guessing limits**, durable in `loginRateLimits/{sha256(key|window)}` (Worker-only; no rules match),
+   one document per key per fixed 15-minute window:
+
+   | Bucket | Counts | Limit per window |
+   |---|---|---|
+   | `phone\|+9665…` | every attempt on that number, from any IP | 10 |
+   | `ip\|…` | every attempt from that IP, on any number (unknown ones included) | 30 |
+
+   - **Every attempt is counted before the password is checked**, with Firestore's server-side
+     `increment` transform in a commit. There is no read-then-write, so a parallel burst cannot outrun
+     the limit. Successes count too.
+   - Above the limit no password check is attempted, and the answer is the usual refusal.
+   - If Firestore does not confirm the count, the login is refused (fail closed).
+   - Each window document carries `expiresAt` (end of the next window) for a Firestore TTL policy.
+
+   **Correction, 2026-10-24.** The first version read the bucket, then wrote `failureCount + 1`.
+   A probe of 40 parallel wrong passwords on one number got 40 password checks, and the stored count
+   ended at 2. The review before merge caught it, and the atomic counter replaced it in the same PR.
+5. **Password reset answers the same for every number** (`{ok:true}`, no `maskedEmail`, same floor).
+   Each IP may trigger at most 10 reset requests per 15-minute window (`reset-ip|…` bucket, the same
+   atomic counter); later requests get the same answer and send nothing. The per-number 60 s cooldown stays. Both screens already show
+   the generic «إذا كان الرقم مسجلًا…» text when no `maskedEmail` comes back.
+6. **Minimum password length is no longer checked by the login route** (Firebase decides). The old
+   `< 8` shortcut rejected accounts created with shorter passwords; registration still requires 8.
+
+**Evidence.**
+- `test/phone-login-security.test.mjs`: 16 Worker tests; 13 red before the change. The 16th (a
+  40-request parallel burst must yield at most 10 password checks) was red on the first version of
+  the counter.
+- The in-memory Firestore double (`scripts/qa/match-negotiation-e2e/server.mjs`) now applies
+  `updateTransforms`/`transform` integer increments in `:commit` and returns `transformResults`, as
+  Firestore does. Before, it ignored them.
+- `test/access-gate-auth.test.mjs`: three assertions that described the old flow were rewritten to
+  assert the new one.
+- Harness: `scripts/qa/office-os/server.mjs` gained an Identity Toolkit stand-in and
+  `foreignProjectIdTokenFor()`; the browser stub gained `signInWithCustomToken`.
+- Gates: `npm test` 2394/2394, `test:rules` 78/78, `check` passed.
+- Browser journeys that log in through the form: fresh-broker 31/31, journey 45/45,
+  auth-flows 45/45, the same as before the change.
+
+**Residual risk (recorded, not solved here).**
+- **No proof of possession.** Anyone who knows a number and its password is in; a stolen password is
+  enough. OTP or another possession factor needs a paid or new channel and the owner's approval.
+- **Lock-out abuse.** Ten attempts lock a real broker's number until the end of the 15-minute window,
+  by design of the per-number bucket.
+- **Distributed guessing.** Many IPs × many numbers stays possible within the limits (30 per IP, 10
+  per number, per window). Fixed windows allow up to twice a limit across a window boundary.
+- **Shared networks.** An office behind one address shares the 30-per-window IP budget, successes
+  included. Sessions persist (`LOCAL`), so logins are rare; raise the limit if Staging shows otherwise.
+- **Write cost.** Each attempt writes one or two counter documents; the per-IP limit caps this per
+  source, not globally. Owner action: a Firestore TTL policy on `expiresAt` for `loginRateLimits`.
+- **Timing.** The floor hides the Google round-trip only while that round-trip is shorter than the
+  floor.
+- **Cached old pages.** A client still running the old JavaScript gets the generic refusal from the
+  retired route until it reloads. The service-worker cache is keyed by commit SHA, so a deploy ships
+  the new screens.
+- **Owner action, optional:** set `FIREBASE_WEB_API_KEY` on the Worker so the server never relies on
+  a key sent by the client. The audience check already makes a foreign key useless.
+
+## D-022 — B-03 + B-07: no WhatsApp message vanishes silently, and media is not a record
+
+**Phase:** backlog B-03 and B-07, approved by the owner on 2026-10-24 (no message content kept without
+a justification and an appropriate authorization).
+**Directive:** Constitution §7, §9 (honest integration state), §10; D-019 pinned the old behaviour
+under `CURRENT` labels, and those tests now assert the behaviour below.
+
+**B-03 — numbers not routed to an office.**
+1. **HTTP stays `200`** for Meta. A retry cannot fix a missing or disconnected mapping. A non-2xx
+   answer would make Meta re-deliver for hours and, if it persisted, could get the webhook disabled.
+   The answer now separates *received* from *processed*: `{received, unlinked, diagnosed}`.
+2. **One diagnostic event per Meta message**, written to `channelRoutingEvents/{wre_<sha256(phoneNumberId|messageId)>}`
+   create-only, so Meta's retries are recorded once.
+   - It stores the receiving channel (our own business `phoneNumberId`), `reason`, `messageType`,
+     `receivedAt`, `recordedAt` and `expiresAt`. `reason` is `unmapped` or `mapping_not_connected`.
+   - **It never stores** the text, the sender's number or name, Meta's message id or the payload.
+   - Delivery-status-only events create nothing.
+3. **One indicator per receiving number** in `channelRoutingIssues/{wa_<sha256(phoneNumberId)>}`:
+   `reason`, `wabaId`, the mapped office and mapping status when a mapping exists, `status: open`,
+   `firstSeenAt`, `lastSeenAt`, `eventCount` and `expiresAt`.
+4. **Access.** Both collections are closed to every browser by explicit rules, platform admin
+   included. The platform admin reads open, unexpired issues through
+   `GET /admin/channel-routing-issues`. Nothing is written to any office.
+5. **Retention.** `CHANNEL_DIAGNOSTIC_RETENTION_DAYS`, default 14, capped at 90.
+   **Owner action:** enable a Firestore TTL policy on `expiresAt` for both collections. Until then
+   expired documents stay stored, although the admin view hides them.
+6. **Content recovery is not possible by design.** Without the text and the sender, a lost message
+   cannot be reconstructed from these records. If recovery is wanted later, it should be a separate,
+   opt-in path decided after a privacy and authorization review. For example: encrypted content,
+   hours of retention, release only to the office that proves the number is its own, and an audit of
+   every read. Nothing of this is built.
+7. **Best effort.** If the diagnostic write fails, the error is logged (no content) and Meta still
+   gets `200`. The `eventCount` update is a read-then-write, so it is approximate under concurrency.
+
+**B-07 — media without text.**
+1. `extractMessageText()` returns real text only. The placeholder `[رسالة ${type}]` is gone; it used
+   to reach Canonical Intake and create an empty record with no kind.
+2. Caption-less `image`, `video`, `audio` (including voice notes), `document` and `sticker`:
+   `processingState: needs_media_adapter`, `processingError: channel_media_requires_adapter`, no
+   record. The inbox shows «رسالة وسائط بلا نص», and «حوّلها إلى عرض أو طلب» refuses it (409).
+3. Other text-less messages (reaction, contacts, unsupported…): `pending_review` with
+   `channel_non_text_message`, no record.
+4. **The media reference is kept** on the inbox document for every media message, captioned or
+   not: `mediaType`, `mediaId`, `mediaMimeType`, `mediaSha256`, `mediaFileName`, `mediaIsVoice`.
+   This is Meta's reference only; the file is not downloaded (that is the media adapter, out of
+   scope). Captioned media is still processed from its caption, as before. Locations are unchanged.
+
+**Evidence.**
+- `test/whatsapp-legacy-intake-journey.test.mjs`: 25 tests.
+  - The 3 former `CURRENT` tests were replaced.
+  - B-03 and B-07 cases were added; 14 were red before the change.
+  - Each B-03 case checks that the text, sender number, sender name and message id are absent.
+- `test/emulator/whatsapp-intake-rules.emulator.test.mjs`: plus 1 test (diagnostics closed to
+  browsers).
+- `test/channels-whatsapp-media-static.test.mjs`: two literal assertions now match the new branch;
+  the intent is unchanged and runtime-tested.
+- Gates: `npm test` 2407/2407, `test:rules` 79/79, `test:channels:gate` 66/66, `check` passed.
+- Browser journeys: broker-steps 69/69, conversations 21/21, journey 45/45.
+
+**Not proven locally.** Real Meta delivery, Meta's retry behaviour, and the TTL deletion all need
+Staging with the owner's number (M-01) and the TTL policy.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

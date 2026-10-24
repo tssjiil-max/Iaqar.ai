@@ -183,7 +183,11 @@ test("TEST 4: the only world-readable collection is the public office projection
 
   const block = matchBlock("/publicOffices/{officeId}");
   assert.ok(block.includes("allow read: if true"), "the open read must be the public office projection");
-  assert.match(condensed(block), /allow create, update, delete: if canManage\(officeId\)/);
+  // Every write still needs an office manager; create/update additionally keep the platform-controlled
+  // status fields out of browser hands (D-020).
+  assert.match(condensed(block), /allow create: if canManage\(officeId\) && !request\.resource\.data\.keys\(\)\.hasAny\(platformControlledOfficeKeys\(\)\)/);
+  assert.match(condensed(block), /allow update: if canManage\(officeId\) && !touchesPlatformControlledOfficeKeys\(\)/);
+  assert.match(condensed(block), /allow delete: if canManage\(officeId\)/);
 });
 
 test("TEST 4: no rule grants unconditional write access", () => {

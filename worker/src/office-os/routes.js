@@ -25,6 +25,7 @@ import { arrangeRecordImages } from "./record-media-service.js";
 import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
 import { convertInboxMessage } from "./inbox-service.js";
 import { createOfficeTicket, supportStatus } from "./support-service.js";
+import { setMemberAccess } from "./members-service.js";
 import { agentChat, agentHistory, agentStatus, agentSuggestions, runApprovedAction, saveAgentSettings } from "./agent-service.js";
 import { previewVisitor } from "./visitor-service.js";
 import { analyzeOfficeText, analyzePublicText } from "./smart-fill-service.js";
@@ -176,7 +177,12 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/scout/ingest/key/revoke": (ctx, b, actor) => revokeIngestKey(ctx, { officeId: ctx.officeId, actor, keyId: text(b.keyId) }),
   "/os/scout/feed": (ctx, b, actor) => feedScout(ctx, { actor, officeId: ctx.officeId, text: typeof b.text === "string" ? b.text : "", channel: text(b.channel).toUpperCase() }),
   "/os/support/status": (ctx) => supportStatus(ctx),
-  "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } })
+  "/os/support/ticket": (ctx, b, actor) => createOfficeTicket(ctx, { actor, officeId: ctx.officeId, input: { kind: b.kind, text: typeof b.text === "string" ? b.text.slice(0, 2000) : "", needsAdmin: b.needsAdmin === true } }),
+  // Staff access (D-020): the office owner only — checked against offices/{o}.ownerUid inside the service.
+  "/os/members/access": (ctx, b, actor) => setMemberAccess(ctx, {
+    officeId: ctx.officeId, actor, memberUid: text(b.memberUid),
+    role: b.role === undefined ? undefined : String(b.role), active: b.active
+  })
 });
 
 const INGEST_PATH = "/os/scout/ingest";
