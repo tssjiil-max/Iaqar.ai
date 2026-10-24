@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "@playwright/test";
-import { startOfficeOsHarness, OFFICE_A, OFFICE_B, OWNER_A, idTokenFor } from "./server.mjs";
+import { startOfficeOsHarness, OFFICE_A, OFFICE_B, OWNER_A, OWNER_B, idTokenFor } from "./server.mjs";
 
 const OUT = process.env.OUT_DIR || "/tmp/iaqar-bank-activation";
 const REPEAT = Math.max(1, Number(process.env.REPEAT || 1));
@@ -261,6 +261,49 @@ try {
         assert.deepEqual(errors, []);
       } finally { await context.tracing.stop({ path: path.join(OUT, "isolation.zip") }); await context.close(); h.server.close(); }
     });
+  }
+  if (REPEAT === 1) {
+    // While a load for office A is still running, the page moves to office B — the same user's office rebound
+    // (access-gate unlockOfficeWorkspace → rebindOfficeContext), or another user signing in without a reload.
+    // From that moment no card of office A may be on screen, not even for one frame.
+    const ownRows = [REQ, OFFER_A, OFFER_B];
+    const watchForeignRows = (page) => page.evaluate(({ officeB, ids }) => {
+      window.__foreignFrames = [];
+      const check = () => {
+        if (window.IAQAR?.office?.officeId === officeB) {
+          const shown = ids.filter((id) => document.querySelector(`#opportunityBankList [data-cv2-inbox-item][data-opportunity-id="${id}"]`));
+          if (shown.length) window.__foreignFrames.push(`${Math.round(performance.now())}ms ${shown.join(",")}`);
+        }
+        requestAnimationFrame(check);
+      };
+      requestAnimationFrame(check);
+    }, { officeB: OFFICE_B, ids: ownRows });
+    for (const [label, switchTo] of [
+      ["the same user's office rebound", (page) => page.evaluate((officeB) => window.IAQAR.rebindOfficeContext(officeB), OFFICE_B)],
+      ["another user signing in without a reload", (page) => page.evaluate(async ({ officeB, token }) => {
+        await window.firebase.auth().signOut();
+        await window.firebase.auth().signInWithCustomToken(token);
+        window.IAQAR.rebindOfficeContext(officeB);
+      }, { officeB: OFFICE_B, token: `h.${Buffer.from(JSON.stringify({ uid: OWNER_B })).toString("base64url")}.s` })]
+    ]) {
+      await scenario(`isolation: ${label} during a running load never shows office A's cards under office B`, async () => {
+        const { h } = await harness();
+        const { context, page, errors } = await openShell(browser, h, SLOW_INCOMING);
+        try {
+          await openBankTwice(page, REQ_REVIEW);
+          await watchForeignRows(page);
+          await switchTo(page);
+          await page.evaluate(() => { window.IAQAR.homeTabs?.switchTo?.("opportunities"); window.IAQAR.openOpportunityBank?.(); });
+          await visible(page, card("opp_bankrace_office_b"), "office B's own record");
+          // Office B's list is settled: no load is running and nothing more is queued.
+          await page.waitForFunction(() => !/جارٍ/.test(document.getElementById("opportunityBankStatus")?.textContent || ""));
+          const foreign = await page.evaluate(() => window.__foreignFrames);
+          assert.deepEqual(foreign.slice(0, 5), [], `office A's cards were shown under office B (${foreign.length} frames)`);
+          for (const id of ownRows) assert.equal(await page.locator(card(id)).count(), 0, `${id} is not listed under office B`);
+          assert.deepEqual(errors, []);
+        } finally { await context.tracing.stop({ path: path.join(OUT, `switch-${label.split(" ")[1]}.zip`) }); await context.close(); h.server.close(); }
+      });
+    }
   }
 } finally {
   await browser.close();

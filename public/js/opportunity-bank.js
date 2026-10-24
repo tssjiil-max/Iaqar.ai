@@ -204,6 +204,11 @@ function officeId() {
   return canonicalFirestoreOfficeId(officeRuntime()?.officeId || "");
 }
 
+/** Whose rows these are: the office and the signed-in user they were loaded for. */
+function bankScope() {
+  return `${officeId()}|${authUser()?.uid || ""}`;
+}
+
 function setStatus(message, tone = "") {
   const node = $("opportunityBankStatus");
   if (!node) return;
@@ -227,6 +232,7 @@ const state = {
   operations: [],
   unsubscribe: null,
   records: new Map(),
+  recordsScope: "", // bankScope() the rows in `records` were loaded for
   facetMeta: [],
   summary: emptyBankSummary(),
   activeId: null,
@@ -829,6 +835,14 @@ function renderList() {
   const loadMoreBtn = $("bankLoadMoreBtn");
   if (!list) return;
 
+  // Rows loaded for another office or another user (a rebound office, a new sign-in without a reload) are never
+  // drawn, whatever asks for this render. The next load for the current office fills them again.
+  if (state.recordsScope !== bankScope()) {
+    state.records.clear();
+    state.loadingSnapshot = null;
+    state.facetMeta = [];
+    state.summary = emptyBankSummary();
+  }
   const summary = state.summary || emptyBankSummary();
 
   if (state.loadingSnapshot && state.busy) return;
@@ -4125,10 +4139,12 @@ async function loadBankPage({ reset = false, keepVisible = false } = {}) {
 
   if (state.busy) return;
   state.busy = true;
+  const scope = bankScope();
   setStatus(reset ? "جارٍ تحميل العروض والطلبات…" : "جارٍ تحميل المزيد…");
 
   try {
     if (reset) {
+      state.recordsScope = scope;
       // Clear canonical rows before any awaited hydration. This prevents stale rows,
       // including previously projected operations, from flashing during refresh.
       // A data-driven refresh (same filter, new operations) keeps the current rows
@@ -4225,6 +4241,12 @@ async function loadBankPage({ reset = false, keepVisible = false } = {}) {
     if (retry) retry.hidden = false;
   } finally {
     state.busy = false;
+    // The office or the user changed while this load ran: its rows are not shown (renderList), and the current
+    // office is loaded next.
+    if (scope !== bankScope()) {
+      state.pendingKeepVisible = false;
+      state.pendingQueryRefresh = true;
+    }
     if (state.loadingSnapshot) {
       state.loadingSnapshot = null;
       renderList();
@@ -4243,8 +4265,11 @@ function startListener() {
   stopListener();
   // The reset load clears the rows itself. Opening the tab again while a load is running only asks for one more
   // load after it: clearing here would empty the rows that load already fetched, with nothing left to refill them.
-  // That follow-up keeps those rows on screen until its own result is ready (no blank list under the broker's tap).
-  scheduleBankQueryRefresh({ keepVisible: state.busy });
+  // That follow-up keeps those rows on screen until its own result is ready (no blank list under the broker's tap)
+  // — only rows of this same office and user; rows of another scope leave the screen at once.
+  const sameScope = state.recordsScope === bankScope();
+  if (!sameScope) renderList();
+  scheduleBankQueryRefresh({ keepVisible: state.busy && sameScope });
   void loadIncomingRequests();
   void loadSharedWithUs();
   void loadOutgoingScopes();
@@ -4497,6 +4522,10 @@ function boot() {
     });
     if (hasActiveOpportunityActionFilter()) scheduleBankQueryRefresh({ keepVisible: true });
     else renderList();
+  });
+  // The office changed under this page (login unlock → rebindOfficeContext): the previous office's rows leave now.
+  window.addEventListener("iaqar:office-rebound", () => {
+    if (state.recordsScope && state.recordsScope !== bankScope()) renderList();
   });
   window.addEventListener("iaqar:bank-refresh", () => {
     if (officeRuntime()?.db && officeId() && authUser()) {
