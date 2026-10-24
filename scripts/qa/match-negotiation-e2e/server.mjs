@@ -110,9 +110,12 @@ export function installMemoryFirestore({ jwk }) {
     const p = pathname.slice(base.length);
     const isCollection = p.split("/").length % 2 === 1;
     if (method === "GET" && isCollection) {
-      // Real Firestore list paging: only the first `pageSize` documents by id.
+      // Real Firestore list paging: `pageSize` documents by id per answer, and a `nextPageToken` while more remain.
       const pageSize = Number(url.searchParams.get("pageSize") || 20);
-      return Response.json({ documents: listPaths(p).slice(0, pageSize).map(docJson) });
+      const after = url.searchParams.get("pageToken") ? Buffer.from(url.searchParams.get("pageToken"), "base64url").toString() : "";
+      const rest = listPaths(p).filter((path) => !after || path > after);
+      const page = rest.slice(0, pageSize);
+      return Response.json({ documents: page.map(docJson), ...(rest.length > pageSize ? { nextPageToken: Buffer.from(page.at(-1)).toString("base64url") } : {}) });
     }
     if (method === "GET") return docs.has(p) ? Response.json(docJson(p)) : new Response("{}", { status: 404 });
     if (method === "PATCH") {
