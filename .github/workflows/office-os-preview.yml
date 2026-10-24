@@ -63,6 +63,19 @@ jobs:
       - name: «الاستقبال التلقائي» live proof on the preview (isolated QA offices)
         if: ${{ !cancelled() }}
         run: OUT_DIR="$RUNNER_TEMP/scout-ingest-live" node scripts/qa/office-os/scout-ingest-live.e2e.mjs
+      # QA branch for PR #265 only (not part of the PR): matching at 400 / 1000 / 4999 records and past the
+      # 5000-record ceiling, on the preview Worker with the real Staging Firestore. One isolated QA office, removed after.
+      - name: Matching at office scale (PR #265) — live measurement
+        if: ${{ !cancelled() }}
+        run: OUT_DIR="$RUNNER_TEMP/match-load" node scripts/qa/office-os/match-load-live.e2e.mjs
+      - name: Upload matching-scale evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: match-load-${{ github.run_id }}
+          path: ${{ runner.temp }}/match-load
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload «الاستقبال التلقائي» evidence
         if: always()
         uses: actions/upload-artifact@v4
