@@ -95,6 +95,9 @@
   let dealItems = [];
   let intakeItems = [];
   let operationItems = [];
+  // The last operations answer as it came, and whether any of it went through the short fallback projection.
+  let operationDocs = [];
+  let operationsProjectedWithoutDomain = false;
   let savedOpportunityWorkspaceItems = [];
   let opportunityItems = [];
   let opportunityView = "active";
@@ -678,7 +681,8 @@
     if (domain && typeof domain.projectOperationToUiItem === "function") {
       return domain.projectOperationToUiItem(data, { relativeTime });
     }
-    // Fallback projector if the domain module has not loaded yet.
+    // Fallback projector if the domain module has not loaded yet (replaced once it is: reprojectOperations).
+    operationsProjectedWithoutDomain = true;
     const priorityMap = { URGENT: 0, HIGH: 1, NORMAL: 2, LOW: 3 };
     return {
       id: data.id,
@@ -705,6 +709,19 @@
       whatsappOwner: false,
       whatsappClient: false
     };
+  }
+
+  /**
+   * The operations listener can answer before the operations domain module has loaded. The fallback projection
+   * carries no officeId, offerId or requestId, so «العروض والطلبات» drops those operations (no «مراجعة التطابق»).
+   * Once the domain is there, the last answer is projected again — without waiting for the data to change.
+   */
+  function reprojectOperations() {
+    if (!operationsProjectedWithoutDomain || !opsDomain()) return;
+    operationsProjectedWithoutDomain = false;
+    operationItems = operationDocs.map(projectPersistedOperation);
+    pruneSavedOpportunityWorkspaceItems();
+    emitOperations();
   }
 
   function pruneSavedOpportunityWorkspaceItems() {
@@ -1498,7 +1515,8 @@
       .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
       .orderBy("createdAt", "desc")
       .onSnapshot(snapshot => {
-        operationItems = snapshot.docs.map(projectPersistedOperation);
+        operationDocs = snapshot.docs;
+        operationItems = operationDocs.map(projectPersistedOperation);
         dailyTaskShadowSourcesReady.operations = true;
         pruneSavedOpportunityWorkspaceItems();
         emitOperations();
@@ -1511,7 +1529,8 @@
           .where("status", "in", ACTIVE_OPERATION_STATUSES.slice())
           .get()
           .then((snapshot) => {
-            operationItems = snapshot.docs.map(projectPersistedOperation)
+            operationDocs = snapshot.docs;
+            operationItems = operationDocs.map(projectPersistedOperation)
               .sort((a, b) => {
                 const priority = (a.priority ?? 2) - (b.priority ?? 2);
                 if (priority !== 0) return priority;
@@ -3783,6 +3802,8 @@
           dealItems = [];
           intakeItems = [];
           operationItems = [];
+          operationDocs = [];
+          operationsProjectedWithoutDomain = false;
           opportunityItems = [];
           dailyTaskShadowSourcesReady = { operations: false, intake: false, opportunities: false, matches: false, deals: false };
           dailyTaskShadowCycles = 0;
@@ -3792,6 +3813,8 @@
         }
       });
     }
+    window.addEventListener("iaqar:operations-domain-ready", reprojectOperations);
+    reprojectOperations();
     window.addEventListener("iaqar:firebase-ready", startLiveData);
     window.addEventListener("iaqar:office-rebound", () => startLiveData());
     window.addEventListener("iaqar:access-granted", () => startLiveData());
