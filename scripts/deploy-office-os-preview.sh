@@ -88,6 +88,12 @@ console.log("preview Worker healthy on iaqar-ai-staging");'
 
 HTML="$(curl -fsS --max-time 20 "${PREVIEW_URL}/")"
 echo "$HTML" | grep -q '/os/app.js' || die "preview channel does not serve the new shell"
+# QA diagnostic (branch qa/scout-preview-264 only): what the channel serves for runtime-config.js (a public file).
+RC_FILE="$(mktemp)"
+RC_CODE="$(curl -sS --max-time 20 -o "$RC_FILE" -w '%{http_code} %{content_type} %{size_download}' "${PREVIEW_URL}/js/runtime-config.js" || echo "curl-failed $?")"
+echo "runtime-config.js: ${RC_CODE}; sha256 $(sha256sum "$RC_FILE" | cut -c1-16); local $(sha256sum public/js/runtime-config.js | cut -c1-16)"
+grep -n "workers.dev" "$RC_FILE" | head -5 || echo "no workers.dev line"
+head -c 300 "$RC_FILE"; echo
 curl -fsS --max-time 20 "${PREVIEW_URL}/js/runtime-config.js" | grep -q "$WORKER_NAME" || die "runtime-config does not route to the preview Worker"
 curl -fsS --max-time 20 "${PREVIEW_URL}/version.json"; echo
 
