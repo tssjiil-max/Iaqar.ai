@@ -4241,11 +4241,10 @@ async function loadBankPage({ reset = false, keepVisible = false } = {}) {
 
 function startListener() {
   stopListener();
-  state.records.clear();
-  state.lastDoc = null;
-  state.hasMore = false;
-  state.scanExhausted = false;
-  void loadBankPage({ reset: true });
+  // The reset load clears the rows itself. Opening the tab again while a load is running only asks for one more
+  // load after it: clearing here would empty the rows that load already fetched, with nothing left to refill them.
+  // That follow-up keeps those rows on screen until its own result is ready (no blank list under the broker's tap).
+  scheduleBankQueryRefresh({ keepVisible: state.busy });
   void loadIncomingRequests();
   void loadSharedWithUs();
   void loadOutgoingScopes();
