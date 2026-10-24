@@ -127,6 +127,9 @@ jobs:
       - name: «الباحث عن الفرص» (home card, one-press searches, the three modes, finds, contact, pause, master switch, isolation)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/scout" node scripts/qa/office-os/scout.e2e.mjs
+      - name: «العروض والطلبات» opened again during a running load (cards stay, «مراجعة التطابق» opens the right match)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/bank-activation" node scripts/qa/office-os/bank-activation.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
