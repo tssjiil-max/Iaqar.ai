@@ -128,3 +128,31 @@ test("the scout's inventory sync reads every record and says when its summary ca
   assert.equal(inventory.kept, 300, "the summary keeps its size");
   assert.equal(inventory.complete, false, "and says it is partial");
 });
+
+test("the emergency one-page reader (MATCH_CANDIDATE_READER=legacy) never passes for a complete scan", async () => {
+  // Office A holds 1000+ records: the one-page read sees 60 of them, and the answer must say so.
+  h.env.MATCH_CANDIDATE_READER = "legacy";
+  try {
+    const saved = await saveOffer({ propertyType: "شقة", district: "العزيزية", price: 860_000 });
+    assert.equal(saved.matchingComplete, false, "a one-page read is reported as partial");
+    assert.equal(saved.matchingScanned, 60);
+    assert.match(String(saved.matchingNotice || ""), /لم يشمل/);
+  } finally {
+    delete h.env.MATCH_CANDIDATE_READER;
+  }
+});
+
+test("isolation: an office's scan never reads or pairs another office's records", async () => {
+  // A request in office B that would fit an offer saved in office A, with an id that sorts after every record.
+  h.store.seed(`offices/${OFFICE_B}/opportunities/opp_zzzz_other_office`, {
+    ...base(OFFICE_B), opportunityKind: "REQUEST", purpose: "PURCHASE", advertiserRole: "CLIENT", district: "الخالدية", propertyType: "استراحة",
+    budget: 700_000, priceOrBudget: 700_000, priceMax: 700_000, contactPhone: nextPhone(), contactName: "عميل مكتب آخر"
+  });
+  const before = countIn(OFFICE_A);
+  const saved = await saveOffer({ propertyType: "استراحة", district: "الخالدية", price: 690_000 });
+  assert.equal(saved.matches, 0, "nothing in office A fits, and office B is not looked at");
+  assert.equal(saved.matchingScanned, before + 1, "the scan covered office A's records only");
+  const linked = [...h.store.list(`offices/${OFFICE_A}/matches`), ...h.store.list(`offices/${OFFICE_B}/matches`)]
+    .filter((m) => [m.requestId, m.offerId, m.opportunityId, m.counterpartOpportunityId].includes("opp_zzzz_other_office") || [m.offerId, m.opportunityId].includes(saved.recordId) && m.officeId === OFFICE_B);
+  assert.deepEqual(linked, [], "no match crosses the two offices");
+});

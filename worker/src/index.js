@@ -6187,6 +6187,8 @@ function matchReadLimits(env = null) {
 async function listMatchingDocuments({ projectId, segments, accessToken, env = null }) {
   const { legacy, maxDocs } = matchReadLimits(env);
   if (legacy) {
+    // Emergency rollback only: logged on every use, and a full page is reported as a partial scan.
+    console.warn("[iaqar-match] legacy one-page reader in use (MATCH_CANDIDATE_READER=legacy)", segments.join("/"));
     const documents = await listCollectionDocuments({ projectId, segments, accessToken, pageSize: MAX_MATCH_CANDIDATES });
     return { documents, complete: documents.length < MAX_MATCH_CANDIDATES };
   }
