@@ -13,10 +13,14 @@ test.after(() => h.server.close());
 h.store.patch(`offices/${OFFICE_A}`, { city: "المدينة المنورة", isTestFixture: true });
 
 // The push path's outside calls never answer unless they are aborted (as a stuck connection behaves).
+// Once `pushAnswers` is set, they answer at once (the provider accepts the push).
 const hung = [];
+let pushAnswers = false;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
   const url = String(input instanceof Request ? input.url : input);
+  if (pushAnswers && /fcm\.googleapis\.com/.test(url)) return new Response(JSON.stringify({ name: "projects/x/messages/1" }), { status: 200, headers: { "content-type": "application/json" } });
+  if (pushAnswers && /\/icons\/[^/?]+\.png|\/media\/public\/office-covers\//.test(url)) return new Response("", { status: 200, headers: { "content-type": "image/png" } });
   if (/\/icons\/[^/?]+\.png|\/media\/public\/office-covers\/|fcm\.googleapis\.com/.test(url)) {
     hung.push(url);
     return new Promise((_, reject) => {
@@ -76,4 +80,37 @@ test("the alert's push hangs: the round still saves its find, records the beat, 
   makeDue();
   await beatWithin(25_000);
   assert.equal(alerts().filter((n) => n.entityId === kept[0].id).length, 1, "still one alert");
+});
+
+// ---- the outbox: an alert is delivered after the round saved its finds, and a failed delivery is tried again
+
+/** While set, every in-app alert write is refused (a Firestore outage at the wrong moment). The earlier find's push is
+ * still owed from the stalled test above, so the outbox holds two alerts in this round; neither may be written. */
+let refuseAlertWrites = false;
+const outboxFetch = globalThis.fetch;
+globalThis.fetch = async (input, init = {}) => {
+  const url = String(input instanceof Request ? input.url : input);
+  const method = String(init.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+  if (refuseAlertWrites && method !== "GET" && /\/notifications\/nt_|notifications%2Fnt_|:commit/.test(url) && /notifications/.test(String(init.body || "") + url)) {
+    return new Response(JSON.stringify({ error: { code: 503, message: "unavailable" } }), { status: 503 });
+  }
+  return outboxFetch(input, init);
+};
+const outbox = () => JSON.parse(h.store.get(`offices/${OFFICE_A}/scoutState/main`)?.outboxJson || "[]");
+
+test("the alert cannot be written after the find was saved: the find stays, the alert waits in the outbox and goes out on the next round", async () => {
+  h.store.seed(`offices/${OFFICE_A}/scoutFixtures/buyer-outbox`, { officeId: OFFICE_A, sourceTag: "one", externalId: "buyer-outbox", text: "مطلوب عمارة للشراء بحي شوران الميزانية 3 مليون نقدًا والتواصل واتساب", phone: "0559000444", publishedAt: new Date().toISOString(), updatedAt: new Date(Date.now() + 2000).toISOString() });
+  pushAnswers = true;
+  refuseAlertWrites = true;
+  makeDue();
+  try { await beatWithin(25_000); } finally { refuseAlertWrites = false; }
+  const kept = finds().filter((f) => f.phone === "0559000444");
+  assert.equal(kept.length, 1, "the find was saved");
+  assert.equal(alerts().filter((n) => n.entityId === kept[0].id).length, 0, "its alert could not be written yet");
+  assert.equal(outbox().filter((i) => i.findId === kept[0].id).length, 1, "the alert waits in the outbox");
+  makeDue();
+  await beatWithin(25_000);
+  assert.equal(alerts().filter((n) => n.entityId === kept[0].id).length, 1, "delivered once on the next round");
+  assert.equal(outbox().filter((i) => i.findId === kept[0].id).length, 0, "and left the outbox");
+  assert.equal(finds().filter((f) => f.phone === "0559000444").length, 1, "still one find");
 });

@@ -61,15 +61,15 @@ test("setup: the scout on, an offer with no buyer in the office", async () => {
   await call("/os/records/save", { requestKey: "interrupted-offer", record: { kind: "OFFER", purpose: "SALE", propertyType: "عمارة", city: "المدينة المنورة", district: "شوران", price: 3_000_000, contactName: "مالك", contactPhone: "0557100001" } });
 });
 
-test("a round cut off after its alert and before saving its find → the next round saves the same find and does not alert again", async () => {
+test("a round cut off before saving its find → no alert yet; the next round saves the same find and alerts once", async () => {
   fixture("buyer-cut", "مطلوب عمارة للشراء في حي شوران بحدود 3 مليون ريال كاش", "0559000111");
   refuseFindWrites = true;
   makeDue();
   await beat();
   refuseFindWrites = false;
   assert.equal(finds().length, 0, "the cut-off round saved no find");
-  const first = alerts();
-  assert.equal(first.length, 1, "it had already alerted");
+  // Its alert waits for the find: an alert never opens a find that was not saved.
+  assert.equal(alerts().length, 0, "no alert for a find that was not saved");
   // The cron comes back to the office (its lease is over) and reads the same ad again.
   makeDue();
   await beat();
