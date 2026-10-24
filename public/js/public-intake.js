@@ -28,12 +28,15 @@
             <div class="public-intake-grid">
               <label><span>الاسم</span><input id="intakeName" maxlength="80" required></label>
               <label><span>رقم الجوال</span><input id="intakePhone" inputmode="tel" maxlength="20" placeholder="05xxxxxxxx" required></label>
+              <label><span>المدينة</span><select id="intakeCity" required><option value="المدينة المنورة">المدينة المنورة</option><option value="جدة">جدة</option><option value="الرياض">الرياض</option><option value="__other__">مدينة أخرى — كتابة يدوية</option></select></label>
+              <label id="intakeOtherCityWrap" hidden><span>اسم المدينة الأخرى</span><input id="intakeOtherCity" maxlength="80"></label>
               <label><span>نوع العقار</span>
                 <select id="intakePropertyType" required>
                   <option value="">اختر</option><option>شقة</option><option>فيلا</option><option>دور</option><option>عمارة</option><option>أرض سكنية</option><option>أرض تجارية</option><option>محل</option><option>مكتب</option><option>مزرعة</option><option>استراحة</option><option>أخرى</option>
                 </select>
               </label>
-              <label><span>الحي</span><select id="intakeDistrict" required><option value="">اختر الحي</option><option>العزيزية</option><option>السلام</option><option>الدفاع</option><option>الجرف</option><option>قباء</option><option>العوالي</option><option>شوران</option><option>الهجرة</option><option>العريض</option><option>الجامعة</option><option>القبلتين</option><option>أحد</option><option>الخالدية</option><option>الفتح</option><option>الزهرة</option><option>الرانوناء</option><option>الحرة الشرقية</option><option>الحرة الغربية</option><option>البدراني</option><option>الدويمة</option><option>الدعيثة</option><option>العيون</option><option>الغابة</option><option>السد</option><option>السيح</option><option>المبعوث</option><option>المطار</option><option>النخيل</option><option>الربوة</option><option>الإسكان</option><option>الملك فهد</option><option>النصر</option><option>طيبة</option><option>الأزهري</option><option>المستراح</option><option>سيد الشهداء</option><option>جبل أحد</option><option>مهزور</option><option>ورقان</option><option>أبيار علي</option><option>ذو الحليفة</option><option>وادي العقيق</option><option>السكب</option><option>الروابي</option><option>القصواء</option><option>الخاتم</option><option>البركة</option><option>المصانع</option><option>السحمان</option><option>بني حارثة</option><option>قرب الحرم</option><option>البيداء</option><option>الجابرة</option><option>الجمعة</option><option>الراية</option><option>الشيبية</option><option>الشهباء</option><option>الصادقية</option><option>العالية</option><option>العنبرية</option><option>عروة</option><option>وعيرة</option><option>الفيصلية</option><option>المتنزه</option><option>المغيسلة</option><option>المهدية</option><option>النواعم</option><option>الهدراء</option><option>الوبرة</option><option>باقدو</option><option>تلعة الهبوب</option><option>جبل عير</option><option>حمراء الأسد</option></select></label>
+              <label><span>الحي</span><select id="intakeDistrict"><option value="">اختر الحي</option><option>العزيزية</option><option>السلام</option><option>الدفاع</option><option>الجرف</option><option>قباء</option><option>العوالي</option><option>شوران</option><option>الهجرة</option><option>العريض</option><option>الجامعة</option><option>القبلتين</option><option>أحد</option><option>الخالدية</option><option>الفتح</option><option>الزهرة</option><option>الرانوناء</option><option>الحرة الشرقية</option><option>الحرة الغربية</option><option>البدراني</option><option>الدويمة</option><option>الدعيثة</option><option>العيون</option><option>الغابة</option><option>السد</option><option>السيح</option><option>المبعوث</option><option>المطار</option><option>النخيل</option><option>الربوة</option><option>الإسكان</option><option>الملك فهد</option><option>النصر</option><option>طيبة</option><option>الأزهري</option><option>المستراح</option><option>سيد الشهداء</option><option>جبل أحد</option><option>مهزور</option><option>ورقان</option><option>أبيار علي</option><option>ذو الحليفة</option><option>وادي العقيق</option><option>السكب</option><option>الروابي</option><option>القصواء</option><option>الخاتم</option><option>البركة</option><option>المصانع</option><option>السحمان</option><option>بني حارثة</option><option>قرب الحرم</option><option>البيداء</option><option>الجابرة</option><option>الجمعة</option><option>الراية</option><option>الشيبية</option><option>الشهباء</option><option>الصادقية</option><option>العالية</option><option>العنبرية</option><option>عروة</option><option>وعيرة</option><option>الفيصلية</option><option>المتنزه</option><option>المغيسلة</option><option>المهدية</option><option>النواعم</option><option>الهدراء</option><option>الوبرة</option><option>باقدو</option><option>تلعة الهبوب</option><option>جبل عير</option><option>حمراء الأسد</option></select></label>
+              <label id="intakeOtherDistrictWrap" hidden><span>اكتب اسم الحي</span><input id="intakeOtherDistrict" maxlength="80"></label>
               <label class="full"><span id="intakeAmountLabel">الميزانية التقريبية</span><input id="intakeAmount" inputmode="numeric" maxlength="16" placeholder="بالريال"></label>
               <label class="full"><span>التفاصيل</span><textarea id="intakeDetails" maxlength="1000" rows="4" placeholder="اكتب المواصفات أو تفاصيل العقار"></textarea></label>
               <label class="public-hp" aria-hidden="true"><span>اتركه فارغًا</span><input id="intakeWebsite" tabindex="-1" autocomplete="off"></label>
@@ -52,7 +55,7 @@
       .public-intake-brand{color:#128c7e;font-weight:900;font-size:18px}.public-intake-card h1{font-size:28px;margin:10px 0 6px}.public-intake-lead{margin:0 0 20px;color:#6a7773;line-height:1.8}
       .public-intake-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#edf5f2;padding:6px;border-radius:18px;margin-bottom:20px}.public-intake-tabs button{border:0;border-radius:14px;padding:13px;font-weight:800;font-size:16px;background:transparent;color:#36655d}.public-intake-tabs button.active{background:#128c7e;color:#fff}
       .public-intake-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.public-intake-grid label{display:grid;gap:7px;font-weight:700}.public-intake-grid label.full{grid-column:1/-1}.public-intake-grid input,.public-intake-grid select,.public-intake-grid textarea{width:100%;box-sizing:border-box;border:1px solid #cbdcd6;border-radius:14px;padding:13px;background:#fff;font:inherit;outline:none}.public-intake-grid input:focus,.public-intake-grid select:focus,.public-intake-grid textarea:focus{border-color:#128c7e;box-shadow:0 0 0 3px rgba(18,140,126,.12)}
-      .public-intake-submit{width:100%;border:0;border-radius:16px;background:#128c7e;color:#fff;padding:15px;font-size:17px;font-weight:900;margin-top:18px}.public-intake-submit:disabled{opacity:.6}.public-intake-status{text-align:center;min-height:24px;margin:12px 0 0;font-weight:700}.public-hp{position:absolute!important;left:-10000px!important}
+      .public-intake-grid label[hidden]{display:none}.public-intake-submit{width:100%;border:0;border-radius:16px;background:#128c7e;color:#fff;padding:15px;font-size:17px;font-weight:900;margin-top:18px}.public-intake-submit:disabled{opacity:.6}.public-intake-status{text-align:center;min-height:24px;margin:12px 0 0;font-weight:700}.public-hp{position:absolute!important;left:-10000px!important}
       @media(max-width:520px){.public-intake-page{padding:12px}.public-intake-card{padding:20px;border-radius:24px}.public-intake-grid{grid-template-columns:1fr}.public-intake-grid label.full{grid-column:auto}}
     `;
     document.head.appendChild(style);
@@ -65,6 +68,26 @@
       document.getElementById("publicIntakeSubmit").textContent = btn.dataset.kind === "owner" ? "إرسال عرض العقار" : "إرسال طلب العميل";
     }));
 
+    const citySelect = document.getElementById("intakeCity");
+    const districtSelect = document.getElementById("intakeDistrict");
+    const initialDistrictOptions = districtSelect.innerHTML;
+    citySelect.addEventListener("change", () => {
+      const other = citySelect.value === "__other__";
+      document.getElementById("intakeOtherCityWrap").hidden = !other;
+      document.getElementById("intakeOtherCity").required = other;
+      if (!other) document.getElementById("intakeOtherCity").value = "";
+      districtSelect.innerHTML = citySelect.value === "المدينة المنورة"
+        ? initialDistrictOptions
+        : '<option value="">اختر الحي (اختياري)</option><option value="__other__">حي آخر — كتابة يدوية</option>';
+      const custom = document.getElementById("intakeOtherDistrictWrap");
+      if (custom) custom.hidden = true;
+    });
+    districtSelect.addEventListener("change", () => {
+      const custom = document.getElementById("intakeOtherDistrictWrap");
+      custom.hidden = districtSelect.value !== "__other__";
+      document.getElementById("intakeOtherDistrict").required = !custom.hidden;
+      if (custom.hidden) document.getElementById("intakeOtherDistrict").value = "";
+    });
     document.getElementById("publicIntakeForm").addEventListener("submit", submit);
   }
 
@@ -75,14 +98,21 @@
     if (document.getElementById("intakeWebsite").value) return;
     const phone = document.getElementById("intakePhone").value.replace(/[^0-9+]/g, "");
     if (phone.length < 9) { status.textContent = "تحقق من رقم الجوال."; return; }
+    const city = document.getElementById("intakeCity").value === "__other__"
+      ? document.getElementById("intakeOtherCity").value.trim()
+      : document.getElementById("intakeCity").value;
+    if (!city) { status.textContent = "اختر المدينة أو اكتب اسمها."; return; }
+    const district = document.getElementById("intakeDistrict").value === "__other__"
+      ? document.getElementById("intakeOtherDistrict").value.trim()
+      : document.getElementById("intakeDistrict").value.trim();
     const payload = {
       officeId,
       kind: document.getElementById("intakeKind").value,
       name: document.getElementById("intakeName").value.trim(),
       phone,
-      city: "المدينة المنورة",
+      city,
       propertyType: document.getElementById("intakePropertyType").value,
-      district: document.getElementById("intakeDistrict").value.trim(),
+      district,
       amount: Number(document.getElementById("intakeAmount").value.replace(/[^0-9]/g, "")) || 0,
       details: document.getElementById("intakeDetails").value.trim(),
       mediaPaths: [],
