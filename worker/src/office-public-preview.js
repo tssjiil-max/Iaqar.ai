@@ -40,17 +40,24 @@ function legacyOfficeShareCardStorageKey(officeId) {
   return id ? `office-share/${id}/card.png` : "";
 }
 
-export async function pickReachableHttpsIcon(candidates = [], fallback = "") {
+/**
+ * The first candidate icon that answers as an image, else `fallback`. All probes share one deadline: an icon that
+ * does not answer must never hold up the notification (or the scheduled round that sends it).
+ */
+export async function pickReachableHttpsIcon(candidates = [], fallback = "", { timeoutMs = 3000 } = {}) {
+  const signal = AbortSignal.timeout(timeoutMs);
   for (const candidate of candidates) {
+    if (signal.aborted) break;
     const url = text(candidate);
     if (!/^https:\/\//i.test(url)) continue;
     try {
-      const head = await fetch(url, { method: "HEAD" });
+      const head = await fetch(url, { method: "HEAD", signal });
       const type = String(head.headers.get("content-type") || "");
       if (head.ok && (!type || /image\//i.test(type))) return url;
     } catch (_) { /* try GET range */ }
+    if (signal.aborted) break;
     try {
-      const get = await fetch(url, { method: "GET", headers: { Range: "bytes=0-32" } });
+      const get = await fetch(url, { method: "GET", headers: { Range: "bytes=0-32" }, signal });
       const type = String(get.headers.get("content-type") || "");
       if (get.ok && /image\//i.test(type)) return url;
     } catch (_) { /* next candidate */ }

@@ -6512,13 +6512,17 @@ function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,t
   }};
 }
 
+const FCM_SEND_TIMEOUT_MS = 10_000;
+
 async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null,followUpAt="",recipientMode="",icon="",badge="",taskId="",opportunityId="",matchId="",operationId="",appointmentId=""}) {
   if(registrationType==="webpush"){
     await sendWebPushNotification({env,subscriptionJson:registrationId,title,body,type,recordId,officeId,icon,badge,taskId,opportunityId,matchId,operationId,appointmentId});
     return { name: "webpush" };
   }
+  // A send that does not answer is a failed send, not a wait without end (it would stall a scheduled round).
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
     method:"POST",
+    signal:AbortSignal.timeout(FCM_SEND_TIMEOUT_MS),
     headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
     body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode,env,icon,badge,taskId,opportunityId,matchId,operationId,appointmentId}))
   });
