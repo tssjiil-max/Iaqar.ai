@@ -1,0 +1,50 @@
+{
+  "at": "2026-10-24T20:47:10.745Z",
+  "previewUrl": "https://iaqar-ai-staging--office-os-preview-xox5a40q.web.app",
+  "workerUrl": "https://iaqar-intake-os-preview.iaqar-ai.workers.dev",
+  "run": "40131222279",
+  "checks": [
+    {
+      "name": "Worker healthy on iaqar-ai-staging",
+      "ok": true,
+      "detail": "{\"projectId\":\"iaqar-ai-staging\",\"env\":\"staging\"}"
+    },
+    {
+      "name": "live: «تعبئة ذكية» on the Worker — request, عمارة, 3 districts, 2,000,000, شراء, مستعجل, no city invented",
+      "ok": true,
+      "detail": "{\"engine\":\"rules\",\"ai\":\"not_configured\",\"aiStatus\":\"not_configured\",\"missing\":[\"city\"]}"
+    },
+    {
+      "name": "live: «تعبئة ذكية» in the browser — request moved to «أبحث عن عقار» with its text, read at once, no phone before a choice",
+      "ok": true,
+      "detail": "{\"title\":\"أبحث عن عقار\",\"type\":\"عمارة\",\"district\":\"شوران\",\"text\":\"مطلوب عمارة في شوران أو الهجرة أو الرانوناء، الميزانية مليونين، شراء، مستعجل.\",\"notice\":1,\"phoneBeforeChoice\":0}"
+    },
+    {
+      "name": "live: no horizontal scroll 00-smart-fill-review",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 01-public-office",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 02-public-submitted",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live journey completed without exceptions",
+      "ok": false,
+      "detail": "8 RESOURCE_EXHAUSTED: Quota exceeded."
+    }
+  ],
+  "fcm": null,
+  "gemini": null,
+  "smartFill": {
+    "engine": "rules",
+    "ai": "not_configured",
+    "aiStatus": "not_configured"
+  }
+}
