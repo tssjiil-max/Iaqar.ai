@@ -1,0 +1,327 @@
+{
+  "at": "2026-10-24T16:40:36.589Z",
+  "previewUrl": "https://iaqar-ai-staging--office-os-preview-xox5a40q.web.app",
+  "workerUrl": "https://iaqar-intake-os-preview.iaqar-ai.workers.dev",
+  "run": "40112511995",
+  "checks": [
+    {
+      "name": "Worker healthy on iaqar-ai-staging",
+      "ok": true,
+      "detail": "{\"projectId\":\"iaqar-ai-staging\",\"env\":\"staging\"}"
+    },
+    {
+      "name": "live: «تعبئة ذكية» on the Worker — request, عمارة, 3 districts, 2,000,000, شراء, مستعجل, no city invented",
+      "ok": true,
+      "detail": "{\"engine\":\"rules\",\"ai\":\"not_configured\",\"aiStatus\":\"not_configured\",\"missing\":[\"city\"]}"
+    },
+    {
+      "name": "live: «تعبئة ذكية» in the browser — request moved to «أبحث عن عقار» with its text, read at once, no phone before a choice",
+      "ok": true,
+      "detail": "{\"title\":\"أبحث عن عقار\",\"type\":\"عمارة\",\"district\":\"شوران\",\"text\":\"مطلوب عمارة في شوران أو الهجرة أو الرانوناء، الميزانية مليونين، شراء، مستعجل.\",\"notice\":1,\"phoneBeforeChoice\":0}"
+    },
+    {
+      "name": "live: no horizontal scroll 00-smart-fill-review",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 01-public-office",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 02-public-submitted",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: office link offer stored in the QA office, assigned to its owner, area optional",
+      "ok": true,
+      "detail": "opp_intake_tRW0W75U3tjMIioEOCjE"
+    },
+    {
+      "name": "live: real «دخول المكتب» login (phone → Worker resolve → Firebase Auth → membership)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 03-record-with-review",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: exactly one review task for the new match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: MATCH_REVIEW carries office/match/offer/request/assigned broker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 04-daily-tasks-review",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 05-match-review",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 06-workspace-negotiation",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 07-composer-prepared",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: WhatsApp opens with the client number and the prepared text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: handoff stored as OPENED_EXTERNAL only",
+      "ok": true,
+      "detail": "https://iaqar-ai-staging--office-os-preview-xox5a40q.web.app/r#…"
+    },
+    {
+      "name": "live: reply page hides the other party",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 08-reply-page",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 09-reply-saved",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: double press + reload → one reply event",
+      "ok": true,
+      "detail": "events=1"
+    },
+    {
+      "name": "live: broker in-app notification created for the reply",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: reply notification reached FCM and the provider answer was recorded",
+      "ok": true,
+      "detail": "{\"push\":\"PROVIDER_REJECTED\",\"detail\":\"{\\\"registered\\\":1,\\\"sent\\\":0,\\\"failed\\\":1}\",\"at\":\"2026-10-24T16:41:52.376Z\"}"
+    },
+    {
+      "name": "live: no horizontal scroll 10-daily-tasks-reply",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 11-reply-old-link-updated",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: old link after replacement says it was updated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: accepted viewing is not confirmed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 12-daily-tasks-confirm",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 13-workspace-viewing",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 14-workspace-agreement",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: assist returns a suggestion (AI or rule-based fallback, labelled)",
+      "ok": true,
+      "detail": "rules / GEMINI_NOT_CONFIGURED"
+    },
+    {
+      "name": "live: no horizontal scroll 15-workspace-closed",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: deal completed explicitly and archived; one journey",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no open tasks remain for the closed opportunity",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 16-repository",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: «تسجيل وسيط جديد» opens the application form inside Office OS",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: #/register opens the application form directly (nothing is submitted)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: #/forgot opens the password reset form directly (nothing is submitted)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: the 12 office tools are working buttons (no «قريبًا» placeholders)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: records saved (fixed-price offer + request)",
+      "ok": true,
+      "detail": "200/200"
+    },
+    {
+      "name": "live: second match approved → journey opened",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "live: fixed price → the client sees only «موافق / غير موافق» (no price moves)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: the negotiation room has its three parts and the terms of this property",
+      "ok": true,
+      "detail": "property,agreed,versus | payment_method,transfer_time,handover,furniture,commission"
+    },
+    {
+      "name": "live: a proposed term is not shown as agreed until the other side accepts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: an accepted term moves to «ما تم الاتفاق عليه» with who accepted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 17-fixed-price-client",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: an agreed price waits for the broker — no viewing before «اعتماد السعر»",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: an approval for a different price is refused",
+      "ok": true,
+      "detail": "409"
+    },
+    {
+      "name": "live: the broker approves the agreed price",
+      "ok": true,
+      "detail": "200 {\"ok\":true,\"changed\":true,\"approved\":true,\"requestId\":\"64355281-cf49-4b0a-a61f-1e75fb41f613\"}"
+    },
+    {
+      "name": "live: viewing time is picked from free slots (no free typing)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 18-slot-picker",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: no horizontal scroll 19-owner-confirms-slot",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: both sides agreed on a free slot → viewing CONFIRMED on that slot",
+      "ok": true,
+      "detail": "2026-10-25T07:00:00.000Z"
+    },
+    {
+      "name": "live: confirmed viewing mirrored as match.appointmentAt (used by the scheduled reminders)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: exactly one Daily Tasks card for the open deal",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "live: «بلا مطابقة» lists a record outside any deal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: «بلا مطابقة» hides records inside the open deal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "live: no horizontal scroll 20-repository-unmatched",
+      "ok": true,
+      "detail": "0px"
+    },
+    {
+      "name": "live: office B is denied office A journeys/proposals/opportunities by Staging rules",
+      "ok": true,
+      "detail": "{\"journey\":\"permission-denied\",\"proposals\":\"permission-denied\",\"opportunities\":\"permission-denied\"}"
+    },
+    {
+      "name": "live: preview Worker refuses office B acting on office A",
+      "ok": true,
+      "detail": "403"
+    }
+  ],
+  "fcm": {
+    "providerState": {
+      "push": "PROVIDER_REJECTED",
+      "detail": "{\"registered\":1,\"sent\":0,\"failed\":1}",
+      "at": "2026-10-24T16:41:52.376Z"
+    },
+    "note": "Invalid test device registered on purpose: proves the Worker calls FCM HTTP v1 and records the provider answer. Real delivery to a phone is not verifiable here."
+  },
+  "gemini": {
+    "uiSource": "rules",
+    "apiSource": "rules",
+    "fallbackReason": "GEMINI_NOT_CONFIGURED",
+    "text": "تابع خطوات الاتفاق (العربون، العقد، الإفراغ) ثم أتمم الصفقة عند اكتمالها."
+  },
+  "smartFill": {
+    "engine": "rules",
+    "ai": "not_configured",
+    "aiStatus": "not_configured"
+  }
+}
