@@ -61,6 +61,23 @@ export function installMemoryFirestore({ jwk }) {
   };
   const log = [];
   const fcm = [];
+  // Billed reads, as Firestore counts them: one per document returned (a get or an empty answer counts one), and one
+  // per 1000 index entries for a count. `faults.queries` makes structured queries and counts answer 503.
+  const reads = { documents: 0, requests: 0, byKind: {} };
+  const billed = (kind, n) => { reads.documents += n; reads.requests += 1; reads.byKind[kind] = (reads.byKind[kind] || 0) + n; };
+  // `faults.beforeWrite(path, fieldPaths)` runs just before a write is applied (a concurrent edit landing at the worst moment);
+  // `queries` keeps each structured query / count with the readTime it asked for.
+  const faults = { queries: false, beforeWrite: null };
+  const queries = [];
+  const valueOf = (v = {}) => ("stringValue" in v ? v.stringValue : "integerValue" in v ? Number(v.integerValue) : "booleanValue" in v ? v.booleanValue : "nullValue" in v ? null : undefined);
+  const matches = (p, filter) => {
+    if (!filter) return true;
+    const field = filter.field?.fieldPath || "";
+    const value = valueOf(docs.get(p).fields[field]);
+    if (filter.op === "EQUAL") return value === valueOf(filter.value);
+    if (filter.op === "IN") return (filter.value?.arrayValue?.values || []).some((v) => valueOf(v) === value);
+    return false;
+  };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
@@ -70,10 +87,24 @@ export function installMemoryFirestore({ jwk }) {
     if (url.hostname === "oauth2.googleapis.com") return Response.json({ access_token: "e2e-access", expires_in: 3600 });
     if (url.hostname === "www.googleapis.com" && url.pathname.includes("jwk")) return Response.json({ keys: [jwk] });
     if (url.hostname !== "firestore.googleapis.com") return Response.json({ ok: true });
+    reads.calls = (reads.calls || 0) + 1;
     const pathname = decodeURIComponent(url.pathname);
     if (pathname.endsWith(":commit")) {
       const { writes = [] } = JSON.parse(init.body || "{}");
-      // Like Firestore: an update may carry updateTransforms, and a write may be a bare transform; integer
+      // Like Firestore: preconditions (exists / updateTime) are checked for every write first, and one failing
+      // precondition fails the whole commit with nothing applied.
+      for (const w of writes) {
+        const path = (w.update?.name || w.transform?.document || "").split("/documents/")[1];
+        if (path && faults.beforeWrite) await faults.beforeWrite(path, w.updateMask?.fieldPaths || Object.keys(w.update?.fields || {}));
+      }
+      for (const w of writes) {
+        const path = (w.update?.name || w.transform?.document || "").split("/documents/")[1];
+        const pre = w.currentDocument || {};
+        if (("exists" in pre && pre.exists !== docs.has(path)) || (pre.updateTime && docs.get(path)?.updateTime !== pre.updateTime)) {
+          return Response.json({ error: { code: 400, status: "FAILED_PRECONDITION" } }, { status: 400 });
+        }
+      }
+      // An update may carry updateTransforms, and a write may be a bare transform; integer
       // increments are applied atomically (one commit at a time here) and reported in transformResults.
       const writeResults = [];
       for (const w of writes) {
@@ -92,6 +123,32 @@ export function installMemoryFirestore({ jwk }) {
         writeResults.push({ updateTime: stamp(), transformResults });
       }
       return Response.json({ writeResults });
+    }
+    // A count over one collection, optionally with one EQUAL filter (…/documents/<parent>:runAggregationQuery).
+    if (pathname.endsWith(":runAggregationQuery")) {
+      if (faults.queries) return Response.json({ error: { code: 503, status: "UNAVAILABLE" } }, { status: 503 });
+      const parent = pathname.slice(base.length, -":runAggregationQuery".length);
+      const aggBody = JSON.parse(init.body || "{}");
+      queries.push({ kind: "count", readTime: aggBody.readTime || "" });
+      const agg = aggBody.structuredAggregationQuery || {};
+      const q = agg.structuredQuery || {};
+      const n = listPaths(`${parent}/${q.from?.[0]?.collectionId || ""}`).filter((p) => matches(p, q.where?.fieldFilter)).length;
+      billed(`count:${q.from?.[0]?.collectionId || ""}`, Math.max(1, Math.ceil(n / 1000)));
+      const alias = agg.aggregations?.[0]?.alias || "count";
+      return Response.json([{ result: { aggregateFields: { [alias]: { integerValue: String(n) } } }, readTime: aggBody.readTime || stamp() }]);
+    }
+    // An equality / IN query ordered by document name, with a cursor and a limit (the matching index's query).
+    const ordered = JSON.parse(init.body || "{}").structuredQuery || {};
+    if (pathname.endsWith(":runQuery") && (["IN", "EQUAL"].includes(ordered.where?.fieldFilter?.op) || (!ordered.where && ordered.orderBy?.[0]?.field?.fieldPath === "__name__"))) {
+      if (faults.queries) return Response.json({ error: { code: 503, status: "UNAVAILABLE" } }, { status: 503 });
+      const parent = pathname.slice(base.length, -":runQuery".length);
+      const queryBody = JSON.parse(init.body || "{}");
+      queries.push({ kind: "query", readTime: queryBody.readTime || "", field: queryBody.structuredQuery?.where?.fieldFilter?.field?.fieldPath || "" });
+      const q = queryBody.structuredQuery || {};
+      const after = String(q.startAt?.values?.[0]?.referenceValue || "").split("/documents/")[1] || "";
+      const rows = listPaths(`${parent}/${q.from?.[0]?.collectionId || ""}`).filter((p) => matches(p, q.where?.fieldFilter) && (!after || p > after)).slice(0, Number(q.limit || 1000));
+      billed(`query:${q.from?.[0]?.collectionId || ""}`, Math.max(1, rows.length));
+      return Response.json(rows.length ? rows.map((p) => ({ document: docJson(p) })) : [{ readTime: new Date().toISOString() }]);
     }
     // A query scoped to a parent document (…/documents/<parent>:runQuery): one collection, one range filter on a
     // timestamp field, ordered by it. Root queries (…/documents:runQuery) keep answering with nothing, as before.
@@ -115,10 +172,12 @@ export function installMemoryFirestore({ jwk }) {
       const after = url.searchParams.get("pageToken") ? Buffer.from(url.searchParams.get("pageToken"), "base64url").toString() : "";
       const rest = listPaths(p).filter((path) => !after || path > after);
       const page = rest.slice(0, pageSize);
+      billed(`list:${p.split("/").pop()}`, Math.max(1, page.length));
       return Response.json({ documents: page.map(docJson), ...(rest.length > pageSize ? { nextPageToken: Buffer.from(page.at(-1)).toString("base64url") } : {}) });
     }
-    if (method === "GET") return docs.has(p) ? Response.json(docJson(p)) : new Response("{}", { status: 404 });
+    if (method === "GET") { billed("get", 1); return docs.has(p) ? Response.json(docJson(p)) : new Response("{}", { status: 404 }); }
     if (method === "PATCH") {
+      if (faults.beforeWrite) await faults.beforeWrite(p, url.searchParams.getAll("updateMask.fieldPaths"));
       if (url.searchParams.get("currentDocument.exists") === "false" && docs.has(p)) return Response.json({ error: { status: "ALREADY_EXISTS" } }, { status: 409 });
       const expected = url.searchParams.get("currentDocument.updateTime");
       if (expected && docs.get(p)?.updateTime !== expected) return Response.json({ error: { status: "FAILED_PRECONDITION" } }, { status: 400 });
@@ -130,7 +189,7 @@ export function installMemoryFirestore({ jwk }) {
     return new Response("unsupported", { status: 500 });
   };
   return {
-    docs, log, fcm,
+    docs, log, fcm, reads, faults, queries,
     seed(p, obj) { write(p, toFields(obj), null); },
     patch(p, obj) { write(p, toFields(obj), Object.keys(obj)); },
     get(p) { return docs.has(p) ? { id: p.split("/").pop(), ...fromFields(docs.get(p).fields) } : null; },

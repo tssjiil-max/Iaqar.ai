@@ -32,6 +32,8 @@ export function buildFirestoreUpdateWrite({ projectId, segments, fields, precond
   return write;
 }
 
+import { guardCommitWrites } from "./match-index.js";
+
 export async function commitFirestoreWrites({ projectId, accessToken, writes, fetchImpl = fetch }) {
   if (!projectId) throw new Error("Firestore projectId is required");
   if (!accessToken) throw new Error("Firestore access token is required");
@@ -40,7 +42,8 @@ export async function commitFirestoreWrites({ projectId, accessToken, writes, fe
   const response = await fetchImpl(endpoint, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ writes })
+    // A record update that changes a field of its matching key without the key also removes the key.
+    body: JSON.stringify({ writes: guardCommitWrites(writes) })
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");

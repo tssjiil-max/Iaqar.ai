@@ -1,3 +1,4 @@
+import { MATCH_KEY_VERSION, candidateQueriesFor, guardPatchMask, matchKeyUpdate } from "./match-index.js";
 import { readWebhookBody } from "./office-os/whatsapp-agent-transport.js";
 import { whatsappAgentAvailable, ingestWhatsAppEvents, drainWhatsAppQueue } from "./office-os/whatsapp-agent-service.js";
 import { ORCHESTRATOR_EVENT, ORCHESTRATOR_OWNER } from "./central-orchestrator-domain.js";
@@ -5149,8 +5150,10 @@ async function findAndSaveMatchesForOpportunity({
   }
 
   const source = opportunityToMatchInput(opportunity, { id: opportunityId });
-  const { documents: docs, complete: candidatesComplete } = await listMatchingDocuments({
-    projectId, segments: ["offices", officeId, "opportunities"], accessToken, env
+  await ensureRecordMatchKey({ projectId, officeId, recordId: opportunityId, record: opportunity, updateTime: oppDoc.updateTime, accessToken })
+    .catch((error) => console.warn("[iaqar-match-index] own key not written", opportunityId, error?.code || error?.message));
+  const { documents: docs, complete: candidatesComplete, mode: candidatesMode, reason: candidatesReason, shadow: candidatesShadow } = await listMatchCandidates({
+    projectId, officeId, source: opportunity, sourceId: opportunityId, accessToken, env
   });
   const prepared = [];
   for (const doc of docs) {
@@ -5239,7 +5242,7 @@ async function findAndSaveMatchesForOpportunity({
 
   return {
     matches: results,
-    candidateScan: { scanned: docs.length, complete: candidatesComplete },
+    candidateScan: { scanned: docs.length, complete: candidatesComplete, mode: candidatesMode, reason: candidatesReason, shadow: candidatesShadow },
     matchingRuleVersion: MATCHING_RULE_VERSION,
     threshold: MATCH_THRESHOLD,
     createsOperation: operationsCreated > 0,
@@ -6208,6 +6211,179 @@ async function listMatchingDocuments({ projectId, segments, accessToken, env = n
   const complete = !pageToken;
   if (!complete) console.warn("[iaqar-match] scan stopped at its ceiling", segments.join("/"), documents.length);
   return { documents, complete };
+}
+
+// ---- matching index (PR-4): candidates by `matchKey` (worker/src/match-index.js) instead of a scan of the office.
+// MATCH_INDEX_RETRIEVAL = off (default) | shadow (the scan decides; the index is compared with it) | on, and only for
+// the offices in MATCH_INDEX_OFFICES ("*" for all). The index is used only when it holds every record of the office
+// (two counts); otherwise — and when it answers with an error — matching scans, says why, and indexes what it misses.
+const MATCH_INDEX_BACKFILL_PER_RUN = 1000;
+
+function matchIndexMode(env = null, officeId = "") {
+  const mode = String(env?.MATCH_INDEX_RETRIEVAL || "off").trim().toLowerCase();
+  if (mode !== "on" && mode !== "shadow") return "off";
+  const offices = String(env?.MATCH_INDEX_OFFICES || "").split(",").map((id) => id.trim()).filter(Boolean);
+  return offices.includes("*") || offices.includes(officeId) ? mode : "off";
+}
+
+async function firestoreQuery({ projectId, parent, accessToken, body, kind = "runQuery" }) {
+  const response = await fetch(`${firestoreDocumentUrl(projectId, parent)}:${kind}`, {
+    method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(body)
+  });
+  if (!response.ok) throw appError("firestore_query_failed", 502, "تعذر قراءة فهرس المطابقة");
+  const rows = await response.json();
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** A count of the office's records (optionally filtered), read at `readTime` when given; returns its snapshot time. */
+async function countOfficeRecords({ projectId, officeId, accessToken, where = null, readTime = "" }) {
+  const rows = await firestoreQuery({ projectId, parent: ["offices", officeId], accessToken, kind: "runAggregationQuery", body: {
+    structuredAggregationQuery: { structuredQuery: { from: [{ collectionId: "opportunities" }], ...(where ? { where } : {}) }, aggregations: [{ alias: "n", count: {} }] },
+    ...(readTime ? { readTime } : {})
+  } });
+  return { n: Number(rows[0]?.result?.aggregateFields?.n?.integerValue ?? NaN), readTime: String(rows[0]?.readTime || readTime || "") };
+}
+
+/** Records of the office in id order after `after`, optionally only those whose `field` is one of `values`. */
+async function queryOfficeRecords({ projectId, officeId, accessToken, field = "", values = null, after = "", limit = MATCH_READ_PAGE_SIZE, readTime = "" }) {
+  const rows = await firestoreQuery({ projectId, parent: ["offices", officeId], accessToken, body: { ...(readTime ? { readTime } : {}), structuredQuery: {
+    from: [{ collectionId: "opportunities" }],
+    ...(values ? { where: { fieldFilter: { field: { fieldPath: field }, op: "IN", value: { arrayValue: { values: values.map((v) => ({ stringValue: v })) } } } } } : {}),
+    orderBy: [{ field: { fieldPath: "__name__" }, direction: "ASCENDING" }],
+    ...(after ? { startAt: { values: [{ referenceValue: after }], before: false } } : {}),
+    limit
+  } } });
+  return rows.map((row) => row.document).filter(Boolean);
+}
+
+/** Every record any of the `queries` returns (merged by document, in id order), within the read ceiling. */
+async function listIndexedCandidates({ projectId, officeId, accessToken, queries, readTime, env = null }) {
+  const { maxDocs } = matchReadLimits(env);
+  const byName = new Map();
+  let read = 0;
+  let complete = true;
+  for (const { field, values } of queries) {
+    let after = "";
+    for (;;) {
+      const want = Math.min(MATCH_READ_PAGE_SIZE, maxDocs - read);
+      if (want <= 0) { complete = false; break; }
+      const page = await queryOfficeRecords({ projectId, officeId, accessToken, field, values, after, limit: want, readTime });
+      read += page.length;
+      for (const doc of page) byName.set(doc.name, doc);
+      if (page.length < want) break;
+      after = page.at(-1).name;
+    }
+    if (!complete) break;
+  }
+  const documents = [...byName.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  if (!complete) console.warn("[iaqar-match] index read stopped at its ceiling", officeId, read);
+  return { documents, complete };
+}
+
+/** Commits key writes; when a precondition fails (a record changed since it was read), the others are written alone. */
+async function commitMatchKeyWrites({ projectId, accessToken, writes }) {
+  const commit = (list) => fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`, {
+    method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ writes: list })
+  });
+  const response = await commit(writes);
+  if (response.ok) return writes.length;
+  if (![400, 409, 412].includes(response.status)) throw appError("firestore_write_failed", 502, "تعذر تحديث فهرس المطابقة");
+  let written = 0;
+  for (const write of writes) if ((await commit([write])).ok) written += 1;
+  return written;
+}
+
+/** Indexes up to MATCH_INDEX_BACKFILL_PER_RUN more records of the office, resuming where the last run stopped. */
+async function advanceMatchIndex({ projectId, officeId, accessToken }) {
+  const stateSegments = ["offices", officeId, "matchIndex", "state"];
+  const stateDoc = await getFirestoreDocument({ projectId, segments: stateSegments, accessToken, allowMissing: true });
+  const state = stateDoc ? firestoreFieldsToJs(stateDoc.fields || {}) : {};
+  let after = String(state.after || "");
+  let indexed = 0, seen = 0, done = false;
+  while (seen < MATCH_INDEX_BACKFILL_PER_RUN) {
+    const page = await queryOfficeRecords({ projectId, officeId, accessToken, after, limit: MATCH_READ_PAGE_SIZE });
+    seen += page.length;
+    const writes = [];
+    for (const doc of page) {
+      const update = matchKeyUpdate(firestoreFieldsToJs(doc.fields || {}));
+      if (!update) continue;
+      // Conditioned on the version read: a record edited since is left as the edit left it (unkeyed after any
+      // key-field change), never given keys computed from its older fields.
+      writes.push({ update: { name: doc.name, fields: Object.fromEntries(Object.entries(update).map(([k, v]) => [k, firestoreString(v)])) }, updateMask: { fieldPaths: Object.keys(update) }, currentDocument: { updateTime: doc.updateTime } });
+    }
+    if (writes.length) indexed += await commitMatchKeyWrites({ projectId, accessToken, writes });
+    if (page.length < MATCH_READ_PAGE_SIZE) { done = true; after = ""; break; }
+    after = page.at(-1).name;
+  }
+  await setFirestoreDocument({ projectId, segments: stateSegments, accessToken, fields: { after: firestoreString(after), version: firestoreString(MATCH_KEY_VERSION), updatedAt: firestoreTimestamp(new Date()) } });
+  return { indexed, seen, done };
+}
+
+/** Engine-eligible candidate ids of `source` among `documents` (shadow comparison only). */
+function eligibleCandidateIds(source, sourceId, documents) {
+  const input = opportunityToMatchInput(source, { id: sourceId });
+  const ids = [];
+  for (const doc of documents) {
+    const id = decodeURIComponent(String(doc.name || "").split("/").pop() || "");
+    if (!id || id === sourceId) continue;
+    const raw = { id, ...firestoreFieldsToJs(doc.fields || {}) };
+    if (!counterpartsEligible(source, raw)) continue;
+    const scored = scoreMatch(input, opportunityToMatchInput(raw, { id }));
+    if (scored.eligible && scored.score >= MATCH_THRESHOLD) ids.push(id);
+  }
+  return ids.sort();
+}
+
+/**
+ * The candidates of one record: through the index when it is on for the office and complete, otherwise every page
+ * of the office. `mode` says which, `reason` why the index was not used, `shadow` how the two compared.
+ */
+async function listMatchCandidates({ projectId, officeId, source, sourceId, accessToken, env = null }) {
+  const scan = () => listMatchingDocuments({ projectId, segments: ["offices", officeId, "opportunities"], accessToken, env });
+  const mode = matchIndexMode(env, officeId);
+  if (mode === "off") return { ...(await scan()), mode: "scan" };
+  const queries = candidateQueriesFor(source);
+  let indexed = null;
+  let reason = queries ? "" : "source_without_city";
+  if (queries) {
+    try {
+      // One snapshot: the second count and every candidate query read at the first count's readTime, so an edit
+      // landing in between cannot drop a record from the index after the counts said it was complete.
+      const total = await countOfficeRecords({ projectId, officeId, accessToken });
+      if (!total.readTime) throw appError("firestore_query_failed", 502, "no snapshot time");
+      const keyed = await countOfficeRecords({ projectId, officeId, accessToken, readTime: total.readTime, where: { fieldFilter: { field: { fieldPath: "matchKeyVersion" }, op: "EQUAL", value: { stringValue: MATCH_KEY_VERSION } } } });
+      if (!(keyed.n >= total.n)) reason = "index_incomplete";
+      else indexed = await listIndexedCandidates({ projectId, officeId, accessToken, queries, readTime: total.readTime, env });
+    } catch (error) {
+      reason = "index_unavailable";
+      console.warn("[iaqar-match-index] index not used", officeId, error?.code || error?.message);
+    }
+  }
+  if (mode === "on" && indexed) return { ...indexed, mode: "index" };
+  const scanned = await scan();
+  if (reason === "index_incomplete") {
+    await advanceMatchIndex({ projectId, officeId, accessToken }).catch((error) => console.warn("[iaqar-match-index] backfill failed", officeId, error?.code || error?.message));
+  }
+  let shadow = "";
+  if (indexed) {
+    const a = eligibleCandidateIds(source, sourceId, indexed.documents).join("|");
+    const b = eligibleCandidateIds(source, sourceId, scanned.documents).join("|");
+    shadow = a === b ? "same" : "different";
+    if (shadow === "different") console.warn("[iaqar-match-index] shadow: the index and the scan disagree", officeId, sourceId);
+  }
+  return { ...scanned, mode: "scan", ...(reason ? { reason } : {}), ...(shadow ? { shadow } : {}) };
+}
+
+/**
+ * Writes the record's own key when it is missing or stale — whatever the flag, so the index is ready before it is
+ * turned on (one write, only when the key changes).
+ */
+async function ensureRecordMatchKey({ projectId, officeId, recordId, record, updateTime, accessToken }) {
+  const update = matchKeyUpdate(record);
+  if (!update || !updateTime) return;
+  // Conditioned on the version read: if the record changed since, its keys are left to the next run.
+  await patchFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", recordId], accessToken, updateTime, fields: Object.fromEntries(Object.entries(update).map(([k, v]) => [k, firestoreString(v)])) });
+  Object.assign(record, update);
 }
 
 async function listCollectionDocuments({projectId,segments,accessToken,pageSize=50}) {
@@ -7593,7 +7769,8 @@ async function echoFirestoreDocument({ url, headers, allowMissing }) {
 async function setFirestoreDocument({ projectId, segments, accessToken, fields }) {
   const compacted = compactFields(fields);
   const endpoint = new URL(firestoreDocumentUrl(projectId, segments));
-  for (const fieldPath of Object.keys(compacted)) {
+  // A record write that changes a field of its matching key without the key also removes the key (match-index.js).
+  for (const fieldPath of guardPatchMask(segments, Object.keys(compacted))) {
     endpoint.searchParams.append("updateMask.fieldPaths", fieldPath);
   }
   const response = await fetch(endpoint.toString(), {
@@ -7630,7 +7807,7 @@ async function createFirestoreDocumentIfAbsent({ projectId, segments, accessToke
 async function patchFirestoreDocument({ projectId, segments, accessToken, fields, updateTime = "" }) {
   const compacted = compactFields(fields);
   const endpoint = new URL(firestoreDocumentUrl(projectId, segments));
-  for (const fieldPath of Object.keys(compacted)) {
+  for (const fieldPath of guardPatchMask(segments, Object.keys(compacted))) {
     endpoint.searchParams.append("updateMask.fieldPaths", fieldPath);
   }
   if (updateTime) endpoint.searchParams.set("currentDocument.updateTime", updateTime);
@@ -7663,6 +7840,7 @@ function officeOsDeps() {
       ...base,
       listCollectionDocuments,
       listMatchingDocuments: ({ segments }) => listMatchingDocuments({ projectId, segments, accessToken, env }),
+      listMatchCandidates: ({ officeId, source, sourceId }) => listMatchCandidates({ projectId, officeId, source, sourceId, accessToken, env }),
       firestoreFieldsToJs,
       jsToFirestoreValue,
       resolveAppOrigin,
