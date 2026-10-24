@@ -23,11 +23,20 @@ import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
 import { validityFields, validitySettingsFrom } from "../../../public/os/domain/validity-domain.js";
 import { isExternalBroker, cooperationEligible } from "../../../public/os/domain/external-broker-domain.js";
 
+/** What the broker is told about the scan behind a match result: every record, or only part of the office. */
+function matchingCoverage(scan) {
+  if (!scan) return {};
+  const scanned = Number(scan.scanned || 0);
+  return scan.complete === false
+    ? { matchingComplete: false, matchingScanned: scanned, matchingNotice: `فحص المطابقة لم يشمل كل سجلات المكتب (فُحص ${scanned} سجلًا فقط) — راجع المطابقات يدويًا.` }
+    : { matchingComplete: true, matchingScanned: scanned };
+}
+
 async function runMatchingSafely(ctx, officeId, opportunityId) {
   if (typeof ctx.deps.runMatching !== "function") return { matchingPending: true, matches: 0 };
   try {
     const result = await ctx.deps.runMatching({ officeId, opportunityId, notify: true });
-    return { matchingPending: false, matches: Number(result?.matches?.length || 0), superseded: Number(result?.superseded || 0) };
+    return { matchingPending: false, matches: Number(result?.matches?.length || 0), superseded: Number(result?.superseded || 0), ...matchingCoverage(result?.candidateScan) };
   } catch (error) {
     // The record is saved; matching is retried by the reconcile pass / next edit.
     await recordFailure(ctx, officeId, "MATCHING_RUN", opportunityId, error);
@@ -210,7 +219,7 @@ export async function findCandidates(ctx, { officeId, recordId, limit = 10, allC
   if (!record) throw ctx.deps.appError("record_not_found", 404, "السجل غير موجود");
   if (lifecycleOf(record) !== LIFECYCLE.ACTIVE) return { ok: true, candidates: [], inactive: true };
   const source = opportunityToMatchInput(record, { id: recordId });
-  const all = await ctx.store.list(["offices", officeId, "opportunities"], 300);
+  const { rows: all, complete } = await ctx.store.listAll(["offices", officeId, "opportunities"]);
   const journeys = await ctx.store.list(["offices", officeId, "journeys"], 300);
   const inJourney = new Set(journeys.filter(isJourneyOpen).flatMap((j) => [`${j.offerId}|${j.requestId}`]));
   const candidates = [];
@@ -234,7 +243,7 @@ export async function findCandidates(ctx, { officeId, recordId, limit = 10, allC
     });
   }
   candidates.sort((a, b) => b.score - a.score);
-  return { ok: true, candidates: allCandidates ? candidates : candidates.slice(0, Math.min(20, Math.max(1, limit))) };
+  return { ok: true, candidates: allCandidates ? candidates : candidates.slice(0, Math.min(20, Math.max(1, limit))), ...matchingCoverage({ scanned: all.length, complete }) };
 }
 
 /** Broker picked a pair by hand: persist the match and its review task. */

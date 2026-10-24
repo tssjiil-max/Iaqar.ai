@@ -234,6 +234,7 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
       if (!result?.ok) return;
       if (photos.failed) toast("تم حفظ السجل، وتعذر رفع بعض الصور — أعد إضافتها من «تعديل».", "bad");
       if (result.duplicate && result.duplicateMessage) toast(result.duplicateMessage);
+      else if (result.matchingComplete === false && result.matchingNotice) toast(result.matchingNotice, "bad");
       else if (result.matchingPending) toast("تم الحفظ، وسيُستكمل فحص المطابقة تلقائيًا", "ok");
       else if (result.matches > 0) toast(result.matches === 1 ? "تم الحفظ — ظهرت مطابقة للمراجعة في المهام اليومية" : `تم الحفظ — ظهرت ${result.matches} مطابقات للمراجعة`, "ok");
       else if (!photos.failed) toast(existing ? "تم حفظ التعديلات" : "تم الحفظ — سيُعاد فحص السجل عند وصول بيانات مناسبة", "ok");
