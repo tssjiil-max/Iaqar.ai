@@ -173,6 +173,8 @@
       <form class="access-form" id="intakeForm">
         <label><span>الاسم الثنائي على الأقل (إلزامي)</span><input name="name" maxlength="80" required></label>
         <label><span>رقم الجوال (إلزامي)</span><input name="phone" inputmode="tel" maxlength="20" required></label>
+        <label><span>المدينة</span><select name="city" id="citySelect" required><option value="المدينة المنورة">المدينة المنورة</option><option value="جدة">جدة</option><option value="الرياض">الرياض</option><option value="__other__">مدينة أخرى — كتابة يدوية</option></select></label>
+        <label class="conditional-field full" id="otherCityWrap" hidden><span>اكتب اسم المدينة</span><input name="otherCity" maxlength="80"></label>
         <label><span>نوع العقار</span><select name="propertyType" id="propertyTypeSelect">
           <option value="">اختر نوع العقار</option>${optionList(PROPERTY_TYPES)}<option value="__other__">أخرى</option>
         </select></label>
@@ -193,6 +195,8 @@
         <label class="full"><button class="access-btn" type="submit">${owner ? "إرسال العرض" : "إرسال الطلب"}</button></label>
       </form><div id="accessStatus" class="access-status"></div></section>`);
     gate.querySelector(".access-back").onclick = isPublicOfficeLink ? publicOffice : home;
+    const citySelect = gate.querySelector("#citySelect");
+    const otherCityWrap = gate.querySelector("#otherCityWrap");
     const propertySelect = gate.querySelector("#propertyTypeSelect");
     const districtSelect = gate.querySelector("#districtSelect");
     const otherPropertyWrap = gate.querySelector("#otherPropertyWrap");
@@ -205,6 +209,15 @@
       if (!visible) input.value = "";
       if (visible) setTimeout(() => input.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
     };
+    citySelect.onchange = () => {
+      toggleOther(citySelect, otherCityWrap);
+      // أحياء المدينة المنورة لا تنطبق على المدن الأخرى.
+      districtSelect.innerHTML = citySelect.value === "المدينة المنورة"
+        ? `<option value="">اختر الحي</option>${optionList(MADINAH_DISTRICTS)}<option value="__other__">حي جديد / غير موجود</option>`
+        : `<option value="">اختر الحي (اختياري)</option><option value="__other__">كتابة اسم الحي</option>`;
+      toggleOther(districtSelect, otherDistrictWrap);
+    };
+    citySelect.onchange();
     propertySelect.onchange = () => toggleOther(propertySelect, otherPropertyWrap);
     districtSelect.onchange = () => toggleOther(districtSelect, otherDistrictWrap);
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
@@ -231,6 +244,10 @@
         const propertyType = String(fields.get("propertyType") || "") === "__other__"
           ? String(fields.get("otherPropertyType") || "").trim()
           : String(fields.get("propertyType") || "").trim();
+        const city = String(fields.get("city") || "") === "__other__"
+          ? String(fields.get("otherCity") || "").trim()
+          : String(fields.get("city") || "").trim();
+        if (!city) { showStatus("اختر المدينة أو اكتب اسمها."); return; }
         const district = String(fields.get("district") || "") === "__other__"
           ? String(fields.get("otherDistrict") || "").trim()
           : String(fields.get("district") || "").trim();
@@ -251,7 +268,7 @@
           officeId: targetOffice, kind,
           name,
           phone,
-          city: "المدينة المنورة",
+          city,
           propertyType,
           district,
           details: String(fields.get("details") || "").trim(),
