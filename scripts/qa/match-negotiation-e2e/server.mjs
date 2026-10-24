@@ -73,8 +73,25 @@ export function installMemoryFirestore({ jwk }) {
     const pathname = decodeURIComponent(url.pathname);
     if (pathname.endsWith(":commit")) {
       const { writes = [] } = JSON.parse(init.body || "{}");
-      for (const w of writes) if (w.update) write(w.update.name.split("/documents/")[1], w.update.fields || {}, w.updateMask?.fieldPaths);
-      return Response.json({ writeResults: [] });
+      // Like Firestore: an update may carry updateTransforms, and a write may be a bare transform; integer
+      // increments are applied atomically (one commit at a time here) and reported in transformResults.
+      const writeResults = [];
+      for (const w of writes) {
+        const path = (w.update?.name || w.transform?.document || "").split("/documents/")[1];
+        if (w.update) write(path, w.update.fields || {}, w.updateMask?.fieldPaths);
+        const transforms = w.update ? (w.updateTransforms || []) : (w.transform?.fieldTransforms || []);
+        const transformResults = [];
+        for (const t of transforms) {
+          if (!t.increment || !path) continue;
+          const fields = { ...(docs.get(path)?.fields || {}) };
+          const next = Number(fields[t.fieldPath]?.integerValue || 0) + Number(t.increment.integerValue || 0);
+          fields[t.fieldPath] = { integerValue: String(next) };
+          docs.set(path, { fields, updateTime: stamp() });
+          transformResults.push({ integerValue: String(next) });
+        }
+        writeResults.push({ updateTime: stamp(), transformResults });
+      }
+      return Response.json({ writeResults });
     }
     // A query scoped to a parent document (…/documents/<parent>:runQuery): one collection, one range filter on a
     // timestamp field, ordered by it. Root queries (…/documents:runQuery) keep answering with nothing, as before.

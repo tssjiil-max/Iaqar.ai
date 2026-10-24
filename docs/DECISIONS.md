@@ -664,23 +664,38 @@ interim control, not a replacement for proving possession of the number.
    no `reason`. It covers bad input, unknown number, inactive account, wrong password, a token
    mismatch and a locked bucket. Each refusal waits until `LOGIN_FAILURE_FLOOR_MS` (default 1200 ms,
    capped at 5000) has passed since the request started.
-4. **Guessing limits**, durable in `loginRateLimits/{sha256(key)}` (Worker-only; no rules match):
+4. **Guessing limits**, durable in `loginRateLimits/{sha256(key|window)}` (Worker-only; no rules match),
+   one document per key per fixed 15-minute window:
 
-   | Bucket | Counts | Lock |
+   | Bucket | Counts | Limit per window |
    |---|---|---|
-   | `phone\|+9665…` | failed attempts on that number, from any IP | 10 failures in 15 min → 15 min |
-   | `ip\|…` | failed attempts from that IP, on any number (unknown ones included) | 20 failures in 15 min → 15 min |
+   | `phone\|+9665…` | every attempt on that number, from any IP | 10 |
+   | `ip\|…` | every attempt from that IP, on any number (unknown ones included) | 30 |
 
-   While locked, no password check is attempted. A success clears that number's bucket, not the IP's.
+   - **Every attempt is counted before the password is checked**, with Firestore's server-side
+     `increment` transform in a commit. There is no read-then-write, so a parallel burst cannot outrun
+     the limit. Successes count too.
+   - Above the limit no password check is attempted, and the answer is the usual refusal.
+   - If Firestore does not confirm the count, the login is refused (fail closed).
+   - Each window document carries `expiresAt` (end of the next window) for a Firestore TTL policy.
+
+   **Correction, 2026-10-24.** The first version read the bucket, then wrote `failureCount + 1`.
+   A probe of 40 parallel wrong passwords on one number got 40 password checks, and the stored count
+   ended at 2. The review before merge caught it, and the atomic counter replaced it in the same PR.
 5. **Password reset answers the same for every number** (`{ok:true}`, no `maskedEmail`, same floor).
-   Each IP may trigger at most 10 reset requests per 15 min (`reset-ip|…` bucket); later requests get
-   the same answer and send nothing. The per-number 60 s cooldown stays. Both screens already show
+   Each IP may trigger at most 10 reset requests per 15-minute window (`reset-ip|…` bucket, the same
+   atomic counter); later requests get the same answer and send nothing. The per-number 60 s cooldown stays. Both screens already show
    the generic «إذا كان الرقم مسجلًا…» text when no `maskedEmail` comes back.
 6. **Minimum password length is no longer checked by the login route** (Firebase decides). The old
    `< 8` shortcut rejected accounts created with shorter passwords; registration still requires 8.
 
 **Evidence.**
-- `test/phone-login-security.test.mjs`: 15 Worker tests; 13 red before the change.
+- `test/phone-login-security.test.mjs`: 16 Worker tests; 13 red before the change. The 16th (a
+  40-request parallel burst must yield at most 10 password checks) was red on the first version of
+  the counter.
+- The in-memory Firestore double (`scripts/qa/match-negotiation-e2e/server.mjs`) now applies
+  `updateTransforms`/`transform` integer increments in `:commit` and returns `transformResults`, as
+  Firestore does. Before, it ignored them.
 - `test/access-gate-auth.test.mjs`: three assertions that described the old flow were rewritten to
   assert the new one.
 - Harness: `scripts/qa/office-os/server.mjs` gained an Identity Toolkit stand-in and
@@ -692,12 +707,14 @@ interim control, not a replacement for proving possession of the number.
 **Residual risk (recorded, not solved here).**
 - **No proof of possession.** Anyone who knows a number and its password is in; a stolen password is
   enough. OTP or another possession factor needs a paid or new channel and the owner's approval.
-- **Lock-out abuse.** Ten wrong attempts lock a real broker's number for 15 minutes, by design of the
-  per-number bucket.
-- **Distributed guessing.** Many IPs × many numbers stays possible within the limits (20 per IP, 10
-  per number, per 15 min).
-- **Write cost.** Each unknown number tried creates a bucket document; the per-IP limit caps this per
-  source, not globally.
+- **Lock-out abuse.** Ten attempts lock a real broker's number until the end of the 15-minute window,
+  by design of the per-number bucket.
+- **Distributed guessing.** Many IPs × many numbers stays possible within the limits (30 per IP, 10
+  per number, per window). Fixed windows allow up to twice a limit across a window boundary.
+- **Shared networks.** An office behind one address shares the 30-per-window IP budget, successes
+  included. Sessions persist (`LOCAL`), so logins are rare; raise the limit if Staging shows otherwise.
+- **Write cost.** Each attempt writes one or two counter documents; the per-IP limit caps this per
+  source, not globally. Owner action: a Firestore TTL policy on `expiresAt` for `loginRateLimits`.
 - **Timing.** The floor hides the Google round-trip only while that round-trip is shorter than the
   floor.
 - **Cached old pages.** A client still running the old JavaScript gets the generic refusal from the
