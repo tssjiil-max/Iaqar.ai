@@ -502,6 +502,48 @@ be UI-only; no Deals page / bottom nav / auto-send; stop before production Phase
 **Why.** Isolates staging Auth/Firestore from production while keeping a real Worker +
 Hosting path for Phases 1–8, without CI user tokens or production Hosting overwrite.
 
+## D-019 — B-04: pin the legacy WhatsApp intake path with tests before changing it
+
+**Phase:** post-audit backlog B-04 (`docs/IMPLEMENTATION_BACKLOG_AR.md`), branch
+`audit/phase0-real-lineage-20261024`.
+**Directive:** Constitution §2.5 (a feature works only when the path is connected, data
+persists, access control is enforced and tests pass), §7 tenant isolation, §9 integration
+honesty; no behaviour change in this item.
+
+**Decision.**
+
+1. **Characterization tests, no code change.** `test/whatsapp-legacy-intake-journey.test.mjs`
+   drives the real Worker (`startOfficeOsHarness`) with HMAC-signed Meta events and pins the
+   legacy (non-agent) path: mapped number → `offices/{office}/inbox` → canonical intake →
+   `offices/{office}/opportunities` → the default records list (`filterRecords`). It covers
+   offer and request, two-office isolation, Meta re-delivery of the same message id, batches,
+   greetings kept for the broker, delivery-status-only events, a bad signature (401) and a
+   non-WhatsApp object (ignored).
+2. **Read access is tested on the emulator.**
+   `test/emulator/whatsapp-intake-rules.emulator.test.mjs` asserts that only active members of
+   the same office read the WhatsApp inbox and its records, that no browser writes the inbox,
+   and that `whatsapp_accounts` is closed to every browser.
+3. **Current defects are pinned under a `CURRENT (pre-B-xx)` label, not fixed here.** Two
+   behaviours are recorded as they are today so the later fix is a visible, reviewed test flip:
+   - an unlinked or non-`connected` number is acknowledged with 200 and the message is stored
+     nowhere (fix: B-03);
+   - caption-less media becomes an empty record, because `extractMessageText()` returns the
+     placeholder `[رسالة image]` and the `needs_media_adapter` branch in `saveInboundMessage()`
+     is unreachable (fix: B-07).
+4. **Gates.** The journey test joins `test:channels:gate`; the emulator file joins
+   `test:rules` (and therefore the `deploy-staging-rules` and `office-os-gate` workflows).
+
+**Why.** The WhatsApp fixes that follow (B-03, B-07, and any agent work) touch
+`receiveMetaWebhook` / `saveInboundMessage`. Without an end-to-end test, a regression that
+stops linked offices from receiving messages would pass every existing check: the only
+prior runtime test asserted that one inbox document exists. Each new assertion was checked
+against a deliberate mutation (ignoring the mapping status, removing the create-only
+dedupe, routing every message to another office, opening inbox reads to any signed-in user)
+and failed as expected.
+
+**Limits.** Local harness and emulator only. They do not prove that Meta delivers to the
+Staging or Production webhook; that needs the owner's live check (backlog M-01).
+
 ## Open questions carried forward
 
 | # | Question | Blocking |
