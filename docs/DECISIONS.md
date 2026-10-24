@@ -706,6 +706,68 @@ interim control, not a replacement for proving possession of the number.
 - **Owner action, optional:** set `FIREBASE_WEB_API_KEY` on the Worker so the server never relies on
   a key sent by the client. The audience check already makes a foreign key useless.
 
+## D-022 — B-03 + B-07: no WhatsApp message vanishes silently, and media is not a record
+
+**Phase:** backlog B-03 and B-07, approved by the owner on 2026-10-24 (no message content kept without
+a justification and an appropriate authorization).
+**Directive:** Constitution §7, §9 (honest integration state), §10; D-019 pinned the old behaviour
+under `CURRENT` labels, and those tests now assert the behaviour below.
+
+**B-03 — numbers not routed to an office.**
+1. **HTTP stays `200`** for Meta. A retry cannot fix a missing or disconnected mapping. A non-2xx
+   answer would make Meta re-deliver for hours and, if it persisted, could get the webhook disabled.
+   The answer now separates *received* from *processed*: `{received, unlinked, diagnosed}`.
+2. **One diagnostic event per Meta message**, written to `channelRoutingEvents/{wre_<sha256(phoneNumberId|messageId)>}`
+   create-only, so Meta's retries are recorded once.
+   - It stores the receiving channel (our own business `phoneNumberId`), `reason`, `messageType`,
+     `receivedAt`, `recordedAt` and `expiresAt`. `reason` is `unmapped` or `mapping_not_connected`.
+   - **It never stores** the text, the sender's number or name, Meta's message id or the payload.
+   - Delivery-status-only events create nothing.
+3. **One indicator per receiving number** in `channelRoutingIssues/{wa_<sha256(phoneNumberId)>}`:
+   `reason`, `wabaId`, the mapped office and mapping status when a mapping exists, `status: open`,
+   `firstSeenAt`, `lastSeenAt`, `eventCount` and `expiresAt`.
+4. **Access.** Both collections are closed to every browser by explicit rules, platform admin
+   included. The platform admin reads open, unexpired issues through
+   `GET /admin/channel-routing-issues`. Nothing is written to any office.
+5. **Retention.** `CHANNEL_DIAGNOSTIC_RETENTION_DAYS`, default 14, capped at 90.
+   **Owner action:** enable a Firestore TTL policy on `expiresAt` for both collections. Until then
+   expired documents stay stored, although the admin view hides them.
+6. **Content recovery is not possible by design.** Without the text and the sender, a lost message
+   cannot be reconstructed from these records. If recovery is wanted later, it should be a separate,
+   opt-in path decided after a privacy and authorization review. For example: encrypted content,
+   hours of retention, release only to the office that proves the number is its own, and an audit of
+   every read. Nothing of this is built.
+7. **Best effort.** If the diagnostic write fails, the error is logged (no content) and Meta still
+   gets `200`. The `eventCount` update is a read-then-write, so it is approximate under concurrency.
+
+**B-07 — media without text.**
+1. `extractMessageText()` returns real text only. The placeholder `[رسالة ${type}]` is gone; it used
+   to reach Canonical Intake and create an empty record with no kind.
+2. Caption-less `image`, `video`, `audio` (including voice notes), `document` and `sticker`:
+   `processingState: needs_media_adapter`, `processingError: channel_media_requires_adapter`, no
+   record. The inbox shows «رسالة وسائط بلا نص», and «حوّلها إلى عرض أو طلب» refuses it (409).
+3. Other text-less messages (reaction, contacts, unsupported…): `pending_review` with
+   `channel_non_text_message`, no record.
+4. **The media reference is kept** on the inbox document for every media message, captioned or
+   not: `mediaType`, `mediaId`, `mediaMimeType`, `mediaSha256`, `mediaFileName`, `mediaIsVoice`.
+   This is Meta's reference only; the file is not downloaded (that is the media adapter, out of
+   scope). Captioned media is still processed from its caption, as before. Locations are unchanged.
+
+**Evidence.**
+- `test/whatsapp-legacy-intake-journey.test.mjs`: 25 tests.
+  - The 3 former `CURRENT` tests were replaced.
+  - B-03 and B-07 cases were added; 14 were red before the change.
+  - Each B-03 case checks that the text, sender number, sender name and message id are absent.
+- `test/emulator/whatsapp-intake-rules.emulator.test.mjs`: plus 1 test (diagnostics closed to
+  browsers).
+- `test/channels-whatsapp-media-static.test.mjs`: two literal assertions now match the new branch;
+  the intent is unchanged and runtime-tested.
+- Gates: `npm test` 2407/2407, `test:rules` 79/79, `test:channels:gate` 66/66, `check` passed.
+- Browser journeys: broker-steps 69/69, conversations 21/21, journey 45/45.
+
+**Not proven locally.** Real Meta delivery, Meta's retry behaviour, and the TTL deletion all need
+Staging with the owner's number (M-01) and the TTL policy.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

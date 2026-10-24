@@ -41,6 +41,8 @@ test.before(async () => {
       await setDoc(doc(db, `offices/${id}/opportunities/opp_wa_${id}`), waRecord(id));
       await setDoc(doc(db, `whatsapp_accounts/phone-${id}`), { officeId: id, wabaId: `waba-${id}`, status: "connected" });
     }
+    await setDoc(doc(db, "channelRoutingIssues/wa_x"), { channel: "whatsapp", phoneNumberId: "phone-x", reason: "unmapped", status: "open" });
+    await setDoc(doc(db, "channelRoutingEvents/wre_x"), { channel: "whatsapp", phoneNumberId: "phone-x", reason: "unmapped" });
     await setDoc(doc(db, "offices/office-a/members/broker-a"), { uid: "broker-a", role: "broker", active: true });
     await setDoc(doc(db, "offices/office-a/members/inactive-a"), { uid: "inactive-a", role: "broker", active: false });
   });
@@ -84,4 +86,14 @@ test("the number → office mapping (whatsapp_accounts) is closed to every brows
   await assertFails(getDoc(doc(as("owner-a"), "whatsapp_accounts/phone-office-a")));
   await assertFails(setDoc(doc(as("owner-a"), "whatsapp_accounts/phone-office-b"), { officeId: "office-a", status: "connected" }));
   await assertFails(getDoc(doc(anon(), "whatsapp_accounts/phone-office-a")));
+});
+
+test("unrouted-channel diagnostics are closed to every browser, platform admin included (D-022)", async () => {
+  const admin = env.authenticatedContext("platform-admin", { platformAdmin: true }).firestore();
+  for (const db of [as("owner-a"), admin, anon()]) {
+    await assertFails(getDoc(doc(db, "channelRoutingIssues/wa_x")));
+    await assertFails(getDoc(doc(db, "channelRoutingEvents/wre_x")));
+    await assertFails(setDoc(doc(db, "channelRoutingIssues/wa_forged"), { channel: "whatsapp", status: "open" }));
+    await assertFails(setDoc(doc(db, "channelRoutingEvents/wre_forged"), { channel: "whatsapp" }));
+  }
 });

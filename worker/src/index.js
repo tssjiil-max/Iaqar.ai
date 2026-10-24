@@ -256,6 +256,7 @@ import {
   handleAdminOfficeDetail,
   handleAdminOffices,
   handleAdminOverview,
+  handleAdminChannelRoutingIssues,
   handleAdminOwnerTransfer,
   handleAdminReactivate,
   handleAdminSubscriptionUpdate,
@@ -994,6 +995,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/admin/office/license") {
         return await handleAdminLicenseUpdate(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/channel-routing-issues") {
+        return await handleAdminChannelRoutingIssues(request, env, requestId, getAdminHelpers());
       }
 
       if (request.method === "POST" && url.pathname === "/admin/office/owner-transfer") {
@@ -2760,6 +2765,7 @@ async function receiveMetaWebhook(request, env, requestId) {
   const accessToken = await getGoogleAccessToken(env);
   let received = 0;
   let unlinked = 0;
+  let diagnosed = 0;
 
   for (const entry of Array.isArray(payload.entry) ? payload.entry : []) {
     const wabaId = cleanText(entry && entry.id, 100);
@@ -2785,6 +2791,15 @@ async function receiveMetaWebhook(request, env, requestId) {
       if (!officeId || mapping.status !== "connected") {
         unlinked += messages.length;
         console.warn("[iaqar-whatsapp] unlinked phone number", { phoneNumberId, wabaId });
+        // Still 200 for Meta (a retry cannot fix a missing mapping), but no longer silent (D-022): a content-free
+        // diagnostic per message and one open issue per receiving number, for the platform admin.
+        if (messages.length) {
+          try {
+            diagnosed += await recordUnroutedWhatsAppEvents({ projectId, accessToken, env, phoneNumberId, wabaId, mapping, officeId, messages });
+          } catch (error) {
+            console.error("[iaqar-whatsapp] routing diagnostic not saved", { phoneNumberId, code: error && error.code });
+          }
+        }
         continue;
       }
 
@@ -2822,7 +2837,68 @@ async function receiveMetaWebhook(request, env, requestId) {
     }
   }
 
-  return jsonResponse({ ok: true, received, unlinked, requestId });
+  return jsonResponse({ ok: true, received, unlinked, diagnosed, requestId });
+}
+
+// ── Unrouted channel diagnostics (D-022) ───────────────────────────────────────────────────────────
+// channelRoutingEvents/{eventId}  one per Meta message, create-only (Meta retries are recorded once)
+// channelRoutingIssues/{issueId}  one per receiving number: reason, first/last seen, count — the indicator
+// Both are Worker-only by the rules. Stored: the receiving channel (our own business number id), the reason,
+// the message type and times. Never stored: the text, the sender's number or name, Meta's message id or payload.
+// Firestore TTL on `expiresAt` deletes them (configured once by the owner); the admin view hides expired ones.
+const CHANNEL_DIAGNOSTIC_DEFAULT_DAYS = 14;
+const CHANNEL_DIAGNOSTIC_MAX_DAYS = 90;
+
+function channelDiagnosticRetentionDays(env) {
+  const configured = Number(env && env.CHANNEL_DIAGNOSTIC_RETENTION_DAYS);
+  return Number.isFinite(configured) && configured > 0 ? Math.min(configured, CHANNEL_DIAGNOSTIC_MAX_DAYS) : CHANNEL_DIAGNOSTIC_DEFAULT_DAYS;
+}
+
+async function recordUnroutedWhatsAppEvents({ projectId, accessToken, env, phoneNumberId, wabaId, mapping, officeId, messages }) {
+  const reason = officeId ? "mapping_not_connected" : "unmapped";
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + channelDiagnosticRetentionDays(env) * 86_400_000);
+  const issueId = `wa_${(await sha256Hex(`whatsapp|${phoneNumberId}`)).slice(0, 40)}`;
+  let recorded = 0;
+  for (const message of messages) {
+    const eventId = `wre_${(await sha256Hex(`whatsapp|${phoneNumberId}|${cleanText(message && message.id, 200)}`)).slice(0, 40)}`;
+    const created = await createFirestoreDocumentIfAbsent({
+      projectId, segments: ["channelRoutingEvents", eventId], accessToken,
+      fields: compactFields({
+        schemaVersion: firestoreInteger(1),
+        channel: firestoreString("whatsapp"),
+        issueId: firestoreString(issueId),
+        phoneNumberId: firestoreString(phoneNumberId),
+        reason: firestoreString(reason),
+        messageType: firestoreString(cleanText(message && message.type, 50) || "unknown"),
+        receivedAt: firestoreTimestamp(parseWhatsAppTimestamp(message && message.timestamp)),
+        recordedAt: firestoreTimestamp(now),
+        expiresAt: firestoreTimestamp(expiresAt)
+      })
+    });
+    if (created) recorded += 1;
+  }
+  if (!recorded) return 0;
+  const existing = await getFirestoreDocument({ projectId, segments: ["channelRoutingIssues", issueId], accessToken, allowMissing: true });
+  const previous = existing ? firestoreFieldsToJs(existing.fields || {}) : {};
+  await setFirestoreDocument({
+    projectId, segments: ["channelRoutingIssues", issueId], accessToken,
+    fields: compactFields({
+      schemaVersion: firestoreInteger(1),
+      channel: firestoreString("whatsapp"),
+      phoneNumberId: firestoreString(phoneNumberId),
+      wabaId: firestoreOptionalString(wabaId),
+      reason: firestoreString(reason),
+      mappedOfficeId: firestoreOptionalString(officeId),
+      mappingStatus: firestoreOptionalString(cleanText(mapping && mapping.status, 40)),
+      status: firestoreString("open"),
+      firstSeenAt: previous.firstSeenAt ? null : firestoreTimestamp(now),
+      lastSeenAt: firestoreTimestamp(now),
+      eventCount: firestoreInteger(Number(previous.eventCount || 0) + recorded),
+      expiresAt: firestoreTimestamp(expiresAt)
+    })
+  });
+  return recorded;
 }
 
 async function completeEmbeddedSignup(request, env, requestId) {
@@ -3022,6 +3098,7 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
   const receivedAt = parseWhatsAppTimestamp(message && message.timestamp);
   const messageType = cleanText(message && message.type, 50) || "unknown";
   const messageText = extractMessageText(message);
+  const media = whatsappMediaReference(message);
   const senderPhone = cleanText(message && message.from, 60);
   const now = new Date();
 
@@ -3043,6 +3120,13 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
     wabaId: firestoreString(wabaId),
     phoneNumberId: firestoreString(phoneNumberId),
     displayPhoneNumber: firestoreOptionalString(displayPhoneNumber),
+    // Meta's media reference only (the file is not downloaded yet): enough to fetch it later through the Graph API.
+    mediaType: firestoreOptionalString(media && media.type),
+    mediaId: firestoreOptionalString(media && media.id),
+    mediaMimeType: firestoreOptionalString(media && media.mimeType),
+    mediaSha256: firestoreOptionalString(media && media.sha256),
+    mediaFileName: firestoreOptionalString(media && media.fileName),
+    mediaIsVoice: media && media.voice ? firestoreBoolean(true) : null,
     receivedAt: firestoreTimestamp(receivedAt),
     createdAt: firestoreTimestamp(now),
     rawPayload: firestoreString(safeJsonStringify(rawPayload).slice(0, MAX_RAW_LENGTH))
@@ -3056,16 +3140,18 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
   // Meta media messages may arrive without a text/caption. Until the official
   // media downloader is wired, retain them for review instead of feeding an empty
   // text part into Canonical Intake and falsely marking the channel as failed.
+  // Other messages without text (reaction, contacts, unsupported…) wait for review too (D-022).
   if (!messageText) {
+    const reason = media ? "channel_media_requires_adapter" : "channel_non_text_message";
     await setFirestoreDocument({
       projectId,
       segments: ["offices", officeId, "inbox", documentId],
       accessToken,
       fields: {
-        processingState: firestoreString("needs_media_adapter"),
+        processingState: firestoreString(media ? "needs_media_adapter" : "pending_review"),
         status: firestoreString("pending_review"),
         isProcessed: firestoreBoolean(false),
-        processingError: firestoreString("channel_media_requires_adapter"),
+        processingError: firestoreString(reason),
         canonicalIntake: firestoreBoolean(true),
         sourceChannel: firestoreString("whatsapp"),
         updatedAt: firestoreTimestamp(new Date())
@@ -3075,7 +3161,7 @@ async function saveInboundMessage({ projectId, officeId, wabaId, phoneNumberId, 
       duplicate: false,
       documentId,
       deferred: true,
-      reason: "channel_media_requires_adapter"
+      reason
     };
   }
 
@@ -7708,7 +7794,25 @@ function extractMessageText(message) {
   if (message.interactive && message.interactive.button_reply) return cleanText(message.interactive.button_reply.title, 12000);
   if (message.interactive && message.interactive.list_reply) return cleanText(message.interactive.list_reply.title, 12000);
   if (message.location) return `موقع: ${message.location.latitude}, ${message.location.longitude}`;
-  return `[رسالة ${cleanText(message.type, 50) || "غير نصية"}]`;
+  // No placeholder such as «[رسالة image]»: it used to reach Canonical Intake and become an empty record (B-07).
+  return "";
+}
+
+const WHATSAPP_MEDIA_TYPES = Object.freeze(["image", "video", "audio", "document", "sticker"]);
+
+/** Meta's reference to the file of a media message (never the file itself), or null for other messages. */
+function whatsappMediaReference(message) {
+  const type = cleanText(message && message.type, 50);
+  if (!WHATSAPP_MEDIA_TYPES.includes(type)) return null;
+  const part = message[type] && typeof message[type] === "object" ? message[type] : {};
+  return {
+    type,
+    id: cleanText(part.id, 200),
+    mimeType: cleanText(part.mime_type, 120),
+    sha256: cleanText(part.sha256, 200),
+    fileName: cleanText(part.filename, 240),
+    voice: part.voice === true
+  };
 }
 
 function parseWhatsAppTimestamp(value) {

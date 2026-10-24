@@ -369,6 +369,30 @@ export async function handleAdminSubscriptionUpdate(request, env, requestId, hel
   return helpers.jsonResponse({ ok: true, officeId, auditId, requestId });
 }
 
+/**
+ * Unrouted channel diagnostics (D-022): open issues per receiving number, newest first, expired ones hidden.
+ * Content-free by construction (see recordUnroutedWhatsAppEvents in index.js). Platform admin only.
+ */
+export async function handleAdminChannelRoutingIssues(request, env, requestId, helpers) {
+  helpers.assertFirebaseSecrets(env);
+  await helpers.requirePlatformIdentity(request, env, true);
+  const projectId = env.FIREBASE_PROJECT_ID || helpers.DEFAULT_PROJECT_ID;
+  const accessToken = await helpers.getGoogleAccessToken(env);
+  const docs = await listAllCollectionDocuments({ projectId, segments: ["channelRoutingIssues"], accessToken, helpers });
+  const now = Date.now();
+  const issues = docs.map((doc) => docToRow(doc, helpers))
+    .filter((row) => row.status === "open" && (!row.expiresAt || Date.parse(row.expiresAt) > now))
+    .sort((a, b) => Date.parse(b.lastSeenAt || 0) - Date.parse(a.lastSeenAt || 0))
+    .slice(0, 200)
+    .map((row) => ({
+      id: row.id, channel: row.channel, phoneNumberId: row.phoneNumberId, wabaId: row.wabaId || "",
+      reason: row.reason, mappedOfficeId: row.mappedOfficeId || "", mappingStatus: row.mappingStatus || "",
+      eventCount: Number(row.eventCount || 0), firstSeenAt: row.firstSeenAt || "", lastSeenAt: row.lastSeenAt || "",
+      expiresAt: row.expiresAt || ""
+    }));
+  return helpers.jsonResponse({ ok: true, issues, requestId });
+}
+
 const PREVIOUS_OWNER_ROLES = Object.freeze(["manager", "broker", "inactive"]);
 
 /**
