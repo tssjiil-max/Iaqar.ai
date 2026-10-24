@@ -1,0 +1,106 @@
+name: Firestore rules → Staging (manual)
+
+# Staging only (iaqar-ai-staging). Never runs on a push and is not part of the Staging deploy.
+#   pull_request: the emulator suites and the tool's own tests — no secrets, nothing published.
+#   workflow_dispatch from the integration branch:
+#     plan      keep a copy of the released rules, show the difference and both hashes (nothing published)
+#     deploy    publish firestore.rules — needs the confirmation phrase, the file hash and the current release shown by
+#               the plan; the emulator suites run first; the release is verified after
+#     rollback  point the release back at a ruleset kept by a plan or a deploy (same confirmations)
+on:
+  pull_request:
+    branches:
+      - codex/unified-staging-lineage-2026-08-29
+    paths:
+      - firestore.rules
+      - scripts/staging-firestore-rules.mjs
+      - .github/workflows/staging-firestore-rules.yml
+      - test/staging-firestore-rules-deploy.test.mjs
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "plan (read only) · deploy · rollback"
+        type: choice
+        options: [plan, deploy, rollback]
+        default: plan
+      confirm:
+        description: "deploy / rollback only: publish-staging-firestore-rules"
+        required: false
+        default: ""
+      expected_sha256:
+        description: "deploy only: the firestore.rules sha256 shown by the plan"
+        required: false
+        default: ""
+      expected_current:
+        description: "deploy / rollback: the released ruleset shown by the plan"
+        required: false
+        default: ""
+      rollback_to:
+        description: "rollback only: the ruleset to release again (from a plan or deploy)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-firestore-rules
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Rules emulator suites + the tool's tests (no secrets)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run test:rules
+      - run: node --test test/staging-firestore-rules-deploy.test.mjs
+
+  staging-rules:
+    name: Firestore rules on iaqar-ai-staging (${{ inputs.mode }})
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/unified-staging-lineage-2026-08-29'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Rules emulator suites (before anything is read or published)
+        run: npm run test:rules
+      - name: The tool's own tests
+        run: node --test test/staging-firestore-rules-deploy.test.mjs
+      - name: Firestore rules on iaqar-ai-staging
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          RULES_MODE: ${{ inputs.mode }}
+          RULES_CONFIRM: ${{ inputs.confirm }}
+          RULES_EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+          RULES_EXPECTED_CURRENT: ${{ inputs.expected_current }}
+          RULES_ROLLBACK_TO: ${{ inputs.rollback_to }}
+          OUT_DIR: ${{ runner.temp }}/staging-rules
+        run: node scripts/staging-firestore-rules.mjs
+      - name: Keep the released rules (rollback copy) and the difference
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-firestore-rules-${{ inputs.mode }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-rules
+          if-no-files-found: warn
+          retention-days: 90
