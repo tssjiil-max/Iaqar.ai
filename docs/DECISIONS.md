@@ -544,6 +544,80 @@ and failed as expected.
 **Limits.** Local harness and emulator only. They do not prove that Meta delivers to the
 Staging or Production webhook; that needs the owner's live check (backlog M-01).
 
+## D-020 — B-01: office authority is the platform's and the owner's, through the Worker only
+
+**Phase:** backlog B-01, approved by the owner on 2026-10-24 («المالك يدير أدوار موظفي مكتبه عبر
+الخادم، ومدير المنصة وحده يدير نقل الملكية والاشتراكات، مع سجل تدقيق لكل عملية»).
+**Directive:** Constitution §7 (isolation enforced by rules **and** backend), §10 (prevent mass
+assignment of protected fields and direct edits to ownership fields; never weaken rules).
+
+**Findings fixed.**
+
+1. **Critical — any member could promote themself.** `members/{uid}` was not in
+   `isRestrictedOfficeCollection`, so the office catch-all (`create, update` for any member when
+   `officeId` matches) applied to it. A broker could write
+   `{role:"owner", officeId}` to their own member document, or add an outsider as `admin`. Both the
+   rules (`canManage`) and the Worker (`authorizeOfficeRequest`) then treated them as a manager.
+   Reproduced on the pre-fix rules (the phase-0 audit missed it: its probe omitted `officeId`).
+2. **High — a manager could take ownership and change platform state.** `offices/{id}` update was
+   `canManage && validOfficeProfile()`, with no limit on which fields change. A manager could set
+   `ownerUid` to themself, flip `subscriptionStatus`/`subscriptionExpiresAt`, clear a suspension
+   (`accountStatus`), or change approval and licence state. The `publicOffices` mirror had the same
+   gap for its status fields.
+
+**Decision.**
+
+1. **`members` is Worker-only** for every browser (owner and platform admin included). Reads are
+   unchanged: active members of the office.
+2. **Platform-controlled office fields** (`platformControlledOfficeKeys()` in `firestore.rules`):
+   - `ownerUid`
+   - subscription: `subscriptionStatus`, `subscriptionExpiresAt`, `subscriptionPlan`
+   - approval: `approvalStatus`, `approvedAt`, `approvedByUid`, `registeredAt`
+   - account and suspension: `accountStatus`, `suspendedAt`, `suspendedBy`, `suspensionReason`,
+     `reactivatedAt`, `reactivatedBy`
+   - licence: `licenseStatus`, `licenseExpiresAt`
+   - `pilotAuthorized`
+
+   No browser adds, changes or removes them on `offices/{id}` or `publicOffices/{id}`. Re-sending
+   the current value is not a change, so the existing profile saves that echo `ownerUid` still pass.
+3. **Server operations.**
+   - `POST /os/members/access` (`office-os/members-service.js`) lets the office **owner** set an
+     existing member to `broker` or `manager`, or change its active flag.
+     - Authority is `offices/{o}.ownerUid`; a member doc saying `owner` is not enough.
+     - The owner's own membership is out of reach, `owner`/`admin` are never granted, and no new
+       people are added.
+     - Each change writes `MEMBER_ACCESS_CHANGED` with before/after to `offices/{o}/auditLogs`.
+   - `POST /admin/office/owner-transfer` (`admin-service.js`) is **platform admin** only.
+     - The new owner must be an active member.
+     - `ownerUid` and both member documents change in one Firestore commit guarded by each
+       document's `updateTime`.
+     - The previous owner becomes `manager` (or `broker`/inactive on request).
+     - It is written to `adminAuditLogs` with before/after and a mandatory reason.
+   - Subscriptions keep the existing audited `/admin/office/subscription` route.
+4. **Browser change:** `public/js/office-settings.js` no longer sends `approvalStatus` /
+   `accountStatus` to `publicOffices` with the work-scope save. Readers already default a missing
+   value to approved/active (`suitable-offices-domain.js`, `opportunity-router-domain.js`).
+5. **Static test updated:** `test/firestore-rules.test.mjs` TEST 4 asserted the old
+   `allow create, update, delete: if canManage(officeId)` text for `publicOffices`. It now asserts
+   that each write still requires `canManage(officeId)` plus the new field guard.
+
+**Evidence.**
+- `test/emulator/office-authority-rules.emulator.test.mjs`: 20 tests. On the pre-fix rules
+  14 fail, one per exploit scenario; on the new rules 20/20 pass, including every legitimate
+  profile/scope/share-card/photo save shape the screens send.
+- `test/office-authority-service.test.mjs`: 15 Worker tests, all red before the routes existed
+  (one passed only through a 404).
+- Full gates after the change: `npm test` 2379/2379, `npm run test:rules` 78/78,
+  `npm run check` passed.
+
+**Not changed (recorded as residual risk).**
+- An office **owner** can still delete `offices/{id}` from a browser, and a manager can delete
+  `publicOffices/{id}`.
+- Platform-admin office **creation** from a browser is still allowed by the rules. The approval
+  flow itself goes through the Worker.
+- Suspension does not update the `publicOffices` mirror: no Worker route writes it, as before.
+- There is no screen yet for `/os/members/access`; the route is ready for one.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |

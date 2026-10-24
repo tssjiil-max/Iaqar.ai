@@ -37,6 +37,9 @@ service cloud.firestore {
     // المرحلة 8: إغلاق المجموعات الحساسة (clients/owners/deals/alerts/inbox/usage/contacts).
     function isRestrictedOfficeCollection(collectionName) {
       return collectionName in [
+        // B-01 (D-020): without this entry the catch-all below let any member write members/{uid} when the
+        // document carried officeId — a broker could promote themself to owner. Worker-only now.
+        'members',
         'devices', 'officeSettings', 'brokerSettings', 'opportunitySources', 'opportunities',
         'sharedOpportunities', 'matches', 'operations', 'notifications', 'auditLogs', 'messages',
         'clients', 'owners', 'deals', 'alerts', 'inbox', 'usage', 'contacts', 'publicIntake', 'library',
@@ -79,6 +82,22 @@ service cloud.firestore {
           && request.resource.data.serviceNeighborhoodIds.size() <= 5
         );
     }
+    // B-01 (D-020): ownership, subscription, approval/suspension and licence state belong to the platform.
+    // No browser changes, adds or removes them — owner and platform admin included; the audited Worker
+    // routes under /admin/office/* do. Re-sending a field with its current value is not a change.
+    function platformControlledOfficeKeys() {
+      return [
+        'ownerUid',
+        'subscriptionStatus', 'subscriptionExpiresAt', 'subscriptionPlan',
+        'approvalStatus', 'approvedAt', 'approvedByUid', 'registeredAt',
+        'accountStatus', 'suspendedAt', 'suspendedBy', 'suspensionReason', 'reactivatedAt', 'reactivatedBy',
+        'licenseStatus', 'licenseExpiresAt',
+        'pilotAuthorized'
+      ];
+    }
+    function touchesPlatformControlledOfficeKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(platformControlledOfficeKeys());
+    }
 
     // روابط الرد الخفيفة: تُحفظ ببصمة الرمز فقط ولا تُقرأ من أي عميل.
     match /replyLinks/{linkHash} {
@@ -88,12 +107,14 @@ service cloud.firestore {
     match /offices/{officeId} {
       allow read: if isOfficeMember(officeId);
       allow create: if isPlatformAdmin() && validOfficeProfile();
-      allow update: if canManage(officeId) && validOfficeProfile();
+      allow update: if canManage(officeId) && validOfficeProfile() && !touchesPlatformControlledOfficeKeys();
       allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
 
+      // B-01 (D-020): roles and membership change only through the Worker — /os/members/access (the
+      // office owner, audited) and /admin/office/owner-transfer (platform admin, audited).
       match /members/{uid} {
         allow read: if isOfficeMember(officeId);
-        allow write: if canManage(officeId);
+        allow write: if false;
       }
 
       match /publicIntake/{docId} {
@@ -456,7 +477,11 @@ service cloud.firestore {
 
     match /publicOffices/{officeId} {
       allow read: if true;
-      allow create, update, delete: if canManage(officeId);
+      // B-01 (D-020): the mirrored approval/account status is the platform's, like on offices/{id}.
+      allow create: if canManage(officeId)
+        && !request.resource.data.keys().hasAny(platformControlledOfficeKeys());
+      allow update: if canManage(officeId) && !touchesPlatformControlledOfficeKeys();
+      allow delete: if canManage(officeId);
     }
 
     match /brokerApplications/{applicationId} {

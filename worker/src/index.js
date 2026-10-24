@@ -256,6 +256,7 @@ import {
   handleAdminOfficeDetail,
   handleAdminOffices,
   handleAdminOverview,
+  handleAdminOwnerTransfer,
   handleAdminReactivate,
   handleAdminSubscriptionUpdate,
   handleAdminSuspend
@@ -993,6 +994,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/admin/office/license") {
         return await handleAdminLicenseUpdate(request, env, requestId, getAdminHelpers());
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/office/owner-transfer") {
+        return await handleAdminOwnerTransfer(request, env, requestId, getAdminHelpers());
       }
 
       if (request.method === "POST" && url.pathname === "/admin/office/note") {
@@ -7589,6 +7594,9 @@ function getAdminHelpers() {
     firestoreFieldsToJs,
     firestoreString,
     firestoreTimestamp,
+    firestoreBoolean,
+    buildFirestoreUpdateWrite,
+    commitFirestoreWrites,
     firestoreDocumentUrl,
     cleanText,
     firestoreOfficeId,

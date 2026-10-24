@@ -390,8 +390,7 @@ async function saveOfficeScopeSettings() {
       cooperationAvailableNow: payload.cooperationAvailableNow,
       acceptPlatformPublicOpportunities: payload.acceptPlatformPublicOpportunities !== false,
       city: scopeInput.city,
-      approvalStatus: current.approvalStatus || "approved",
-      accountStatus: current.accountStatus || "active",
+      // approvalStatus / accountStatus are platform-controlled (D-020): the rules reject them from a browser.
       updatedAt: serverTimestamp()
     }, { merge: true });
     current = clean({

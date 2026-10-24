@@ -26,10 +26,11 @@ function b64url(buf) { return Buffer.from(buf).toString("base64url"); }
 const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const jwk = { ...publicKey.export({ format: "jwk" }), kid: "e2e-kid", alg: "RS256", use: "sig" };
 
-export function idTokenFor(uid) {
+/** `extraClaims` adds custom claims (e.g. `{ platformAdmin: true }`); the standard claims always win. */
+export function idTokenFor(uid, extraClaims = {}) {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", kid: "e2e-kid", typ: "JWT" }));
-  const claims = b64url(JSON.stringify({ aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}`, sub: uid, iat: now, exp: now + 3600 }));
+  const claims = b64url(JSON.stringify({ ...extraClaims, aud: PROJECT, iss: `https://securetoken.google.com/${PROJECT}`, sub: uid, iat: now, exp: now + 3600 }));
   return `${header}.${claims}.${b64url(crypto.sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), privateKey))}`;
 }
 
