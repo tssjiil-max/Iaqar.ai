@@ -152,7 +152,7 @@
 - **القبول:** قلب اختبار `CURRENT (pre-B-07)` إلى السلوك المقصود، وبقية الاختبارات ناجحة.
 - **ملاحظة:** تنزيل الوسائط من Meta (media adapter) خارج هذا البند.
 
-### B-10 — أزرار «مراجعة التطابق» تختفي إذا سبقت العمليات وحدة الإسقاط (P1) — ✅ منفّذ (فرع `fix/operations-fallback-projection-20261024`)
+### B-13 — أزرار «مراجعة التطابق» تختفي إذا سبقت العمليات وحدة الإسقاط (P1) — ✅ منفّذ (فرع `fix/operations-fallback-projection-20261024`)
 - **السبب:**
   - `projectPersistedOperation()` في `public/js/workflow-office.js` يستعمل مسقطًا احتياطيًا قصيرًا إن لم تكن `operations-domain-bridge.js` محمّلة.
   - المسقط الاحتياطي لا يحمل `officeId` ولا `offerId` ولا `requestId`، فيستبعد `buildOpportunityActionIndex` تلك العمليات.
