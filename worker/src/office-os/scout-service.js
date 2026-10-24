@@ -258,8 +258,12 @@ function decodeFind(doc) {
   return { ...doc, sources: parse(doc.sourcesJson), links: parse(doc.linksJson), changes: parse(doc.changesJson), reasons: doc.reasons || [], warnings: doc.warnings || [] };
 }
 
-/** Newest first when the collection is listed by name. */
-const newFindId = async (ctx, candidate, now) => `so_${String(9_999_999_999_999 - now.getTime()).padStart(13, "0")}_${await shortHash(ctx, `${candidate.sourceId}|${candidate.externalId}|${now.getTime()}`, 8)}`;
+/**
+ * One ad → always the same find id, whichever round reads it first. A round cut off after its alert and before its
+ * writes, or two rounds of one office at once, then land on the same find and the same alert (deduplicated), never a
+ * second alert or an alert that opens nothing. Nothing reads the finds in name order (the index and board carry it).
+ */
+const newFindId = async (ctx, officeId, candidate) => `so_${await shortHash(ctx, `find|${officeId}|${candidate.sourceId}|${candidate.externalId}`, 24)}`;
 
 async function createNotification(ctx, officeId, { key, route, entityId, type, title, body, brokerId = "", push = false, now }) {
   const id = `nt_${(await ctx.deps.sha256Hex(`notif|${key}`)).slice(0, 40)}`;
@@ -273,26 +277,79 @@ async function createNotification(ctx, officeId, { key, route, entityId, type, t
   return { created: created !== false, segments };
 }
 
-/** The alert for one find: in the app always; on the phone when the office allows it; never a contact detail in it. */
-async function notifyFind(ctx, { officeId, entity, link, change = null, push = true, recordTitleText = "", brokerId = "", now }) {
+/**
+ * The alert one find calls for, as an intent: the round saves it with its own state (finds first), and only then is
+ * it delivered (deliverOutbox). In the app always; on the phone when the office allows it; never a contact detail.
+ */
+function alertIntent({ entity, link, change = null, push = true, recordTitleText = "", brokerId = "", now }) {
   const urgent = link.mode === SCOUT_MODE.URGENT;
   const copy = notificationCopy({ entity, link, recordTitleText, change, urgent });
-  const key = `scout|${entity.id}|${change ? `${change.field}:${change.to}` : link.band}`;
-  const { created, segments } = await createNotification(ctx, officeId, { key, route: `scout/opp/${entity.id}`, entityId: entity.id, type: "SCOUT_OPPORTUNITY", title: copy.title, body: copy.body, brokerId, push, now });
-  if (!created) return { created: false, push: "duplicate" };
+  return {
+    key: `scout|${entity.id}|${change ? `${change.field}:${change.to}` : link.band}`, findId: entity.id, route: `scout/opp/${entity.id}`,
+    title: copy.title, body: copy.body, brokerId: text(brokerId, 128), push: Boolean(push), urgent, at: now.toISOString(), attempts: 0
+  };
+}
+
+const PUSH_RETRY_STATES = new Set(["QUEUED", "FAILED"]);
+const pushStateOf = (doc) => { try { return JSON.parse(doc?.providerStateJson || "{}").push || ""; } catch (_) { return ""; } };
+
+/**
+ * Delivers one alert intent. The in-app alert is written once (its id comes from its key); its push is sent when
+ * it is still owed — a first try, or an earlier one that failed or was cut off. Returns whether the intent is done.
+ */
+async function deliverAlert(ctx, officeId, intent, now) {
+  const { created, segments } = await createNotification(ctx, officeId, {
+    key: intent.key, route: intent.route, entityId: intent.findId, type: "SCOUT_OPPORTUNITY", title: intent.title, body: intent.body, brokerId: intent.brokerId, push: intent.push, now
+  });
+  if (!created && !(intent.push && PUSH_RETRY_STATES.has(pushStateOf(await ctx.store.get(segments))))) return { done: true, push: "already" };
   let state = "NOT_REQUESTED";
-  if (push && typeof ctx.deps.sendOfficePush === "function") {
+  if (intent.push && typeof ctx.deps.sendOfficePush === "function") {
     try {
-      const result = await ctx.deps.sendOfficePush({ officeId, title: copy.title, body: copy.body, type: "scout", recordId: entity.id, taskId: `scout:${entity.id}`, operationId: `scout:${entity.id}`, assignedBrokerId: text(brokerId, 128) });
+      const result = await ctx.deps.sendOfficePush({ officeId, title: intent.title, body: intent.body, type: "scout", recordId: intent.findId, taskId: `scout:${intent.findId}`, operationId: `scout:${intent.findId}`, assignedBrokerId: intent.brokerId });
       // Honest provider state: accepted by the push provider is not «delivered to the phone».
-      state = result?.skipped ? `SKIPPED_${String(result.reason || "").toUpperCase()}` : Number(result?.sent || 0) > 0 ? "ACCEPTED_BY_PROVIDER" : Number(result?.failed || 0) > 0 ? "PROVIDER_REJECTED" : "NO_DEVICES";
+      // A send nobody answered (or a network error) is FAILED and tried again; the provider refusing it is final.
+      state = result?.skipped ? `SKIPPED_${String(result.reason || "").toUpperCase()}` : Number(result?.sent || 0) > 0 ? "ACCEPTED_BY_PROVIDER"
+        : Number(result?.unreachable || 0) > 0 ? "FAILED" : Number(result?.failed || 0) > 0 ? "PROVIDER_REJECTED" : "NO_DEVICES";
     } catch (error) {
       state = "FAILED";
     }
-    await ctx.store.set(segments, { providerStateJson: JSON.stringify({ push: state, at: now.toISOString() }), updatedAt: now }).catch(() => {});
+    await ctx.store.set(segments, { providerStateJson: JSON.stringify({ push: state, at: now.toISOString(), attempt: Number(intent.attempts || 0) + 1 }), updatedAt: now }).catch(() => {});
   }
-  if (urgent) await alertBrokerOnTelegram(ctx.store, ctx.deps, { officeId, brokerId, title: copy.title, body: copy.body, route: `scout/opp/${entity.id}`, now }).catch(() => {});
-  return { created: true, push: state };
+  if (intent.urgent && created) await alertBrokerOnTelegram(ctx.store, ctx.deps, { officeId, brokerId: intent.brokerId, title: intent.title, body: intent.body, route: intent.route, now }).catch(() => {});
+  // A failed send is tried again on a later round; a provider's refusal (a stale device) would only fail again.
+  return { done: state !== "FAILED", push: state };
+}
+
+/** Adds alert intents to the office's outbox, once per key. */
+const mergeOutbox = (current = [], adds = []) => [...current, ...adds.filter((add) => !current.some((intent) => intent.key === add.key))];
+
+/**
+ * Delivers the office's waiting alerts — this round's and any an earlier round could not finish. A failed or
+ * cut-off delivery stays for a later round, up to SCOUT_LIMITS.alertAttempts tries within alertOutboxHours.
+ */
+async function deliverOutbox(ctx, officeId, now) {
+  const { outbox } = await loadState(ctx, officeId);
+  if (!outbox.length) return { delivered: 0, waiting: 0 };
+  const done = new Map();
+  for (const intent of outbox.slice(0, SCOUT_LIMITS.alertsPerRound)) {
+    try {
+      done.set(intent.key, (await deliverAlert(ctx, officeId, intent, now)).done);
+    } catch (error) {
+      console.warn("[scout] alert not delivered", error?.code || error?.message);
+      done.set(intent.key, false);
+    }
+  }
+  const cutoff = now.getTime() - SCOUT_LIMITS.alertOutboxHours * 3_600_000;
+  const next = await mutateState(ctx, officeId, (current) => ({
+    ...current,
+    outbox: (current.outbox || []).flatMap((intent) => {
+      if (!done.has(intent.key)) return [intent];
+      if (done.get(intent.key)) return [];
+      const attempts = Number(intent.attempts || 0) + 1;
+      return attempts >= SCOUT_LIMITS.alertAttempts || (Date.parse(intent.at) || 0) < cutoff ? [] : [{ ...intent, attempts }];
+    })
+  }));
+  return { delivered: [...done.values()].filter(Boolean).length, waiting: (next.outbox || []).length };
 }
 
 // ------------------------------------------------------------------ one round of one office
@@ -373,6 +430,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
   }
   if (!tasks.length) {
     if (sync) await mutateState(ctx, officeId, (current) => ({ ...current, usage, health: { ...current.health, lastCycleAt: now.toISOString() } }));
+    if (state.outbox.length) outcome.alerts = await deliverOutbox(ctx, officeId, now).catch(() => null);
     return outcome;
   }
 
@@ -380,6 +438,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
   const board = [...(state.board || [])];
   const seen = { ...(state.seen || {}) };
   const touched = new Map();
+  const alerts = [];
   const perTask = new Map(tasks.map((t) => [t.id, { strong: 0, veryStrong: 0 }]));
   const loadEntity = async (id) => touched.get(id) || decodeFind(await ctx.store.get(findPath(officeId, id)));
 
@@ -412,15 +471,14 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
     if (decision.notify && entity.surface === SURFACE.SHOWN && (raised || (meaningful && previous.notifiedBand))) {
       const throttled = MODE_CONFIG[best?.mode || SCOUT_MODE.GENERAL].notify.throttled && usage.pushAt.length >= SCOUT_LIMITS.generalPushesPer6h;
       const record = best.recordId ? recordById.get(best.recordId) : null;
-      const sent = await notifyFind(ctx, {
-        officeId, entity, link: best, change: meaningful && (previous.notifiedBand || meaningful.field === "price") ? meaningful : null, push: settings.notifyPush && !throttled,
+      // Saved with this round's state (after the finds), then delivered: no alert ever opens a find that was not saved.
+      alerts.push(alertIntent({
+        entity, link: best, change: meaningful && (previous.notifiedBand || meaningful.field === "price") ? meaningful : null, push: settings.notifyPush && !throttled,
         recordTitleText: record?.title || "", brokerId: record?.brokerId || tasks.find((t) => t.id === best.taskId)?.assignedBrokerId || "", now
-      });
-      if (sent.created) {
-        outcome.stats.notified += 1;
-        entity.notifiedBand = entity.band; entity.notifiedAt = now.toISOString();
-        if (settings.notifyPush && !throttled) usage.pushAt.push(nowMs);
-      }
+      }));
+      outcome.stats.notified += 1;
+      entity.notifiedBand = entity.band; entity.notifiedAt = now.toISOString();
+      if (settings.notifyPush && !throttled) usage.pushAt.push(nowMs);
     }
     outcome.stats.kept += 1;
     if (newlyShown) {
@@ -564,7 +622,7 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
       outcome.stats.fresh += 1;
       const at = now.toISOString();
       entity = {
-        ...candidate, id: await newFindId(ctx, candidate, now), officeId, engine, firstSeenAt: at, lastSeenAt: at, status: OPP_STATUS.NEW, surface: SURFACE.HIDDEN, band: BAND.WEAK,
+        ...candidate, id: await newFindId(ctx, officeId, candidate), officeId, engine, firstSeenAt: at, lastSeenAt: at, status: OPP_STATUS.NEW, surface: SURFACE.HIDDEN, band: BAND.WEAK,
         sources: [{ sourceId: candidate.sourceId, label: sourceLabel(candidate.sourceId, ctx.env), ref: candidate.externalId, url: candidate.url || "", firstSeenAt: at, lastSeenAt: at }], sourceCount: 1, changes: [], links: []
       };
     }
@@ -609,7 +667,8 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
       // Finds touched in this round replace their entries; everything else is whatever is stored now (a broker's press included).
       index: [...index.filter((entry) => changedIds.has(entry.id)), ...current.index.filter((entry) => !changedIds.has(entry.id))].slice(0, SCOUT_LIMITS.index),
       board: [...board.filter((card) => changedIds.has(card.id)), ...current.board.filter((card) => !changedIds.has(card.id))].slice(0, SCOUT_LIMITS.board),
-      records: [...recordById.values()].slice(0, SCOUT_LIMITS.records), seen: { ...current.seen, ...seen }, usage, health
+      records: [...recordById.values()].slice(0, SCOUT_LIMITS.records), seen: { ...current.seen, ...seen }, usage, health,
+      outbox: mergeOutbox(current.outbox, alerts)
     }));
   }
   if (active) {
@@ -618,6 +677,9 @@ export async function runOfficeCycle(ctx, officeId, { taskIds = [], runtime = {}
       officeId, at: now, inline, modes: [...new Set(tasks.map((t) => modeOf(t.mode)))], tasks: tasks.length, sources: Object.keys(fetchedUntil), ...outcome.stats
     }).catch(() => {});
   }
+  // Everything the round found is saved; now its alerts (and any an earlier round could not deliver) go out.
+  // A delivery that fails never undoes the round.
+  outcome.alerts = await deliverOutbox(ctx, officeId, now).catch((error) => { console.warn("[scout] outbox", error?.code || error?.message); return null; });
   return outcome;
 }
 
@@ -661,9 +723,18 @@ export async function runScoutTick(ctx, { now = ctx.now(), maxOffices = SCOUT_LI
     if (nowMs - (Date.parse(schedule.health?.lastTickAt || "") || 0) > 30 * 60_000) await mutateSchedule(ctx, (s) => ({ ...s, health: beat(s.health, { lastIdleAt: now.toISOString() }) }));
     return { ok: true, offices: 0, waiting: due.length };
   }
-  await mutateSchedule(ctx, (s) => { for (const item of chosen) officeEntry(s.entries, item.officeId).l = nowMs + SCOUT_LIMITS.leaseMinutes * 60_000; return s; });
+  // The claim is checked again on the stored schedule (re-read on a concurrent change): a beat that overlaps another
+  // works only the offices it claimed itself, never one the other beat is already working on.
+  let claimed = [];
+  await mutateSchedule(ctx, (s) => {
+    claimed = chosen.filter((item) => Number(s.entries[item.officeId]?.l || 0) <= nowMs);
+    if (!claimed.length) return null;
+    for (const item of claimed) officeEntry(s.entries, item.officeId).l = nowMs + SCOUT_LIMITS.leaseMinutes * 60_000;
+    return s;
+  });
+  if (!claimed.length) return { ok: true, offices: 0, waiting: due.length };
   const outcomes = [];
-  for (const item of chosen) {
+  for (const item of claimed) {
     try {
       outcomes.push({ officeId: item.officeId, due: item.taskIds, ...(await runOfficeCycle(ctx, item.officeId, { taskIds: item.taskIds, runtime: schedule.entries[item.officeId]?.t || {}, sync: item.sync, now })) });
     } catch (error) {

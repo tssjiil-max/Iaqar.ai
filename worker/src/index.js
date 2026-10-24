@@ -6424,13 +6424,15 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
     ? activeDevices.filter(device=>String(device.userUid||"")===brokerFilter)
     : [];
   const targetDevices=brokerDevices.length?brokerDevices:activeDevices;
-  const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
+  // unreachable: no answer or a network error (worth trying again later), as opposed to the provider refusing it.
+  const summary={registered:targetDevices.length,sent:0,failed:0,unreachable:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
   for(const device of targetDevices){
     try{
       await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title:presentation.title,body:presentation.body,type,recordId,officeId,accessToken,env,followUpAt,recipientMode,icon:presentation.icon,badge:"",taskId,opportunityId,matchId,operationId,appointmentId});
       summary.sent+=1;
     }catch(error){
       summary.failed+=1;
+      if(!error?.fcmCode&&!error?.staleToken)summary.unreachable+=1;
       console.warn("[iaqar-fcm] send failed",error&&error.message);
       if(error&&error.staleToken&&device.deviceId){
         summary.disabled+=1;
@@ -6512,13 +6514,17 @@ function buildFcmHttpMessage({registrationId,registrationType="fid",title,body,t
   }};
 }
 
+const FCM_SEND_TIMEOUT_MS = 10_000;
+
 async function sendFcmMessage({projectId,registrationId,registrationType="fid",title,body,type="match",recordId="",officeId,accessToken,env=null,followUpAt="",recipientMode="",icon="",badge="",taskId="",opportunityId="",matchId="",operationId="",appointmentId=""}) {
   if(registrationType==="webpush"){
     await sendWebPushNotification({env,subscriptionJson:registrationId,title,body,type,recordId,officeId,icon,badge,taskId,opportunityId,matchId,operationId,appointmentId});
     return { name: "webpush" };
   }
+  // A send that does not answer is a failed send, not a wait without end (it would stall a scheduled round).
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,{
     method:"POST",
+    signal:AbortSignal.timeout(FCM_SEND_TIMEOUT_MS),
     headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},
     body:JSON.stringify(buildFcmHttpMessage({registrationId,registrationType,title,body,type,recordId,officeId,followUpAt,recipientMode,env,icon,badge,taskId,opportunityId,matchId,operationId,appointmentId}))
   });

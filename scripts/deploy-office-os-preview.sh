@@ -88,7 +88,13 @@ console.log("preview Worker healthy on iaqar-ai-staging");'
 
 HTML="$(curl -fsS --max-time 20 "${PREVIEW_URL}/")"
 echo "$HTML" | grep -q '/os/app.js' || die "preview channel does not serve the new shell"
-curl -fsS --max-time 20 "${PREVIEW_URL}/js/runtime-config.js" | grep -q "$WORKER_NAME" || die "runtime-config does not route to the preview Worker"
+# runtime-config.js is a public file: its HTTP status, size and hash are recorded, so a failure says what was served.
+RC_FILE="$(mktemp)"
+RC_META="$(curl -sS --max-time 20 -o "$RC_FILE" -w '%{http_code} %{content_type} %{size_download}' "${PREVIEW_URL}/js/runtime-config.js" || echo "curl-failed")"
+RC_SUM="$(sha256sum "$RC_FILE" | cut -c1-16)"; LOCAL_SUM="$(sha256sum public/js/runtime-config.js | cut -c1-16)"
+echo "runtime-config.js served: ${RC_META}; sha256 ${RC_SUM} (repository ${LOCAL_SUM})"
+[[ "${RC_META%% *}" == "200" ]] && grep -q "$WORKER_NAME" "$RC_FILE" || { rm -f "$RC_FILE"; die "runtime-config does not route to the preview Worker (served: ${RC_META}; sha256 ${RC_SUM}, repository ${LOCAL_SUM})"; }
+rm -f "$RC_FILE"
 curl -fsS --max-time 20 "${PREVIEW_URL}/version.json"; echo
 
 echo "PREVIEW_URL=${PREVIEW_URL}"
