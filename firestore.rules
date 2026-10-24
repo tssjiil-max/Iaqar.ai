@@ -108,7 +108,9 @@ service cloud.firestore {
       allow read: if isOfficeMember(officeId);
       allow create: if isPlatformAdmin() && validOfficeProfile();
       allow update: if canManage(officeId) && validOfficeProfile() && !touchesPlatformControlledOfficeKeys();
-      allow delete: if isOfficeOwner(officeId) || isPlatformAdmin();
+      // D-023: no browser deletes an office (owner and platform admin included): it would orphan members,
+      // records, deals and audit logs. Closing an office is a platform action through the Worker.
+      allow delete: if false;
 
       // B-01 (D-020): roles and membership change only through the Worker — /os/members/access (the
       // office owner, audited) and /admin/office/owner-transfer (platform admin, audited).
@@ -481,7 +483,8 @@ service cloud.firestore {
       allow create: if canManage(officeId)
         && !request.resource.data.keys().hasAny(platformControlledOfficeKeys());
       allow update: if canManage(officeId) && !touchesPlatformControlledOfficeKeys();
-      allow delete: if canManage(officeId);
+      // D-023: taking an office off the public site is the platform's decision, not a browser delete.
+      allow delete: if false;
     }
 
     match /brokerApplications/{applicationId} {

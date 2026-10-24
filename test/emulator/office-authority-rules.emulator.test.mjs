@@ -148,3 +148,27 @@ test("publicOffices: no browser changes the mirrored approval or account status"
   }
   await assertFails(setDoc(doc(as("owner-b"), "publicOffices/office-b"), { officeId: "office-b", officeName: "x", accountStatus: "active" }));
 });
+
+// ── Office deletion (D-023): never from a browser ─────────────────────────────────────────────────
+// Deleting offices/{id} would orphan members, records, deals and audit logs; deleting publicOffices/{id}
+// takes the office off the public site. Closing an office is a platform decision through the Worker.
+test("office doc: no browser deletes the office — owner, manager, broker and platform admin alike", async () => {
+  for (const db of [as("owner-a"), as("manager-a"), as("broker-a"), asPlatformAdmin(), as("owner-b")]) {
+    await assertFails(deleteDoc(doc(db, "offices/office-a")));
+  }
+  const snap = await assertSucceeds(getDoc(doc(as("owner-a"), "offices/office-a")));
+  if (!snap.exists()) throw new Error("office document must still exist");
+});
+
+test("publicOffices: no browser deletes the public office profile", async () => {
+  for (const db of [as("owner-a"), as("manager-a"), as("broker-a"), asPlatformAdmin(), as("owner-b")]) {
+    await assertFails(deleteDoc(doc(db, "publicOffices/office-a")));
+  }
+});
+
+test("after the delete lock, the owner still reads the office, its members and saves the profile", async () => {
+  await assertSucceeds(getDoc(doc(as("owner-a"), "offices/office-a")));
+  await assertSucceeds(getDoc(doc(as("owner-a"), "offices/office-a/members/broker-a")));
+  await assertSucceeds(setDoc(doc(as("owner-a"), "offices/office-a"), { brokerName: "سالم", updatedAt: serverTimestamp() }, { merge: true }));
+  await assertSucceeds(setDoc(doc(as("manager-a"), "publicOffices/office-a"), { officeName: "مكتب الأول", updatedAt: serverTimestamp() }, { merge: true }));
+});
