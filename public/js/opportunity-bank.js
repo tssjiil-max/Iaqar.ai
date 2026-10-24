@@ -883,13 +883,15 @@ function renderList() {
     if (loadMoreBtn) loadMoreBtn.hidden = !showLoadMore;
   }
 
-  list.innerHTML = "";
+  const next = document.createElement("div");
   const summaryNode = document.createElement("div");
   summaryNode.innerHTML = renderSummaryHtml(summary);
-  list.appendChild(summaryNode.firstElementChild || summaryNode);
-  const bodyWrap = document.createElement("div");
-  bodyWrap.innerHTML = bodyHtml;
-  while (bodyWrap.firstChild) list.appendChild(bodyWrap.firstChild);
+  next.appendChild(summaryNode.firstElementChild || summaryNode);
+  next.insertAdjacentHTML("beforeend", bodyHtml);
+  // The Daily Tasks feed re-sends its data on every listener update. When the list on screen is already exactly
+  // this one, it is left as it is: the card a broker is tapping is not replaced under the tap. Any difference —
+  // new data, another filter, a card opened or edited in place — rebuilds the list as before.
+  if (list.innerHTML !== next.innerHTML) list.replaceChildren(...next.childNodes);
   bindSummaryChips(list);
 }
 

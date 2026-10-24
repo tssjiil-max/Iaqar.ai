@@ -258,7 +258,13 @@ async function signInBrowser(page, customToken) {
     localStorage.setItem("iaqar.officeId", officeId);
   }, { token: customToken, officeId: QA_OFFICE_ID });
   await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
-  await page.waitForTimeout(5000);
+  await waitForSignedInShell(page);
+}
+
+/** The office shell is up for this QA user: Firebase restored the session and the Bank can be opened (tab or API). */
+async function waitForSignedInShell(page) {
+  await page.waitForFunction(() => Boolean(window.firebase?.apps?.length && window.firebase.auth().currentUser)
+    && Boolean(document.getElementById("mainTabOpportunities") || document.getElementById("oppTabBank") || window.IAQAR?.openOpportunityBank), null, { timeout: 60000 });
 }
 
 async function openBankTab(page) {
@@ -274,7 +280,8 @@ async function openBankTab(page) {
       window.IAQAR?.openOpportunityBank?.();
     });
   }
-  await page.waitForTimeout(500);
+  // Either the Bank tabs appear or, for a new office, the onboarding modal that covers them.
+  await page.locator("#oppTabBank:visible, #platformOpportunityOnboarding:visible").first().waitFor({ state: "visible", timeout: 30000 });
   // A new office sees the platform onboarding modal, which covers the tabs.
   // Dismiss it through its own button, exactly as a broker would.
   const onboarding = page.locator("#platformOpportunityOnboarding");
@@ -352,7 +359,11 @@ async function clickAndVerify(page, target) {
   const action = card.locator(`[data-opportunity-primary-action="review_match"][data-match-id="${target.matchId}"]`).first();
   await action.click();
   await page.locator(`.cv2-match-workspace [data-cv2-exec-task][data-match-id="${target.matchId}"] [data-match-negotiation-page]`).waitFor({ state: "visible", timeout: 15000 });
-  await page.waitForTimeout(300);
+  await page.waitForFunction((id) => {
+    const sections = [...document.querySelectorAll(".cv2-match-workspace [data-match-section]")].map((node) => node.dataset.matchSection);
+    return document.querySelector(".cv2-match-workspace [data-cv2-exec-task]")?.getAttribute("data-match-id") === id
+      && ["property", "agreement", "parties", "broker"].every((section) => sections.includes(section));
+  }, target.matchId, { timeout: 15000 });
 
   const events = await page.evaluate(() => ({
     openRequests: window.__qaBankOperationalBridge?.openRequests || [],
@@ -443,12 +454,11 @@ async function main() {
       matchId: otherMatch.matchId
     });
     assertReflected(differentTarget, otherMatch, "Different match not reflected");
-    await page.waitForTimeout(1500);
     const differentMatch = await clickAndVerify(page, differentTarget);
 
     markStage("refresh");
     await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(5000);
+    await waitForSignedInShell(page);
     await openBankTab(page);
     await page.locator('[data-bank-action-filter="matches"]').click();
     const afterRefresh = [];
