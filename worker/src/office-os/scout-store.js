@@ -22,7 +22,9 @@ import { UNAVAILABLE_SET, isOpenForMatching } from "../../../public/os/domain/va
 export const SCOUT_LIMITS = Object.freeze({
   activeTasks: 40, autoTasks: 25, customTasks: 15, index: 400, board: 40, seen: 800, records: 300,
   officesPerTick: 6, leaseMinutes: 4, syncHours: 6, recordCheckMinutes: 60, generalPushesPer6h: 2,
-  feedChars: 12000, feedPerHour: 12, opportunityTtlDays: 45, taskTtlDays: 14, aiPerOfficeDay: 40, runsKept: 60, livePerOfficeDay: 40
+  feedChars: 12000, feedPerHour: 12, opportunityTtlDays: 45, taskTtlDays: 14, aiPerOfficeDay: 40, runsKept: 60, livePerOfficeDay: 40,
+  // Alerts waiting to be delivered (saved with the round's state, delivered after it): kept, tries, per round.
+  outbox: 50, alertAttempts: 3, alertsPerRound: 12, alertOutboxHours: 24
 });
 
 export const scoutAvailable = (env = {}) => String(env?.OPPORTUNITY_SCOUT || "").toLowerCase() === "enabled";
@@ -42,13 +44,13 @@ export async function loadSettings(ctx, officeId, office = null) {
 
 // ------------------------------------------------------------------ the office's working memory
 
-const emptyState = () => ({ records: [], recordsSyncedAt: "", index: [], board: [], seen: {}, usage: {}, health: {} });
+const emptyState = () => ({ records: [], recordsSyncedAt: "", index: [], board: [], seen: {}, usage: {}, health: {}, outbox: [] });
 
 function decodeState(doc) {
   if (!doc) return emptyState();
   return {
     records: parse(doc.recordsJson, []), recordsSyncedAt: String(doc.recordsSyncedAt || ""), index: parse(doc.indexJson, []), board: parse(doc.boardJson, []),
-    seen: parse(doc.seenJson, {}), usage: parse(doc.usageJson, {}), health: parse(doc.healthJson, {})
+    seen: parse(doc.seenJson, {}), usage: parse(doc.usageJson, {}), health: parse(doc.healthJson, {}), outbox: parse(doc.outboxJson, [])
   };
 }
 
@@ -59,7 +61,8 @@ function encodeState(officeId, state, now) {
     officeId, schemaVersion: 1,
     recordsJson: JSON.stringify((state.records || []).slice(0, SCOUT_LIMITS.records)), recordsSyncedAt: state.recordsSyncedAt || "",
     indexJson: JSON.stringify((state.index || []).slice(0, SCOUT_LIMITS.index)), boardJson: JSON.stringify((state.board || []).slice(0, SCOUT_LIMITS.board)),
-    seenJson: JSON.stringify(seen), usageJson: JSON.stringify(state.usage || {}), healthJson: JSON.stringify(state.health || {}), updatedAt: now
+    seenJson: JSON.stringify(seen), usageJson: JSON.stringify(state.usage || {}), healthJson: JSON.stringify(state.health || {}),
+    outboxJson: JSON.stringify((state.outbox || []).slice(-SCOUT_LIMITS.outbox)), updatedAt: now
   };
 }
 
