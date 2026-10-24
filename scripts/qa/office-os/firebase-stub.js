@@ -32,25 +32,34 @@
     const r = await fetch("/harness/write", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path, delete: true }) });
     if (!r.ok) throw Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
   }
-  function poll(load, next) {
+  // Test-only network model. Off unless a test defines window.__harnessNetwork(path, kind) → { delayMs, fail }:
+  // kind "get" is a one-off read, "first-snapshot" a listener's first answer. Lets a test hold a read in flight
+  // or change the order in which listeners answer, as a real network does.
+  async function network(path, kind) {
+    const model = typeof window.__harnessNetwork === "function" ? window.__harnessNetwork(path, kind) : null;
+    if (model?.delayMs) await new Promise((resolve) => setTimeout(resolve, model.delayMs));
+    if (model?.fail) throw Object.assign(new Error("The service is currently unavailable."), { code: "unavailable" });
+  }
+  function poll(load, next, path = "") {
     let last = null; let stopped = false;
     const tick = async () => {
       if (stopped) return;
       try { const value = await load(); const key = JSON.stringify(value.__key); if (key !== last) { last = key; next(value); } } catch (_) { /* ignore */ }
       if (!stopped) setTimeout(tick, 500);
     };
-    tick();
+    const model = typeof window.__harnessNetwork === "function" ? window.__harnessNetwork(path, "first-snapshot") : null;
+    if (model?.delayMs) setTimeout(tick, model.delayMs); else tick();
     return () => { stopped = true; };
   }
   function docRef(path) {
     return {
       id: path.split("/").pop(), path,
-      async get() { return snap(path, await (await fetch(`/store/get?path=${encodeURIComponent(path)}`)).json()); },
+      async get() { await network(path, "get"); return snap(path, await (await fetch(`/store/get?path=${encodeURIComponent(path)}`)).json()); },
       collection(name) { return query(`${path}/${name}`); },
       async set(data, opts = {}) { await write(path, data, opts.merge); },
       async update(data) { await write(path, data, true); },
       async delete() { await remove(path); },
-      onSnapshot(next) { return poll(async () => { const s = await this.get(); s.__key = s.data() || null; return s; }, (s) => next(s)); }
+      onSnapshot(next) { return poll(async () => { const s = snap(path, await (await fetch(`/store/get?path=${encodeURIComponent(path)}`)).json()); s.__key = s.data() || null; return s; }, (s) => next(s), path); }
     };
   }
   function query(path, filters = [], orders = [], lim = null) {
@@ -60,15 +69,16 @@
       where(f, op, v) { return query(path, [...filters, [String(f), op, v]], orders, lim); },
       orderBy(f, dir = "asc") { return query(path, filters, [...orders, [String(f), dir]], lim); },
       limit(n) { return query(path, filters, orders, n); },
-      async get() {
+      async get() { await network(path, "get"); return this.list(); },
+      onSnapshot(next) { return poll(() => this.list(), (s) => next(s), path); },
+      async list() {
         let rows = await (await fetch(`/store/list?path=${encodeURIComponent(path)}`)).json();
         rows = rows.filter((row) => filters.every((f) => matches(row, f)));
         for (const [f, dir] of [...orders].reverse()) rows.sort((a, b) => (dir === "desc" ? -1 : 1) * cmp(String(a[f] ?? ""), String(b[f] ?? "")));
         if (lim) rows = rows.slice(0, lim);
         const docs = rows.map((row) => snap(`${path}/${row.id}`, row));
         return { docs, empty: !docs.length, size: docs.length, forEach: (fn) => docs.forEach(fn), __key: rows };
-      },
-      onSnapshot(next) { return poll(() => this.get(), (s) => next(s)); }
+      }
     };
   }
   // Minimal transaction: reads go first, writes are applied in order at the end (enough for the name claim).
