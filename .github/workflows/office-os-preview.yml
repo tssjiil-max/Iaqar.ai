@@ -60,6 +60,31 @@ jobs:
           if [ -f "$RUNNER_TEMP/office-os-live/live-report.json" ]; then
             node -e 'const r=require(process.argv[1]);const ok=r.checks.filter(c=>c.ok).length;console.log(`- Live checks: ${ok}/${r.checks.length}`);for(const c of r.checks.filter(c=>!c.ok))console.log(`  - FAIL: ${c.name} — ${c.detail}`);console.log(`- FCM: ${JSON.stringify(r.fcm)}`);console.log(`- Gemini: ${JSON.stringify(r.gemini)}`)' "$RUNNER_TEMP/office-os-live/live-report.json" >> "$GITHUB_STEP_SUMMARY"
           fi
+      # QA branch for PR #262 + #263 only (not part of either PR): the check that failed on Staging run
+      # 40057732450 — «العروض والطلبات» → «مراجعة التطابق» on both sides, another match, after refresh —
+      # against this preview, five times in a row. Dedicated QA office, run-scoped fixtures, removed after.
+      - name: «العروض والطلبات» → «مراجعة التطابق» on the preview, 5 runs (PR #262 + #263)
+        if: ${{ !cancelled() }}
+        run: |
+          failed=0
+          for i in 1 2 3 4 5; do
+            if STAGING_HOSTING_URL="$PREVIEW_URL" SCREENSHOT_DIR="$RUNNER_TEMP/bank-preview/run-$i" node scripts/staging-bank-card-click-verify.mjs > "$RUNNER_TEMP/bank-preview-run-$i.log" 2>&1; then
+              echo "run $i: PASS"
+            else
+              echo "run $i: FAIL"; failed=$((failed+1)); tail -40 "$RUNNER_TEMP/bank-preview-run-$i.log"
+            fi
+          done
+          echo "- «العروض والطلبات» → «مراجعة التطابق»: $((5-failed))/5 runs passed" >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/bank-preview" && cp "$RUNNER_TEMP"/bank-preview-run-*.log "$RUNNER_TEMP/bank-preview/" || true
+          [ "$failed" -eq 0 ]
+      - name: Upload «العروض والطلبات» preview evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bank-preview-${{ github.run_id }}
+          path: ${{ runner.temp }}/bank-preview
+          if-no-files-found: warn
+          retention-days: 14
       - name: «الاستقبال التلقائي» live proof on the preview (isolated QA offices)
         if: ${{ !cancelled() }}
         run: OUT_DIR="$RUNNER_TEMP/scout-ingest-live" node scripts/qa/office-os/scout-ingest-live.e2e.mjs
