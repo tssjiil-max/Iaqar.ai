@@ -130,6 +130,9 @@ jobs:
       - name: «العروض والطلبات» opened again during a running load (cards stay, «مراجعة التطابق» opens the right match)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/bank-activation" node scripts/qa/office-os/bank-activation.e2e.mjs
+      - name: Operations projected before the operations domain loads keep «مراجعة التطابق»
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/operations-projection" node scripts/qa/office-os/operations-projection.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
