@@ -99,6 +99,16 @@
       listeners.forEach((cb) => cb(auth.currentUser));
       return { user: auth.currentUser };
     },
+    /** The Worker's custom token (D-021): its payload names the uid; the harness trusts its own Worker. */
+    async signInWithCustomToken(token) {
+      let uid = "";
+      try { uid = JSON.parse(atob(String(token).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).uid || ""; } catch (_) { /* invalid */ }
+      if (!uid) throw Object.assign(new Error("invalid custom token"), { code: "auth/invalid-custom-token" });
+      try { localStorage.setItem(uidKey, uid); } catch (_) { /* ignore */ }
+      auth.currentUser = makeUser(uid);
+      listeners.forEach((cb) => cb(auth.currentUser));
+      return { user: auth.currentUser };
+    },
     async signInWithEmailAndPassword(email, password) {
       const r = await fetch(`/harness/signin?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
       if (!r.ok) throw Object.assign(new Error("wrong password"), { code: "auth/wrong-password" });

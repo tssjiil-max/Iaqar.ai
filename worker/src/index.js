@@ -1726,75 +1726,109 @@ async function lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, 
   };
 }
 
+// ── Phone login (D-021) ────────────────────────────────────────────────────────────────────────────
+// One failure answer for every reason, padded to the same minimum time, and guessing limits per number
+// (across IPs) and per IP (across numbers, unknown ones included). Interim control: it does not prove
+// possession of the phone number (no SMS/OTP on the free tier).
+const LOGIN_WINDOW_MS = 15 * 60_000;
+const LOGIN_PHONE_MAX_FAILURES = 10;
+const LOGIN_IP_MAX_FAILURES = 20;
+const RESET_IP_MAX_REQUESTS = 10;
+const LOGIN_FAILURE_MESSAGE = "رقم الجوال أو كلمة المرور غير صحيحة";
+
+function loginFailureFloorMs(env) {
+  const configured = Number(env.LOGIN_FAILURE_FLOOR_MS);
+  return Number.isFinite(configured) && configured >= 0 ? Math.min(configured, 5000) : 1200;
+}
+
+async function waitForFloor(startedAt, floorMs) {
+  const left = floorMs - (Date.now() - startedAt);
+  if (left > 0) await new Promise(resolve => setTimeout(resolve, left));
+}
+
+/** loginRateLimits/{sha256(key)} — Worker-only (no rules match). Keys: "phone|+9665…", "ip|…", "reset-ip|…". */
+async function readAttemptBucket({ projectId, accessToken, key }) {
+  const segments = ["loginRateLimits", await sha256Hex(key)];
+  const doc = await getFirestoreDocument({ projectId, segments, accessToken, allowMissing: true });
+  return { segments, state: doc ? firestoreFieldsToJs(doc.fields || {}) : {} };
+}
+
+function attemptBucketBlocked(bucket, now = Date.now()) {
+  const blockedUntil = bucket.state.blockedUntil ? Date.parse(bucket.state.blockedUntil) : 0;
+  return blockedUntil > now;
+}
+
+async function countAttempt({ projectId, accessToken, bucket, max }) {
+  const now = new Date();
+  const windowStartedAt = bucket.state.windowStartedAt ? Date.parse(bucket.state.windowStartedAt) : 0;
+  const inWindow = windowStartedAt && now.getTime() - windowStartedAt < LOGIN_WINDOW_MS;
+  const failureCount = inWindow ? Number(bucket.state.failureCount || 0) + 1 : 1;
+  await setFirestoreDocument({ projectId, segments: bucket.segments, accessToken, fields: {
+    failureCount: firestoreInteger(failureCount),
+    windowStartedAt: firestoreTimestamp(inWindow ? new Date(windowStartedAt) : now),
+    blockedUntil: firestoreTimestamp(failureCount >= max ? new Date(now.getTime() + LOGIN_WINDOW_MS) : now),
+    updatedAt: firestoreTimestamp(now)
+  }});
+}
+
+async function clearAttemptBucket({ projectId, accessToken, bucket }) {
+  const now = new Date();
+  await setFirestoreDocument({ projectId, segments: bucket.segments, accessToken, fields: {
+    failureCount: firestoreInteger(0), windowStartedAt: firestoreTimestamp(now),
+    blockedUntil: firestoreTimestamp(now), updatedAt: firestoreTimestamp(now)
+  }});
+}
+
+/** Retired (D-021): it returned the account's real email and officeId to anyone who knew a phone number. */
 async function handlePhoneLoginResolve(request, env, requestId) {
-  assertFirebaseSecrets(env);
-  const body = await request.json().catch(() => ({}));
-  const phone = normalizeLoginPhone(body.phone);
-  if (!phone) {
-    return jsonResponse({
-      ok: false, error: "invalid_login", reason: "invalid_input",
-      message: "رقم الجوال غير صحيح", requestId
-    }, 401);
-  }
-  const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
-  const accessToken = await getGoogleAccessToken(env);
-  const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
-  if (lookup.error) return lookup.error;
-  return jsonResponse({
-    ok: true,
-    loginEmail: lookup.loginEmail,
-    officeId: firestoreOfficeId(lookup.directory.officeId),
-    requestId
-  });
+  return jsonResponse({ ok: false, error: "endpoint_retired", message: "حدّث الصفحة ثم سجّل الدخول من جديد", requestId }, 410);
 }
 
 async function handlePhoneLogin(request, env, requestId) {
   assertFirebaseSecrets(env);
+  const startedAt = Date.now();
   const body = await request.json().catch(() => ({}));
   const phone = normalizeLoginPhone(body.phone);
   const password = cleanText(body.password, 200);
-  const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
-  if (!phone || password.length < 8 || !apiKey) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  // The server's own key first. Whatever key is used, only an ID token issued for THIS project counts (below).
+  const apiKey = cleanText(env.FIREBASE_WEB_API_KEY || body.apiKey, 200);
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
   const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
-  const rateHash = await sha256Hex(`${phone}|${ip}`);
-  const rateSegments = ["loginRateLimits", rateHash];
-  const rateDoc = await getFirestoreDocument({ projectId, segments: rateSegments, accessToken, allowMissing: true });
-  const rate = rateDoc ? firestoreFieldsToJs(rateDoc.fields || {}) : {};
-  const blockedUntil = rate.blockedUntil ? Date.parse(rate.blockedUntil) : 0;
-  if (blockedUntil > Date.now()) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
+  const ipBucket = await readAttemptBucket({ projectId, accessToken, key: `ip|${ip}` });
+  const phoneBucket = phone ? await readAttemptBucket({ projectId, accessToken, key: `phone|${phone}` }) : null;
+
+  const refuse = async () => {
+    await waitForFloor(startedAt, loginFailureFloorMs(env));
+    return jsonResponse({ ok: false, error: "invalid_login", message: LOGIN_FAILURE_MESSAGE, requestId }, 401);
+  };
+  const refuseAndCount = async () => {
+    await countAttempt({ projectId, accessToken, bucket: ipBucket, max: LOGIN_IP_MAX_FAILURES });
+    if (phoneBucket) await countAttempt({ projectId, accessToken, bucket: phoneBucket, max: LOGIN_PHONE_MAX_FAILURES });
+    return refuse();
+  };
+
+  if (attemptBucketBlocked(ipBucket) || (phoneBucket && attemptBucketBlocked(phoneBucket))) return refuse();
+  if (!phone || !password || !apiKey) return refuseAndCount();
+
   const lookup = await lookupActivePhoneLoginDirectory({ projectId, phone, accessToken, requestId });
-  if (lookup.error) {
-    const errorResponse = lookup.error;
-    if (typeof errorResponse.json === "function") return errorResponse;
-    throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  }
+  if (lookup.error) return refuseAndCount();
   const directory = lookup.directory;
-  const loginEmail = lookup.loginEmail;
+
   const signInResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: loginEmail, password, returnSecureToken: true })
+    body: JSON.stringify({ email: lookup.loginEmail, password, returnSecureToken: true })
   });
-  if (!signInResponse.ok) {
-    const windowStartedAt = rate.windowStartedAt ? Date.parse(rate.windowStartedAt) : 0;
-    const inWindow = windowStartedAt && Date.now() - windowStartedAt < 15 * 60_000;
-    const failureCount = inWindow ? Number(rate.failureCount || 0) + 1 : 1;
-    const now = new Date();
-    await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
-      failureCount: firestoreInteger(failureCount),
-      windowStartedAt: firestoreTimestamp(inWindow ? new Date(windowStartedAt) : now),
-      blockedUntil: firestoreTimestamp(failureCount >= 5 ? new Date(Date.now() + 15 * 60_000) : now),
-      updatedAt: firestoreTimestamp(now)
-    }});
-    throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  }
-  const signedIn = await signInResponse.json();
-  if (signedIn.localId !== directory.uid) throw appError("invalid_login", 401, "رقم الجوال أو كلمة المرور غير صحيحة");
-  await setFirestoreDocument({ projectId, segments: rateSegments, accessToken, fields: {
-    failureCount: firestoreInteger(0), windowStartedAt: firestoreTimestamp(new Date()),
-    blockedUntil: firestoreTimestamp(new Date()), updatedAt: firestoreTimestamp(new Date())
-  }});
+  if (!signInResponse.ok) return refuseAndCount();
+  const signedIn = await signInResponse.json().catch(() => ({}));
+  // A key from another Firebase project would let that project's own user (same uid and email) "pass".
+  // Google signs every project's tokens with the same keys, so the audience/issuer check is what binds it.
+  let claims;
+  try { claims = await verifyFirebaseIdToken(String(signedIn.idToken || ""), projectId); }
+  catch (_) { return refuseAndCount(); }
+  if (claims.sub !== directory.uid || signedIn.localId !== directory.uid) return refuseAndCount();
+
+  await clearAttemptBucket({ projectId, accessToken, bucket: phoneBucket });
   const customToken = await createFirebaseCustomToken({
     clientEmail: env.FIREBASE_CLIENT_EMAIL, privateKey: env.FIREBASE_PRIVATE_KEY,
     privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
@@ -1809,32 +1843,43 @@ async function handlePhoneLogin(request, env, requestId) {
   return jsonResponse({ ok: true, customToken, officeId: directory.officeId, requestId });
 }
 
+/** The same answer for every number (no masked email): whether a number is registered is not disclosed. */
 async function handleForgotPassword(request, env, requestId) {
   assertFirebaseSecrets(env);
+  const startedAt = Date.now();
+  const reply = async () => {
+    await waitForFloor(startedAt, loginFailureFloorMs(env));
+    return jsonResponse({ ok: true, requestId });
+  };
   const body = await request.json().catch(() => ({}));
   const phone = normalizeLoginPhone(body.phone);
-  const apiKey = cleanText(body.apiKey || env.FIREBASE_WEB_API_KEY, 200);
-  const generic = { ok: true, requestId };
-  if (!phone || !apiKey) return jsonResponse(generic);
+  const apiKey = cleanText(env.FIREBASE_WEB_API_KEY || body.apiKey, 200);
+  if (!phone || !apiKey) return reply();
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
+  const ip = cleanText(request.headers.get("CF-Connecting-IP") || "unknown", 80);
+  const ipBucket = await readAttemptBucket({ projectId, accessToken, key: `reset-ip|${ip}` });
+  if (attemptBucketBlocked(ipBucket)) return reply();
+  await countAttempt({ projectId, accessToken, bucket: ipBucket, max: RESET_IP_MAX_REQUESTS });
+
   const phoneHash = await sha256Hex(phone);
   const { directoryDoc } = await resolveLoginDirectory({ projectId, phone, accessToken });
-  if (!directoryDoc) return jsonResponse(generic);
+  if (!directoryDoc) return reply();
   const directory = firestoreFieldsToJs(directoryDoc.fields || {});
-  if (directory.active !== true || !directory.email) return jsonResponse(generic);
+  if (directory.active !== true || !directory.email) return reply();
   const cooldownDoc = await getFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken, allowMissing: true });
   const cooldown = cooldownDoc ? firestoreFieldsToJs(cooldownDoc.fields || {}) : {};
   const previous = cooldown.lastRequestedAt ? Date.parse(cooldown.lastRequestedAt) : 0;
-  if (previous && Date.now() - previous < 60_000) return jsonResponse({ ...generic, maskedEmail: maskEmail(directory.email), cooldown: true });
+  if (previous && Date.now() - previous < 60_000) return reply();
   const resetResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(apiKey)}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ requestType: "PASSWORD_RESET", email: directory.email })
   });
-  if (!resetResponse.ok) return jsonResponse(generic);
-  await setFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken,
-    fields: { lastRequestedAt: firestoreTimestamp(new Date()), phoneLast4: firestoreString(phone.slice(-4)) } });
-  return jsonResponse({ ...generic, maskedEmail: maskEmail(directory.email) });
+  if (resetResponse.ok) {
+    await setFirestoreDocument({ projectId, segments: ["passwordResetCooldown", phoneHash], accessToken,
+      fields: { lastRequestedAt: firestoreTimestamp(new Date()), phoneLast4: firestoreString(phone.slice(-4)) } });
+  }
+  return reply();
 }
 
 

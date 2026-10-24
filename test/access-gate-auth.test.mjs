@@ -35,10 +35,17 @@ test("access-gate exposes required auth diagnostic events", () => {
   }
 });
 
-test("access-gate uses browser email/password login via phone-login-resolve", () => {
-  assert.ok(accessGate.includes("/auth/phone-login-resolve"));
-  assert.ok(accessGate.includes("signInWithEmailAndPassword"));
-  assert.equal(accessGate.includes("signInWithCustomToken"), false);
+// D-021: the email never reaches the browser — the Worker checks phone + password and returns a custom token.
+test("access-gate signs in through the Worker phone login and a custom token", () => {
+  const loginBlock = accessGate.slice(
+    accessGate.indexOf('gate.querySelector("#loginForm").onsubmit'),
+    accessGate.indexOf("function forgotPasswordForm")
+  );
+  assert.ok(loginBlock.includes("/auth/phone-login`"));
+  assert.ok(loginBlock.includes("signInWithCustomToken"));
+  assert.equal(accessGate.includes("/auth/phone-login-resolve"), false);
+  assert.equal(loginBlock.includes("signInWithEmailAndPassword"), false);
+  assert.equal(loginBlock.includes("loginEmail"), false);
 });
 
 test("access-gate auth guard distinguishes loading from unauthenticated", () => {
@@ -61,7 +68,7 @@ test("access-gate sets LOCAL persistence before sign-in", () => {
     accessGate.indexOf("function forgotPasswordForm")
   );
   const persistenceIdx = loginBlock.indexOf("setPersistence");
-  const signInIdx = loginBlock.indexOf("signInWithEmailAndPassword");
+  const signInIdx = loginBlock.indexOf("signInWithCustomToken");
   assert.ok(persistenceIdx > 0 && signInIdx > persistenceIdx);
   assert.ok(loginBlock.includes("Auth.Persistence.LOCAL"));
 });
@@ -95,9 +102,11 @@ test("access-gate routes signOut through diagnostic wrapper", () => {
   assert.equal((accessGate.match(/firebase\.auth\(\)\.signOut\(\)/g) || []).length, 1);
 });
 
-test("worker exposes phone-login-resolve endpoint", () => {
+test("worker retires phone-login-resolve (410) and keeps the server phone login", () => {
   assert.ok(worker.includes('"/auth/phone-login-resolve"'));
-  assert.ok(worker.includes("handlePhoneLoginResolve"));
+  const retired = worker.slice(worker.indexOf("async function handlePhoneLoginResolve"), worker.indexOf("async function handlePhoneLogin("));
+  assert.ok(retired.includes("endpoint_retired") && retired.includes("410"));
+  assert.equal(retired.includes("loginEmail"), false);
   assert.ok(worker.includes("lookupActivePhoneLoginDirectory"));
 });
 

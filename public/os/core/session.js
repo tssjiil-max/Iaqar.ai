@@ -68,18 +68,22 @@ export const ACCESS_MESSAGES = Object.freeze({
   signed_out: "سجل دخول المكتب للمتابعة."
 });
 
-/** Phone + password → resolve the office login, then Firebase email/password sign-in. */
+/**
+ * Phone + password → the Worker checks both and returns a custom token (D-021); the account's email never
+ * reaches the browser. Every refusal is the same message, whatever the reason.
+ */
 export async function signInOffice(phone, password) {
   const digits = whatsappDigits(phone);
   if (!digits) throw new ApiError("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05");
   if (!password) throw new ApiError("أدخل كلمة المرور");
-  let resolved;
+  let signedIn;
   try {
-    const response = await fetch(`${workerBase()}/auth/phone-login-resolve`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: `0${digits.slice(3)}` })
+    const response = await fetch(`${workerBase()}/auth/phone-login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: `0${digits.slice(3)}`, password, apiKey: auth().app.options.apiKey })
     });
-    resolved = await response.json().catch(() => ({}));
-    if (!response.ok || !resolved.loginEmail || !resolved.officeId) {
+    signedIn = await response.json().catch(() => ({}));
+    if (!response.ok || !signedIn.customToken || !signedIn.officeId) {
       throw new ApiError("رقم الجوال أو كلمة المرور غير صحيحة، أو الحساب غير مفعّل.");
     }
   } catch (error) {
@@ -90,11 +94,11 @@ export async function signInOffice(phone, password) {
     await auth().setPersistence(window.firebase.auth.Auth.Persistence.LOCAL);
   } catch (_) { /* default persistence */ }
   try {
-    await auth().signInWithEmailAndPassword(resolved.loginEmail, password);
+    await auth().signInWithCustomToken(signedIn.customToken);
   } catch (_) {
     throw new ApiError("رقم الجوال أو كلمة المرور غير صحيحة، أو الحساب غير مفعّل.");
   }
-  const access = await loadOfficeAccess(resolved.officeId);
+  const access = await loadOfficeAccess(signedIn.officeId);
   if (!access.ok) {
     await auth().signOut().catch(() => {});
     throw new ApiError(ACCESS_MESSAGES[access.reason] || ACCESS_MESSAGES.not_member);

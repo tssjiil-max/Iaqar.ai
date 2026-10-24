@@ -347,12 +347,6 @@
     if (detail.reason === "rate_limited" || detail.reason === "too_many_requests") {
       return "محاولات كثيرة — انتظر قليلًا ثم أعد المحاولة.";
     }
-    if (detail.reason === "directory_missing") {
-      return isStaging ? "فشل الدخول: رقم الجوال غير مسجل في loginDirectory." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
-    }
-    if (detail.reason === "directory_inactive") {
-      return isStaging ? "فشل الدخول: سجل loginDirectory غير مفعّل أو ناقص." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
-    }
     if (stage === "password_sign_in") {
       if (detail.code === "auth/wrong-password" || detail.code === "auth/invalid-credential" || detail.code === "auth/user-not-found") {
         return isStaging ? "فشل التحقق من كلمة المرور في Firebase Auth." : "بيانات الدخول غير صحيحة أو الحساب غير مخوّل لهذا المكتب.";
@@ -1353,48 +1347,39 @@
         console.warn("[iaqar] auth persistence", error);
       }
       try {
+        // D-021: the Worker checks phone + password and returns a custom token; the email never reaches the browser.
+        const password = String(fields.get("password") || "");
         loginPerfMark("resolve_start");
-        const resolveResponse = await fetch(`${resolveWorkerBase()}/auth/phone-login-resolve`, {
+        const loginResponse = await fetch(`${resolveWorkerBase()}/auth/phone-login`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: normalizeLoginPhone(phone) })
+          body: JSON.stringify({ phone: normalizeLoginPhone(phone), password, apiKey: firebase.app().options.apiKey })
         });
         loginPerfMark("resolve_done");
-        loginPerfMeasure("phone_resolve", "resolve_start", "resolve_done");
-        const resolvePayload = await resolveResponse.json().catch(() => ({}));
-        if (!resolveResponse.ok || !resolvePayload.loginEmail || !resolvePayload.officeId) {
-          authDiag("AUTH_GUARD_DECISION", {
-            decision: "login_failed",
-            stage: "phone_resolve",
-            reason: resolvePayload.reason || "resolve_failed"
-          });
-          showStatus(loginFailureMessage("phone_resolve", { reason: resolvePayload.reason || "" }));
+        loginPerfMeasure("phone_login", "resolve_start", "resolve_done");
+        const loginPayload = await loginResponse.json().catch(() => ({}));
+        if (!loginResponse.ok || !loginPayload.customToken || !loginPayload.officeId) {
+          authDiag("AUTH_GUARD_DECISION", { decision: "login_failed", stage: "phone_login", status: loginResponse.status });
+          showStatus(loginFailureMessage("phone_login"));
           return;
         }
-        authDiag("OFFICE_ID_RESULT", { officeId: resolvePayload.officeId });
-        const password = String(fields.get("password") || "");
+        authDiag("OFFICE_ID_RESULT", { officeId: loginPayload.officeId });
         let signedInUser;
         try {
           loginPerfMark("sign_in_start");
-          const credential = await firebase.auth().signInWithEmailAndPassword(resolvePayload.loginEmail, password);
+          const credential = await firebase.auth().signInWithCustomToken(loginPayload.customToken);
           loginPerfMark("sign_in_done");
           loginPerfMeasure("firebase_auth", "sign_in_start", "sign_in_done");
           signedInUser = credential.user;
         } catch (error) {
-          console.warn("[iaqar] email/password sign-in", error);
-          await authSignOut("login_password_rejected", error && error.code);
+          console.warn("[iaqar] custom-token sign-in", error && error.code);
+          await authSignOut("login_token_rejected", error && error.code);
           showStatus(loginFailureMessage("password_sign_in", { code: error && error.code }));
           return;
         }
-        authDiag("SIGN_IN_SUCCESS", {
-          uid: signedInUser?.uid || null,
-          email: signedInUser?.email || resolvePayload.loginEmail
-        });
-        authDiag("AUTH_LOGIN_SUCCESS", {
-          uid: signedInUser?.uid || null,
-          email: signedInUser?.email || resolvePayload.loginEmail
-        });
+        authDiag("SIGN_IN_SUCCESS", { uid: signedInUser?.uid || null });
+        authDiag("AUTH_LOGIN_SUCCESS", { uid: signedInUser?.uid || null });
         authDiag("AUTH_UID", { uid: signedInUser?.uid || null });
-        authDiag("AUTH_EMAIL", { email: signedInUser?.email || resolvePayload.loginEmail });
+        authDiag("AUTH_EMAIL", { email: signedInUser?.email || null });
         loginPerfMark("user_load_start");
         try {
           await signedInUser?.getIdToken(false);
@@ -1406,14 +1391,14 @@
         }
         loginPerfMark("user_load_done");
         loginPerfMeasure("user_token", "user_load_start", "user_load_done");
-        const accessGranted = await verifyAccess(resolvePayload.officeId, true, {
+        const accessGranted = await verifyAccess(loginPayload.officeId, true, {
           skipTokenRefresh: true,
           fromLogin: true
         });
         if (!accessGranted) {
           authDiag("AUTH_GUARD_DECISION", {
             decision: "office_access_not_granted",
-            officeId: resolvePayload.officeId
+            officeId: loginPayload.officeId
           });
         }
       } catch (error) {

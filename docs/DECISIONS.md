@@ -609,6 +609,9 @@ assignment of protected fields and direct edits to ownership fields; never weake
   (one passed only through a 404).
 - Full gates after the change: `npm test` 2379/2379, `npm run test:rules` 78/78,
   `npm run check` passed.
+- Limit: the in-memory Firestore double used by the Worker tests applies `:commit` writes but
+  ignores their `updateTime` preconditions. The transfer's all-or-nothing, conflict-guarded
+  behaviour therefore rests on real Firestore commit semantics; it is not proven by the local test.
 
 **Not changed (recorded as residual risk).**
 - An office **owner** can still delete `offices/{id}` from a browser, and a manager can delete
@@ -617,6 +620,91 @@ assignment of protected fields and direct edits to ownership fields; never weake
   flow itself goes through the Worker.
 - Suspension does not update the `publicOffices` mirror: no Worker route writes it, as before.
 - There is no screen yet for `/os/members/access`; the route is ready for one.
+
+## D-021 — B-02: phone login without disclosure (interim, no proof of number possession)
+
+**Phase:** backlog B-02, option (ب) approved by the owner on 2026-10-24: a safe phone + password path
+that discloses neither the email nor the office, with attempt limits; **no paid SMS for now**; this is an
+interim control, not a replacement for proving possession of the number.
+**Directive:** Constitution §10 (validate identity, rate-limit public endpoints, no secrets in client).
+
+**Findings fixed.**
+
+1. **Disclosure.** `POST /auth/phone-login-resolve` returned the account's real email and `officeId`
+   for any phone number, with no sign-in and no rate limit. Its two refusal reasons
+   (`directory_missing` / `directory_inactive`) told registered numbers apart.
+2. **Critical — account takeover path in `/auth/phone-login`.** The route accepted `apiKey` from the
+   request body and trusted Google's `signInWithPassword` answer as long as `localId` matched the
+   directory uid.
+   - A key from another Firebase project, where an attacker created a user with the victim's uid and
+     email, would pass. The Worker would then mint a real custom token for the victim.
+   - Reproduced: before the fix, a correctly signed token for another project got `200` +
+     `customToken`.
+   - The uid is readable by any signed-in user (`officeNameClaims.ownerUid`). The email leaked
+     through finding 1.
+3. **Enumeration and guessing.**
+   - Refusals differed by reason, and an unknown number answered before any Google call (a timing
+     difference).
+   - Failures were counted per `phone|ip` only, so rotating either one reset the count. Unknown
+     numbers were never counted.
+   - `/auth/forgot-password` returned a masked email only for registered numbers.
+
+**Decision.**
+
+1. **`/auth/phone-login-resolve` is retired.** It answers `410 endpoint_retired` for every input.
+   Both login screens (`public/os/core/session.js`, `public/js/access-gate.js`) now call
+   `/auth/phone-login` with phone + password and sign in with the returned custom token
+   (`signInWithCustomToken`). The email never reaches the browser.
+2. **The password check is bound to this project.** After `signInWithPassword`, the Worker verifies
+   the returned ID token with `verifyFirebaseIdToken(…, projectId)`: Google signature, `aud`, `iss`,
+   expiry. `sub` and `localId` must both equal the directory uid. `env.FIREBASE_WEB_API_KEY` is
+   preferred over a body key. No secret is required for the fix: whatever key is used, only a token
+   for this project counts.
+3. **One refusal.** Every failure is the same `401 {ok:false, error:"invalid_login", message}`, with
+   no `reason`. It covers bad input, unknown number, inactive account, wrong password, a token
+   mismatch and a locked bucket. Each refusal waits until `LOGIN_FAILURE_FLOOR_MS` (default 1200 ms,
+   capped at 5000) has passed since the request started.
+4. **Guessing limits**, durable in `loginRateLimits/{sha256(key)}` (Worker-only; no rules match):
+
+   | Bucket | Counts | Lock |
+   |---|---|---|
+   | `phone\|+9665…` | failed attempts on that number, from any IP | 10 failures in 15 min → 15 min |
+   | `ip\|…` | failed attempts from that IP, on any number (unknown ones included) | 20 failures in 15 min → 15 min |
+
+   While locked, no password check is attempted. A success clears that number's bucket, not the IP's.
+5. **Password reset answers the same for every number** (`{ok:true}`, no `maskedEmail`, same floor).
+   Each IP may trigger at most 10 reset requests per 15 min (`reset-ip|…` bucket); later requests get
+   the same answer and send nothing. The per-number 60 s cooldown stays. Both screens already show
+   the generic «إذا كان الرقم مسجلًا…» text when no `maskedEmail` comes back.
+6. **Minimum password length is no longer checked by the login route** (Firebase decides). The old
+   `< 8` shortcut rejected accounts created with shorter passwords; registration still requires 8.
+
+**Evidence.**
+- `test/phone-login-security.test.mjs`: 15 Worker tests; 13 red before the change.
+- `test/access-gate-auth.test.mjs`: three assertions that described the old flow were rewritten to
+  assert the new one.
+- Harness: `scripts/qa/office-os/server.mjs` gained an Identity Toolkit stand-in and
+  `foreignProjectIdTokenFor()`; the browser stub gained `signInWithCustomToken`.
+- Gates: `npm test` 2394/2394, `test:rules` 78/78, `check` passed.
+- Browser journeys that log in through the form: fresh-broker 31/31, journey 45/45,
+  auth-flows 45/45, the same as before the change.
+
+**Residual risk (recorded, not solved here).**
+- **No proof of possession.** Anyone who knows a number and its password is in; a stolen password is
+  enough. OTP or another possession factor needs a paid or new channel and the owner's approval.
+- **Lock-out abuse.** Ten wrong attempts lock a real broker's number for 15 minutes, by design of the
+  per-number bucket.
+- **Distributed guessing.** Many IPs × many numbers stays possible within the limits (20 per IP, 10
+  per number, per 15 min).
+- **Write cost.** Each unknown number tried creates a bucket document; the per-IP limit caps this per
+  source, not globally.
+- **Timing.** The floor hides the Google round-trip only while that round-trip is shorter than the
+  floor.
+- **Cached old pages.** A client still running the old JavaScript gets the generic refusal from the
+  retired route until it reloads. The service-worker cache is keyed by commit SHA, so a deploy ships
+  the new screens.
+- **Owner action, optional:** set `FIREBASE_WEB_API_KEY` on the Worker so the server never relies on
+  a key sent by the client. The audience check already makes a foreign key useless.
 
 ## Open questions carried forward
 
