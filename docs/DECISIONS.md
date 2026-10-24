@@ -768,6 +768,41 @@ under `CURRENT` labels, and those tests now assert the behaviour below.
 **Not proven locally.** Real Meta delivery, Meta's retry behaviour, and the TTL deletion all need
 Staging with the owner's number (M-01) and the TTL policy.
 
+## D-023 — No browser deletes an office or its public profile
+
+**Phase:** follow-up to D-020, requested by the owner on 2026-10-24 (separate PR, stacked on #259).
+**Directive:** Constitution §7 (isolation and data integrity), §10 (least privilege); D-020 recorded
+this gap as residual risk.
+
+**Finding.**
+- `offices/{id}` allowed `delete` for the office owner and any platform-admin browser session.
+- `publicOffices/{id}` allowed `delete` for any office manager.
+- No screen uses either. Deleting the office document would orphan its members, records, deals,
+  journeys and audit logs, which Firestore does not cascade. Deleting the public profile takes the
+  office off the public site and breaks its short link.
+
+**Decision.**
+1. Both are `allow delete: if false;`. Read and the D-020-guarded create/update are unchanged.
+2. **Closing an office is a platform action through the Worker.** Today that is
+   `POST /admin/office/suspend` (audited, reversible with `/admin/office/reactivate`).
+3. **Proposed for later, not built:** an audited `POST /admin/office/archive` (platform admin,
+   mandatory reason). It would:
+   - set `accountStatus: archived` and record who archived it and when;
+   - mark `publicOffices/{id}` hidden instead of deleting it;
+   - deactivate members without deleting them;
+   - keep every record for the legal retention period.
+
+   Any hard delete would be a separate, owner-approved data-retention procedure, never a browser
+   action.
+
+**Evidence.**
+- `test/emulator/office-authority-rules.emulator.test.mjs`: plus 3 tests.
+  - The two deletion tests fail on the previous rules.
+  - The third checks that the owner still reads the office and its members and saves the profile,
+    and that a manager still updates the public mirror.
+- `test/firestore-rules.test.mjs` TEST 4 now asserts `allow delete: if false` for `publicOffices`.
+- Gates: `npm test` 2407/2407, `test:rules` 82/82, `check` passed.
+
 ## Open questions carried forward
 
 | # | Question | Blocking |
