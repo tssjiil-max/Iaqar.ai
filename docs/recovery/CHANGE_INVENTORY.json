@@ -13,7 +13,8 @@
       "origin/ops/staging-firestore-rules-deploy-20261024"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "5999aa3"
+    "integrationCommit": "d8c4fed",
+    "localVerificationCommit": "5999aa3"
   },
   {
     "commit": "135a5125a1ebbdbb1f2760490e246c7fae64bc32",
@@ -28,7 +29,8 @@
       "origin/ops/staging-firestore-rules-deploy-20261024"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "5999aa3"
+    "integrationCommit": "d8c4fed",
+    "localVerificationCommit": "5999aa3"
   },
   {
     "commit": "a269a50ee757b1bbc7c726a5645ac00477094c52",
@@ -43,7 +45,8 @@
       "origin/feat/match-index-retrieval-20261024"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "38d8e72"
+    "integrationCommit": "e669a27",
+    "localVerificationCommit": "38d8e72"
   },
   {
     "commit": "0242e4bef8be684cd683126a2daf036153df218f",
@@ -59,7 +62,8 @@
       "origin/feat/match-index-retrieval-20261024"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "38d8e72"
+    "integrationCommit": "e669a27",
+    "localVerificationCommit": "38d8e72"
   },
   {
     "commit": "4c9b6e34d2cad92b07e4de72fc0475d72ae68388",
@@ -81,7 +85,8 @@
       "origin/feat/match-index-retrieval-20261024"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "593e8c2"
+    "integrationCommit": "358d7b6",
+    "localVerificationCommit": "593e8c2"
   },
   {
     "commit": "5dbd37830d8ec54962bc2ef6cc81ba1a7273fa37",
@@ -100,7 +105,8 @@
       "origin/feat/match-index-retrieval-20261024"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "593e8c2"
+    "integrationCommit": "358d7b6",
+    "localVerificationCommit": "593e8c2"
   },
   {
     "commit": "6e04d3c5cb7d191f822fdd9ffb64eea266ab00fb",
@@ -172,7 +178,8 @@
       "origin/qa/match-load-preview-265"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "8d99213"
+    "integrationCommit": "dba5116",
+    "localVerificationCommit": "8d99213"
   },
   {
     "commit": "fd576f95fdd9e178ae4b2606a65f0649ceab8499",
@@ -208,7 +215,8 @@
       "origin/qa/match-load-preview-265"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "8d99213"
+    "integrationCommit": "dba5116",
+    "localVerificationCommit": "8d99213"
   },
   {
     "commit": "9b6c31df9f5d5b2eef3f7388a7b022306f88d91c",
@@ -226,7 +234,8 @@
       "origin/qa/match-load-preview-265"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "8d99213"
+    "integrationCommit": "dba5116",
+    "localVerificationCommit": "8d99213"
   },
   {
     "commit": "08edd01b0b3dd1fd4c2c19132737bed2424ce594",
@@ -298,7 +307,8 @@
       "origin/qa/scout-preview-264"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "e1f6f13"
+    "integrationCommit": "7a99ea1",
+    "localVerificationCommit": "e1f6f13"
   },
   {
     "commit": "03ad5622f65e0922fbe928d45e6b3b1d17991a58",
@@ -316,7 +326,8 @@
       "origin/qa/scout-preview-264"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "e1f6f13"
+    "integrationCommit": "7a99ea1",
+    "localVerificationCommit": "e1f6f13"
   },
   {
     "commit": "74c4ef6408b049ce1cc940ad3aa4897edb12d938",
@@ -347,7 +358,8 @@
       "origin/qa/scout-preview-264"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "e1f6f13"
+    "integrationCommit": "7a99ea1",
+    "localVerificationCommit": "e1f6f13"
   },
   {
     "commit": "f2b633a6891ab8e58194e69d951755548deb55b8",
@@ -364,7 +376,8 @@
       "origin/qa/scout-preview-264"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "96150cc"
+    "integrationCommit": "0505b78",
+    "localVerificationCommit": "96150cc"
   },
   {
     "commit": "cfeb03f2af663446d5cb95b523425401166b1203",
@@ -380,7 +393,8 @@
       "origin/qa/scout-preview-264"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "96150cc"
+    "integrationCommit": "0505b78",
+    "localVerificationCommit": "96150cc"
   },
   {
     "commit": "23e9c1059060a49416ad91c26740c6cfdc3b1463",
@@ -398,7 +412,8 @@
       "origin/qa/scout-preview-264"
     ],
     "recoveryStatus": "recovered",
-    "integrationCommit": "bcac668"
+    "integrationCommit": "17a482a",
+    "localVerificationCommit": "bcac668"
   },
   {
     "commit": "eb21ca5be3dd13b667d604807dff5981c7e8e888",

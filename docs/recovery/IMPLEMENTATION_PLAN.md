@@ -25,7 +25,7 @@ No full branch merge, destructive git command, source deletion, production/stagi
 - [x] Manual rules tool: reproduce red, port safe manual tool and tests; never execute its deploy action, commit.
 - [x] Preserve future architecture as explicitly unimplemented documentation. Classify city-form changes separately because they alter protected form UI.
 - [x] Run broad tests, emulator and browser journeys; compare baseline/integration screenshots and static visual asset hashes.
-- [ ] Record files, evidence, existing capabilities, gaps and deployment instructions. Push new integration/ref branches only and open draft PR after checking workflow triggers.
+- [x] Record files, evidence, existing capabilities, gaps and deployment instructions. Push new integration/ref branches only and open draft PR after checking workflow triggers.
 
 ## Review focus
 Office/user switches; overlapping jobs; edits during index backfill; scan ceilings; no accidental published rules or UI changes. Tests must exercise these, not only source strings.

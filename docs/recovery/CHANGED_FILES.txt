@@ -4,6 +4,7 @@ docs/MATCH_INDEX_AR.md
 docs/TARGET_ARCHITECTURE_AR.md
 docs/recovery/CHANGED_FILES.txt
 docs/recovery/CHANGE_INVENTORY.json
+docs/recovery/GIT_TRANSFER.json
 docs/recovery/IMPLEMENTATION_PLAN.md
 docs/recovery/JOURNEY_RESULTS.json
 docs/recovery/RECOVERY_REPORT_AR.md
