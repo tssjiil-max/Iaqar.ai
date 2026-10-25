@@ -4831,8 +4831,8 @@ async function persistScoredMatch({
       });
       if(pointerDoc && !pointerDoc.updateTime) throw new Error("current match pointer is missing updateTime");
       const pointerData=pointerDoc?firestoreFieldsToJs(pointerDoc.fields||{}):null;
-      const docs=await listCollectionDocuments({
-        projectId, segments:["offices",officeId,"matches"], accessToken, pageSize:MAX_MATCH_CANDIDATES
+      const { documents: docs } = await listMatchingDocuments({
+        projectId, segments: ["offices", officeId, "matches"], accessToken, env
       });
       const currentMatches=docs.map(doc=>{
         const data=firestoreFieldsToJs(doc.fields||{});
@@ -5109,8 +5109,8 @@ async function findAndSaveMatchesForOpportunity({
   };
 
   if (!isActiveLifecycle(opportunity)) {
-    const docs = await listCollectionDocuments({
-      projectId, segments: ["offices", officeId, "matches"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+    const { documents: docs } = await listMatchingDocuments({
+      projectId, segments: ["offices", officeId, "matches"], accessToken, env
     });
     const now = new Date();
     let superseded = 0;
@@ -5149,8 +5149,8 @@ async function findAndSaveMatchesForOpportunity({
   }
 
   const source = opportunityToMatchInput(opportunity, { id: opportunityId });
-  const docs = await listCollectionDocuments({
-    projectId, segments: ["offices", officeId, "opportunities"], accessToken, pageSize: MAX_MATCH_CANDIDATES
+  const { documents: docs, complete: candidatesComplete } = await listMatchingDocuments({
+    projectId, segments: ["offices", officeId, "opportunities"], accessToken, env
   });
   const prepared = [];
   for (const doc of docs) {
@@ -5239,6 +5239,7 @@ async function findAndSaveMatchesForOpportunity({
 
   return {
     matches: results,
+    candidateScan: { scanned: docs.length, complete: candidatesComplete },
     matchingRuleVersion: MATCHING_RULE_VERSION,
     threshold: MATCH_THRESHOLD,
     createsOperation: operationsCreated > 0,
@@ -6167,6 +6168,46 @@ async function handleMessagesHandoff(request, env, requestId) {
     boundaries: phase7BoundaryGuarantees(),
     requestId
   });
+}
+
+// Matching reads every page of a collection (Firestore lists by document id, one page per answer): a one-page read
+// silently missed every record past the first page. A ceiling keeps one request bounded; reaching it is reported
+// (complete: false) to the caller and the log, never silent. MATCH_CANDIDATE_READER=legacy restores the one-page read.
+const MATCH_READ_PAGE_SIZE = 300;
+const MATCH_READ_MAX_DOCS = 5000;
+
+function matchReadLimits(env = null) {
+  const configured = Math.floor(Number(env?.MATCH_CANDIDATES_MAX_DOCS || 0));
+  return {
+    legacy: String(env?.MATCH_CANDIDATE_READER || "").trim().toLowerCase() === "legacy",
+    maxDocs: configured > 0 ? configured : MATCH_READ_MAX_DOCS
+  };
+}
+
+async function listMatchingDocuments({ projectId, segments, accessToken, env = null }) {
+  const { legacy, maxDocs } = matchReadLimits(env);
+  if (legacy) {
+    // Emergency rollback only: logged on every use, and a full page is reported as a partial scan.
+    console.warn("[iaqar-match] legacy one-page reader in use (MATCH_CANDIDATE_READER=legacy)", segments.join("/"));
+    const documents = await listCollectionDocuments({ projectId, segments, accessToken, pageSize: MAX_MATCH_CANDIDATES });
+    return { documents, complete: documents.length < MAX_MATCH_CANDIDATES };
+  }
+  const documents = [];
+  let pageToken = "";
+  do {
+    const url = new URL(firestoreDocumentUrl(projectId, segments));
+    url.searchParams.set("pageSize", String(Math.min(MATCH_READ_PAGE_SIZE, maxDocs - documents.length)));
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (response.status === 404) break;
+    if (!response.ok) throw appError("firestore_read_failed", 502, "تعذر قراءة بيانات المطابقة");
+    const payload = await response.json();
+    if (Array.isArray(payload.documents)) documents.push(...payload.documents);
+    pageToken = payload.nextPageToken || "";
+  } while (pageToken && documents.length < maxDocs);
+  const complete = !pageToken;
+  if (!complete) console.warn("[iaqar-match] scan stopped at its ceiling", segments.join("/"), documents.length);
+  return { documents, complete };
 }
 
 async function listCollectionDocuments({projectId,segments,accessToken,pageSize=50}) {
@@ -7627,6 +7668,7 @@ function officeOsDeps() {
     bind: ({ env, projectId, accessToken }) => ({
       ...base,
       listCollectionDocuments,
+      listMatchingDocuments: ({ segments }) => listMatchingDocuments({ projectId, segments, accessToken, env }),
       firestoreFieldsToJs,
       jsToFirestoreValue,
       resolveAppOrigin,

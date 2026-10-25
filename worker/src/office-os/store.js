@@ -52,6 +52,12 @@ export function createStore(deps, { projectId, accessToken }) {
       return (docs || []).map((doc) => ({ id: idOf(doc), ...firestoreFieldsToJs(doc.fields || {}) }));
     },
 
+    /** Every page of a collection, for matching: `complete` is false when the read stopped at its ceiling. */
+    async listAll(segments) {
+      const { documents, complete } = await deps.listMatchingDocuments({ segments });
+      return { rows: (documents || []).map((doc) => ({ id: idOf(doc), ...firestoreFieldsToJs(doc.fields || {}) })), complete };
+    },
+
     /** Hard delete of one document (used only for the scout's own expired working data). */
     async remove(segments) {
       if (typeof deps.deleteFirestoreDocument !== "function") return false;

@@ -97,8 +97,8 @@ async function applySchedule(ctx, officeId, mutate) {
  * deleted) ends its search; a paused or expired one makes it wait. Nothing keeps running for a closed record.
  */
 export async function syncOfficeInventory(ctx, officeId, { settings, now = ctx.now() }) {
-  const [rows, matches, journeys, tasks] = await Promise.all([
-    ctx.store.list(["offices", officeId, "opportunities"], 300),
+  const [{ rows, complete: readComplete }, matches, journeys, tasks] = await Promise.all([
+    ctx.store.listAll(["offices", officeId, "opportunities"]),
     ctx.store.list(["offices", officeId, "matches"], 300).catch(() => []),
     ctx.store.list(["offices", officeId, "journeys"], 300).catch(() => []),
     ctx.store.list(["offices", officeId, "scoutTasks"], 100)
@@ -171,6 +171,9 @@ export async function syncOfficeInventory(ctx, officeId, { settings, now = ctx.n
     }
   }
   const digest = open.map(recordDigest).slice(0, SCOUT_LIMITS.records);
+  // What the scout knows of the office's records: all of them, or only part (said in its health, never silent).
+  const inventory = { open: open.length, kept: digest.length, complete: readComplete && digest.length === open.length, at: now.toISOString() };
+  if (!inventory.complete) console.warn("[scout] office inventory is partial", officeId, JSON.stringify(inventory));
   // Keeping time: a find nobody acted on and no source showed again for a month and a half leaves (what the broker
   // saved or contacted stays), and the index never grows past its size. Pasted text leaves after the same time.
   const expired = [];
@@ -184,14 +187,14 @@ export async function syncOfficeInventory(ctx, officeId, { settings, now = ctx.n
       if (!kept(entry) && expired.length < 40 && (last < cutoff || position >= SCOUT_LIMITS.index - 40)) expired.push(entry.id); else index.push(entry);
     }
     const gone = new Set(expired);
-    return { ...state, index, board: state.board.filter((card) => !gone.has(card.id)), records: digest, recordsSyncedAt: now.toISOString() };
+    return { ...state, index, board: state.board.filter((card) => !gone.has(card.id)), records: digest, recordsSyncedAt: now.toISOString(), health: { ...state.health, inventory } };
   });
   for (const id of expired) await ctx.store.remove(findPath(officeId, id)).catch(() => {});
   const oldFeed = await ctx.store.queryAfter(["offices", officeId], "scoutFeed", { field: "createdAt", before: new Date(now.getTime() - SCOUT_LIMITS.opportunityTtlDays * DAY), limit: 20 }).catch(() => []);
   for (const doc of oldFeed) await ctx.store.remove(["offices", officeId, "scoutFeed", doc.id]).catch(() => {});
   const oldPosts = await ctx.store.queryAfter(["offices", officeId], "scoutPosts", { field: "createdAt", before: new Date(now.getTime() - SCOUT_LIMITS.opportunityTtlDays * DAY), limit: 40 }).catch(() => []);
   for (const doc of oldPosts) await ctx.store.remove(["offices", officeId, "scoutPosts", doc.id]).catch(() => {});
-  return { digest, queue, created, openRecords: open.length, expired: expired.length };
+  return { digest, queue, created, openRecords: open.length, expired: expired.length, inventory };
 }
 
 /** One record changed (saved, paused, archived, sold, removed…): its search follows at once, without a full sync. */
