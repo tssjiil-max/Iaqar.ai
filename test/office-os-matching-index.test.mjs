@@ -225,3 +225,56 @@ test("the index read stopping at its ceiling is reported as partial, never as co
     assert.match(String(saved.matchingNotice || ""), /لم يشمل/);
   });
 });
+
+// ---- concurrent edits (Codex review on #266): a key written from a stale read, and a snapshot torn between reads
+
+/** A browser edit as Firestore applies it: the city changes and the rules make it remove every key. */
+function browserEditsCity(officeId, id, city) {
+  const row = h.store.get(`offices/${officeId}/opportunities/${id}`);
+  const { id: _id, matchKey, matchKeyDistrict, matchKeyType, matchKeyVersion, ...rest } = row;
+  h.store.seed(`offices/${officeId}/opportunities/${id}`, { ...rest, city });
+}
+
+test("backfill never restores keys computed before a concurrent edit (its writes are conditioned on the read)", async () => {
+  // Office B gets an unkeyed record, so the next save backfills; the browser moves that record to Riyadh just as
+  // the backfill writes its keys.
+  const id = "opp_zz_raced";
+  h.store.seed(`offices/${OFFICE_B}/opportunities/${id}`, { ...randomRecord(OFFICE_B, { legacy: false }), city: "المدينة المنورة" });
+  let edited = false;
+  h.store.faults.beforeWrite = (path, fields) => { if (!edited && path.endsWith(`/opportunities/${id}`) && fields.includes("matchKey")) { edited = true; browserEditsCity(OFFICE_B, id, "الرياض"); } };
+  try {
+    await withFlags(ON, () => saveLikely(OFFICE_B, OWNER_B));
+  } finally { h.store.faults.beforeWrite = null; }
+  assert.ok(edited, "the concurrent edit happened during the backfill");
+  const row = h.store.get(`offices/${OFFICE_B}/opportunities/${id}`);
+  assert.equal(row.city, "الرياض");
+  assert.ok(!row.matchKeyVersion || matchKeyUpdate(row) === null, `no stale keys on the edited record: ${JSON.stringify({ city: row.city, key: row.matchKey })}`);
+});
+
+test("a record's own key is never written from a read older than a concurrent edit", async () => {
+  const saved = await withFlags(ON, () => saveLikely(OFFICE_B, OWNER_B));
+  // The keys are stale-able: remove them (as an import would), then edit the city exactly when the matching run
+  // writes the record's own keys.
+  const { id: _id, matchKey, matchKeyDistrict, matchKeyType, matchKeyVersion, ...plain } = h.store.get(`offices/${OFFICE_B}/opportunities/${saved.recordId}`);
+  h.store.seed(`offices/${OFFICE_B}/opportunities/${saved.recordId}`, plain);
+  let edited = false;
+  h.store.faults.beforeWrite = (path, fields) => { if (!edited && path.endsWith(`/opportunities/${saved.recordId}`) && fields.includes("matchKey")) { edited = true; browserEditsCity(OFFICE_B, saved.recordId, "الرياض"); } };
+  try {
+    await withFlags(ON, () => h.worker.fetch(new Request("https://worker.test/matching/run", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${idTokenFor(OWNER_B)}` }, body: JSON.stringify({ officeId: OFFICE_B, opportunityId: saved.recordId, notify: false }) }), h.env, { waitUntil() {} }));
+  } finally { h.store.faults.beforeWrite = null; }
+  assert.ok(edited, "the concurrent edit landed on the key write");
+  const row = h.store.get(`offices/${OFFICE_B}/opportunities/${saved.recordId}`);
+  assert.ok(!row.matchKeyVersion || matchKeyUpdate(row) === null, `no stale keys: ${JSON.stringify({ city: row.city, key: row.matchKey })}`);
+});
+
+test("the counts and every candidate query read one snapshot (the same readTime)", async () => {
+  h.store.queries.length = 0;
+  const saved = await withFlags(ON, () => saveLikely());
+  assert.equal(saved.matchingMode, "index");
+  const reads = h.store.queries.filter((q) => q.kind === "count" || (q.kind === "query" && q.field.startsWith("matchKey")));
+  const counts = reads.filter((q) => q.kind === "count");
+  assert.equal(counts.length, 2);
+  const snapshot = reads.find((q) => q.readTime)?.readTime;
+  assert.ok(snapshot, `the reads carry a readTime: ${JSON.stringify(reads)}`);
+  assert.ok(reads.slice(1).every((q) => q.readTime === snapshot), `every read after the first uses its snapshot: ${JSON.stringify(reads)}`);
+});

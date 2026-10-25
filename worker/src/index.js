@@ -5150,7 +5150,7 @@ async function findAndSaveMatchesForOpportunity({
   }
 
   const source = opportunityToMatchInput(opportunity, { id: opportunityId });
-  await ensureRecordMatchKey({ projectId, officeId, recordId: opportunityId, record: opportunity, accessToken })
+  await ensureRecordMatchKey({ projectId, officeId, recordId: opportunityId, record: opportunity, updateTime: oppDoc.updateTime, accessToken })
     .catch((error) => console.warn("[iaqar-match-index] own key not written", opportunityId, error?.code || error?.message));
   const { documents: docs, complete: candidatesComplete, mode: candidatesMode, reason: candidatesReason, shadow: candidatesShadow } = await listMatchCandidates({
     projectId, officeId, source: opportunity, sourceId: opportunityId, accessToken, env
@@ -6235,16 +6235,18 @@ async function firestoreQuery({ projectId, parent, accessToken, body, kind = "ru
   return Array.isArray(rows) ? rows : [];
 }
 
-async function countOfficeRecords({ projectId, officeId, accessToken, where = null }) {
+/** A count of the office's records (optionally filtered), read at `readTime` when given; returns its snapshot time. */
+async function countOfficeRecords({ projectId, officeId, accessToken, where = null, readTime = "" }) {
   const rows = await firestoreQuery({ projectId, parent: ["offices", officeId], accessToken, kind: "runAggregationQuery", body: {
-    structuredAggregationQuery: { structuredQuery: { from: [{ collectionId: "opportunities" }], ...(where ? { where } : {}) }, aggregations: [{ alias: "n", count: {} }] }
+    structuredAggregationQuery: { structuredQuery: { from: [{ collectionId: "opportunities" }], ...(where ? { where } : {}) }, aggregations: [{ alias: "n", count: {} }] },
+    ...(readTime ? { readTime } : {})
   } });
-  return Number(rows[0]?.result?.aggregateFields?.n?.integerValue ?? NaN);
+  return { n: Number(rows[0]?.result?.aggregateFields?.n?.integerValue ?? NaN), readTime: String(rows[0]?.readTime || readTime || "") };
 }
 
 /** Records of the office in id order after `after`, optionally only those whose `field` is one of `values`. */
-async function queryOfficeRecords({ projectId, officeId, accessToken, field = "", values = null, after = "", limit = MATCH_READ_PAGE_SIZE }) {
-  const rows = await firestoreQuery({ projectId, parent: ["offices", officeId], accessToken, body: { structuredQuery: {
+async function queryOfficeRecords({ projectId, officeId, accessToken, field = "", values = null, after = "", limit = MATCH_READ_PAGE_SIZE, readTime = "" }) {
+  const rows = await firestoreQuery({ projectId, parent: ["offices", officeId], accessToken, body: { ...(readTime ? { readTime } : {}), structuredQuery: {
     from: [{ collectionId: "opportunities" }],
     ...(values ? { where: { fieldFilter: { field: { fieldPath: field }, op: "IN", value: { arrayValue: { values: values.map((v) => ({ stringValue: v })) } } } } } : {}),
     orderBy: [{ field: { fieldPath: "__name__" }, direction: "ASCENDING" }],
@@ -6255,7 +6257,7 @@ async function queryOfficeRecords({ projectId, officeId, accessToken, field = ""
 }
 
 /** Every record any of the `queries` returns (merged by document, in id order), within the read ceiling. */
-async function listIndexedCandidates({ projectId, officeId, accessToken, queries, env = null }) {
+async function listIndexedCandidates({ projectId, officeId, accessToken, queries, readTime, env = null }) {
   const { maxDocs } = matchReadLimits(env);
   const byName = new Map();
   let read = 0;
@@ -6265,7 +6267,7 @@ async function listIndexedCandidates({ projectId, officeId, accessToken, queries
     for (;;) {
       const want = Math.min(MATCH_READ_PAGE_SIZE, maxDocs - read);
       if (want <= 0) { complete = false; break; }
-      const page = await queryOfficeRecords({ projectId, officeId, accessToken, field, values, after, limit: want });
+      const page = await queryOfficeRecords({ projectId, officeId, accessToken, field, values, after, limit: want, readTime });
       read += page.length;
       for (const doc of page) byName.set(doc.name, doc);
       if (page.length < want) break;
@@ -6276,6 +6278,19 @@ async function listIndexedCandidates({ projectId, officeId, accessToken, queries
   const documents = [...byName.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   if (!complete) console.warn("[iaqar-match] index read stopped at its ceiling", officeId, read);
   return { documents, complete };
+}
+
+/** Commits key writes; when a precondition fails (a record changed since it was read), the others are written alone. */
+async function commitMatchKeyWrites({ projectId, accessToken, writes }) {
+  const commit = (list) => fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`, {
+    method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ writes: list })
+  });
+  const response = await commit(writes);
+  if (response.ok) return writes.length;
+  if (![400, 409, 412].includes(response.status)) throw appError("firestore_write_failed", 502, "تعذر تحديث فهرس المطابقة");
+  let written = 0;
+  for (const write of writes) if ((await commit([write])).ok) written += 1;
+  return written;
 }
 
 /** Indexes up to MATCH_INDEX_BACKFILL_PER_RUN more records of the office, resuming where the last run stopped. */
@@ -6292,15 +6307,11 @@ async function advanceMatchIndex({ projectId, officeId, accessToken }) {
     for (const doc of page) {
       const update = matchKeyUpdate(firestoreFieldsToJs(doc.fields || {}));
       if (!update) continue;
-      writes.push({ update: { name: doc.name, fields: Object.fromEntries(Object.entries(update).map(([k, v]) => [k, firestoreString(v)])) }, updateMask: { fieldPaths: Object.keys(update) }, currentDocument: { exists: true } });
+      // Conditioned on the version read: a record edited since is left as the edit left it (unkeyed after any
+      // key-field change), never given keys computed from its older fields.
+      writes.push({ update: { name: doc.name, fields: Object.fromEntries(Object.entries(update).map(([k, v]) => [k, firestoreString(v)])) }, updateMask: { fieldPaths: Object.keys(update) }, currentDocument: { updateTime: doc.updateTime } });
     }
-    if (writes.length) {
-      const response = await fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`, {
-        method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ writes })
-      });
-      if (!response.ok) throw appError("firestore_write_failed", 502, "تعذر تحديث فهرس المطابقة");
-      indexed += writes.length;
-    }
+    if (writes.length) indexed += await commitMatchKeyWrites({ projectId, accessToken, writes });
     if (page.length < MATCH_READ_PAGE_SIZE) { done = true; after = ""; break; }
     after = page.at(-1).name;
   }
@@ -6336,12 +6347,13 @@ async function listMatchCandidates({ projectId, officeId, source, sourceId, acce
   let reason = queries ? "" : "source_without_city";
   if (queries) {
     try {
-      const [total, keyed] = await Promise.all([
-        countOfficeRecords({ projectId, officeId, accessToken }),
-        countOfficeRecords({ projectId, officeId, accessToken, where: { fieldFilter: { field: { fieldPath: "matchKeyVersion" }, op: "EQUAL", value: { stringValue: MATCH_KEY_VERSION } } } })
-      ]);
-      if (!(keyed >= total)) reason = "index_incomplete";
-      else indexed = await listIndexedCandidates({ projectId, officeId, accessToken, queries, env });
+      // One snapshot: the second count and every candidate query read at the first count's readTime, so an edit
+      // landing in between cannot drop a record from the index after the counts said it was complete.
+      const total = await countOfficeRecords({ projectId, officeId, accessToken });
+      if (!total.readTime) throw appError("firestore_query_failed", 502, "no snapshot time");
+      const keyed = await countOfficeRecords({ projectId, officeId, accessToken, readTime: total.readTime, where: { fieldFilter: { field: { fieldPath: "matchKeyVersion" }, op: "EQUAL", value: { stringValue: MATCH_KEY_VERSION } } } });
+      if (!(keyed.n >= total.n)) reason = "index_incomplete";
+      else indexed = await listIndexedCandidates({ projectId, officeId, accessToken, queries, readTime: total.readTime, env });
     } catch (error) {
       reason = "index_unavailable";
       console.warn("[iaqar-match-index] index not used", officeId, error?.code || error?.message);
@@ -6366,10 +6378,11 @@ async function listMatchCandidates({ projectId, officeId, source, sourceId, acce
  * Writes the record's own key when it is missing or stale — whatever the flag, so the index is ready before it is
  * turned on (one write, only when the key changes).
  */
-async function ensureRecordMatchKey({ projectId, officeId, recordId, record, accessToken }) {
+async function ensureRecordMatchKey({ projectId, officeId, recordId, record, updateTime, accessToken }) {
   const update = matchKeyUpdate(record);
-  if (!update) return;
-  await setFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", recordId], accessToken, fields: Object.fromEntries(Object.entries(update).map(([k, v]) => [k, firestoreString(v)])) });
+  if (!update || !updateTime) return;
+  // Conditioned on the version read: if the record changed since, its keys are left to the next run.
+  await patchFirestoreDocument({ projectId, segments: ["offices", officeId, "opportunities", recordId], accessToken, updateTime, fields: Object.fromEntries(Object.entries(update).map(([k, v]) => [k, firestoreString(v)])) });
   Object.assign(record, update);
 }
 
