@@ -1,0 +1,63 @@
+1f04cf89795ef4fd8944a4cfc3328c3b74ea4222	2026-10-24T22:52:32Z	ops: Firestore rules -> Staging only, manual (plan / deploy / rollback)
+135a5125a1ebbdbb1f2760490e246c7fae64bc32	2026-10-24T22:52:31Z	test(ops): a Staging-only Firestore rules tool that publishes only what was reviewed
+a269a50ee757b1bbc7c726a5645ac00477094c52	2026-10-24T21:42:18Z	fix(matching-index): key writes conditioned on the version read; one readTime for counts and queries
+0242e4bef8be684cd683126a2daf036153df218f	2026-10-24T21:42:17Z	test(matching-index): concurrent edits never leave stale keys; counts and candidate reads share one snapshot
+4c9b6e34d2cad92b07e4de72fc0475d72ae68388	2026-10-24T21:33:49Z	feat(matching): indexed candidate retrieval behind MATCH_INDEX_RETRIEVAL (off by default)
+5dbd37830d8ec54962bc2ef6cc81ba1a7273fa37	2026-10-24T21:33:49Z	test(matching-index): retrieval never drops a pair the engine accepts; same matches as the engine over the whole office
+6e04d3c5cb7d191f822fdd9ffb64eea266ab00fb	2026-10-24T20:47:57Z	Office OS live preview evidence for df83844f13798d451fc490fb8eed21dd486a3f67 (run 40131222279)
+df83844f13798d451fc490fb8eed21dd486a3f67	2026-10-24T20:45:29Z	QA (not for merge): baseline timings of the same measurement on the integration branch without PR #265
+74a2e2162fcdc220ebef6dc4cc9900ceb32d2314	2026-10-24T20:38:07Z	Office OS live preview evidence for cc9b26a59417677fd998e66be868256e90c709db (run 40130126132)
+cc9b26a59417677fd998e66be868256e90c709db	2026-10-24T20:30:55Z	QA (not for merge): measure matching at 400 / 1000 / 4999 records and past the ceiling on the preview for PR #265
+74e887a75584e484bc44fbe297b9e59792f072f7	2026-10-24T20:27:32Z	test(matching): the legacy one-page reader always reports a partial scan; no scan crosses offices
+fd576f95fdd9e178ae4b2606a65f0649ceab8499	2026-10-24T20:06:00Z	docs: target architecture — growth without patching, central control and delegation (direction only, not implemented)
+5804dab2d47ed8c24608c01709a85f44665b883a	2026-10-24T20:00:10Z	fix(matching): read every page of the office's records and matches
+9b6c31df9f5d5b2eef3f7388a7b022306f88d91c	2026-10-24T20:00:10Z	test(matching): every record of the office is a candidate, not the first page
+08edd01b0b3dd1fd4c2c19132737bed2424ce594	2026-10-24T18:47:21Z	Office OS live preview evidence for 8f247ce14496a5370346de19a149245236c7f45e (run 40121873870)
+8f247ce14496a5370346de19a149245236c7f45e	2026-10-24T18:41:28Z	Preview deploy: record what the channel served for runtime-config.js
+2c530e76fff57206879dfa1ece504db9fbfcc078	2026-10-24T18:34:47Z	Office OS live preview evidence for 1088a3585614d0d7c55da52eb4d9df59e9ae9fc1 (run 40120814141)
+1088a3585614d0d7c55da52eb4d9df59e9ae9fc1	2026-10-24T18:27:49Z	QA (not for merge): print what the preview channel serves for runtime-config.js
+a8a577ee0da54462d21319529e30e41e85626454	2026-10-24T18:21:53Z	fix(scout): save finds before alerting; outbox with controlled push retry
+03ad5622f65e0922fbe928d45e6b3b1d17991a58	2026-10-24T18:21:53Z	test(scout): alerts wait in an outbox after finds are saved; failed pushes retried, bounded
+74c4ef6408b049ce1cc940ad3aa4897edb12d938	2026-10-24T17:52:40Z	Backlog: B-14, the scout round stalled by its own push
+e2951c5efd7a539ea5b14768d24812e5cbab5a14	2026-10-24T17:52:22Z	Scout live check: say why the background round did not finish; no crash without a find
+f2b633a6891ab8e58194e69d951755548deb55b8	2026-10-24T17:52:22Z	Push: an icon or a send that does not answer can no longer stall a round
+cfeb03f2af663446d5cb95b523425401166b1203	2026-10-24T17:52:22Z	QA: regression check for a scout round stalled by its own push
+23e9c1059060a49416ad91c26740c6cfdc3b1463	2026-10-24T05:39:08Z	Scout: one ad, one find, one alert — even when a round is cut off or two overlap
+351e7c32b611c9cdd30f61d4fa714af31ddbd136	2026-10-24T20:36:59+03:00	Merge pull request #262 from tssjiil-max/fix/bank-activation-records-race-20261024
+9318a82bf228bcbf7c26668955792153b1ad762f	2026-10-24T17:17:11Z	Merge remote-tracking branch 'origin/codex/unified-staging-lineage-2026-08-29' into fix/bank-activation-records-race-20261024
+f90415d3f1a3aaa43ee56d864afa45e546719172	2026-10-24T20:14:37+03:00	Merge pull request #263 from tssjiil-max/fix/operations-fallback-projection-20261024
+eb21ca5be3dd13b667d604807dff5981c7e8e888	2026-10-24T16:48:32Z	Office OS live preview evidence for 82b3e1f6a21b6f4c11ca9bbf29a205d3eccf08cc (run 40112511995)
+82b3e1f6a21b6f4c11ca9bbf29a205d3eccf08cc	2026-10-24T16:38:37Z	QA (not for merge): run the «العروض والطلبات» click check 5× on the isolated preview for PR #262 + #263
+2ab233f0e36297399811b3722d14824432cb7a04	2026-10-24T16:38:16Z	Merge remote-tracking branch 'origin/fix/operations-fallback-projection-20261024' into qa/staging-preview-262-263
+e1db37e2f0762cd6a4dedaa3b5a0ec9ef0eae6f1	2026-10-24T16:38:13Z	Backlog: the projection entry is B-13 (B-10 is already the unified agent contract)
+8323163bb70277ac60188f51577d48cbeecb7736	2026-10-24T08:36:19Z	Gate: run the operations projection check on every PR; backlog B-10
+1679b15f047a9c285df3f8b0edcfe50f98c69619	2026-10-24T08:36:18Z	Operations: re-project the last answer once the operations domain is ready
+4fcb7357dc57c3b2db1dbb03024bb4ee58f3fada	2026-10-24T08:36:18Z	QA: regression check for operations projected before the operations domain loads
+f5a3060bd80173b2a4b1595584447278b39f612e	2026-10-24T08:35:58Z	Bank: rows kept on screen never belong to another office or user
+6a5c53da4657d0643a31911e060766cc9401aed0	2026-10-24T11:18:46+03:00	test(intake): guard city selection and district reset
+49c0c609275ab0cbe24f411015580fbaf494f725	2026-10-24T11:18:15+03:00	feat(intake): select Saudi city or specify custom city, reset district options
+43dffff545040786b003e6bae891c9f4b3bab75c	2026-10-24T11:18:11+03:00	feat(intake): select Saudi city or specify custom city, reset district options
+137ce2b20f9ead6e42ad15776f99f37c1b7c9536	2026-10-24T07:31:50Z	Gate: run the «العروض والطلبات» activation check on every PR; backlog B-09 with the related defects
+7eeb68de737a7ee1b4c99ff3d9fe5d9022fcdc26	2026-10-24T07:31:18Z	Bank: opening «العروض والطلبات» again during a load no longer empties the list
+f1ad4d4f7ac73176484b14d87e0a75e389db3504	2026-10-24T07:31:18Z	QA: regression check for «العروض والطلبات» emptied under a running load
+1b0c4684e1fc3a847364184cc56e59b3ae331fe2	2026-10-24T06:17:56+03:00	Merge pull request #260 from tssjiil-max/security/office-delete-lock-20261024
+048bb3b757e7e0c1561e81ccd71bb071398c1028	2026-10-24T03:00:05Z	Merge codex/unified-staging-lineage-2026-08-29 (1fdd147, #259) into security/office-delete-lock-20261024
+1fdd147a8fbe8fb3f18175a44d3293be8ba0ade8	2026-10-24T05:48:19+03:00	Merge pull request #259 from tssjiil-max/audit/phase0-real-lineage-20261024
+65aa57f2ad90a6b78d305013f86ac88d4cb7babd	2026-10-24T02:25:50Z	Merge audit/phase0-real-lineage-20261024 (22514f5) into security/office-delete-lock-20261024
+22514f5f8cbcda0fa200f67c925840b35f5eea82	2026-10-24T02:24:59Z	fix(security): count login attempts atomically before the password check (B-02)
+e428182c5c2f72ba11d7698515f5a29a5f5b36fb	2026-10-24T01:48:24Z	fix(security): no browser deletes an office or its public profile (D-023)
+560665e58f7c01631fea1d6baab332a6886850cc	2026-10-24T01:32:06Z	fix(whatsapp): diagnose unrouted numbers and keep media out of records (B-03, B-07)
+97bbc6e91f5ffa97bf40a30078e3b0bed0991eda	2026-10-24T01:23:59Z	fix(security): phone login discloses nothing and is bound to this project (B-02)
+11843e0f042cb5e70213238ac27d8ca75d5f0beb	2026-10-24T01:11:22Z	fix(security): office roles, ownership and platform state are server-only (B-01)
+02b25fb62da72b5833499424626c5667399a6ab2	2026-10-24T00:50:35Z	docs: record D-019, correct audit W3 and add backlog B-07
+edebc54908a6f20d79da5ad09daac8ab9b55cc02	2026-10-24T00:50:35Z	test(whatsapp): pin the legacy intake path end to end (B-04)
+5f5e9bcb13dc2b17f7f050ba0c0c722692103e6f	2026-10-24T00:40:13Z	docs: phase-0 audit and prioritized backlog on the real integration lineage
+c7b9bb7eab31588c478a16aec4e886dd0fc8d7af	2026-10-24T00:02:18Z	docs: add Arabic engineering handoff report for Claude Code
+50df9a80b4e9e28a529af4cd3be7afe4ebd0518c	2026-10-23T22:55:25+03:00	docs: add evidence-based phase-zero architecture and WhatsApp ingestion audit
+26059c847d83bf278ce885246e373c8df4a81975	2026-10-23T22:51:46+03:00	docs: add Claude Code audit and central brain three-agent brief
+26ad34b3114da9367b614709f69bcf1051cc7364	2026-10-23T21:50:41+03:00	docs: record isolated security and cleanup execution plan
+a2dc099177d5a33ce9a06d0af3c655df10bddbe4	2026-10-23T09:54:44+03:00	docs: document test execution blocker and Firestore security review
+6581cfa1e9174c111879545ff91087a2f4603b17	2026-10-23T07:31:46+03:00	docs: record functional retention matrix and CI verification limitations
+2807d5db7e8d86e393231481cbc71e5f3692ed41	2026-10-23T07:24:04+03:00	docs: record iAqar maintenance charter and approval gates
+be585aa63fd175bc4fdd7f81e400c0177332983a	2026-10-23T07:23:38+03:00	ci: add read-only manual and maintenance branch worker audit
+0b1350615982cca434f76b3613c8c581e2268959	2026-10-23T07:11:41+03:00	docs: record branch comparison and safe cleanup gates
