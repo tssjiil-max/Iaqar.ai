@@ -6424,13 +6424,15 @@ async function sendOfficePush({projectId,officeId,title,body,type="match",record
     ? activeDevices.filter(device=>String(device.userUid||"")===brokerFilter)
     : [];
   const targetDevices=brokerDevices.length?brokerDevices:activeDevices;
-  const summary={registered:targetDevices.length,sent:0,failed:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
+  // unreachable: no answer or a network error (worth trying again later), as opposed to the provider refusing it.
+  const summary={registered:targetDevices.length,sent:0,failed:0,unreachable:0,disabled:0,brokerFiltered:Boolean(brokerFilter&&brokerDevices.length)};
   for(const device of targetDevices){
     try{
       await sendFcmMessage({projectId,registrationId:device.registrationId,registrationType:device.registrationType,title:presentation.title,body:presentation.body,type,recordId,officeId,accessToken,env,followUpAt,recipientMode,icon:presentation.icon,badge:"",taskId,opportunityId,matchId,operationId,appointmentId});
       summary.sent+=1;
     }catch(error){
       summary.failed+=1;
+      if(!error?.fcmCode&&!error?.staleToken)summary.unreachable+=1;
       console.warn("[iaqar-fcm] send failed",error&&error.message);
       if(error&&error.staleToken&&device.deviceId){
         summary.disabled+=1;
