@@ -18,13 +18,13 @@ No full branch merge, destructive git command, source deletion, production/stagi
 
 ## Tasks (execute in this session)
 - [x] Inventory all fetched refs and date-range commits; compare deployed source and candidate.
-- [ ] Scout stable identity / atomic lease: replay source regression on baseline, apply minimal source patch, rerun, commit.
-- [ ] Scout push deadlines / persistent outbox / bounded retry: reproduce regression, port dependency patches, run scout tests, commit.
-- [ ] Matching pagination: run imported regression against old reader, port reader and existing notices, test isolation and ceiling, commit.
-- [ ] Index retrieval and conditional writes: import original tests, establish red, port disabled-by-default feature with local rules only; test mutation cases and concurrent edits, commit.
-- [ ] Manual rules tool: reproduce red, port safe manual tool and tests; never execute its deploy action, commit.
-- [ ] Preserve future architecture as explicitly unimplemented documentation. Classify city-form changes separately because they alter protected form UI.
-- [ ] Run broad tests, emulator and browser journeys; compare baseline/integration screenshots and static visual asset hashes.
+- [x] Scout stable identity / atomic lease: replay source regression on baseline, apply minimal source patch, rerun, commit.
+- [x] Scout push deadlines / persistent outbox / bounded retry: reproduce regression, port dependency patches, run scout tests, commit.
+- [x] Matching pagination: run imported regression against old reader, port reader and existing notices, test isolation and ceiling, commit.
+- [x] Index retrieval and conditional writes: import original tests, establish red, port disabled-by-default feature with local rules only; test mutation cases and concurrent edits, commit.
+- [x] Manual rules tool: reproduce red, port safe manual tool and tests; never execute its deploy action, commit.
+- [x] Preserve future architecture as explicitly unimplemented documentation. Classify city-form changes separately because they alter protected form UI.
+- [x] Run broad tests, emulator and browser journeys; compare baseline/integration screenshots and static visual asset hashes.
 - [ ] Record files, evidence, existing capabilities, gaps and deployment instructions. Push new integration/ref branches only and open draft PR after checking workflow triggers.
 
 ## Review focus

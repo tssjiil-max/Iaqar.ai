@@ -1,0 +1,25 @@
+✔ 400 records, index on: every save pairs exactly what the engine pairs over the whole office (381.366152ms)
+✔ 1000 records, index on: every save pairs exactly what the engine pairs over the whole office (392.413033ms)
+✔ 4999 records, index on: every save pairs exactly what the engine pairs over the whole office (1127.103974ms)
+✔ 10000 records, index on: every save pairs exactly what the engine pairs over the whole office (1848.600305ms)
+✔ reads per save: the index reads the narrowed candidates, the scan reads the office (10k+ records) (549.777158ms)
+✔ a record written without a key (an import, an old browser) sends matching back to a full scan, said in the answer, and is indexed after (118.058549ms)
+✔ editing a record through the office (its city changes): its key follows the record, never stale (48.494972ms)
+✔ the index answering with an error: matching falls back to a full scan, says so, and stays exact (43.491215ms)
+✔ shadow mode: the scan decides, the index is compared with it, and a disagreement is reported (118.722721ms)
+✔ off (the default): no index read, no count, and the answer is the full scan's (41.800495ms)
+✔ an office outside MATCH_INDEX_OFFICES keeps the full scan (45.214433ms)
+✔ isolation and concurrency: saves in two offices at once only ever pair records of their own office (882.496555ms)
+✔ manual search uses the same retrieval and lists the same counterparts as the engine over the office (373.424289ms)
+✔ the index read stopping at its ceiling is reported as partial, never as complete (58.577298ms)
+✔ backfill never restores keys computed before a concurrent edit (its writes are conditioned on the read) (56.109305ms)
+✔ a record's own key is never written from a read older than a concurrent edit (78.50253ms)
+✔ the counts and every candidate query read one snapshot (the same readTime) (121.951109ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6912.353928

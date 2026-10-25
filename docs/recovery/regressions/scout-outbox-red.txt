@@ -1,0 +1,16 @@
+✔ setup: the scout on, an offer with no buyer in the office (38.912121ms)
+✖ a round cut off before saving its find → no alert yet; the next round saves the same find and alerts once (24.302048ms)
+✔ two rounds of the same office at once (a cron beat while another has not finished) → one find and one alert per ad (13.025489ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 436.703557
+✖ failing tests:
+✖ a round cut off before saving its find → no alert yet; the next round saves the same find and alerts once (24.302048ms)
+  AssertionError [ERR_ASSERTION]: no alert for a find that was not saved
+    actual: 1,
+    expected: 0,

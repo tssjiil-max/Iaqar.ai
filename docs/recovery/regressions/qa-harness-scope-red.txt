@@ -1,0 +1,16 @@
+✔ legacy browser harness supplies canonical records required by the production task projector (36.572105ms)
+✔ legacy browser harness never includes another office canonical records (0.56148ms)
+✖ hydrating match fixtures does not add unrelated completion tasks to the operations feed (9.862631ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 183.462778
+✖ failing tests:
+✖ hydrating match fixtures does not add unrelated completion tasks to the operations feed (9.862631ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+    actual: false,
+    expected: true,

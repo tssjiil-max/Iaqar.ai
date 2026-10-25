@@ -1,0 +1,52 @@
+{
+  "baseline": "351e7c32b611c9cdd30f61d4fa714af31ddbd136",
+  "protectedAssetCount": 46,
+  "changedProtectedAssets": [],
+  "visualComparisons": [
+    {
+      "file": "1280-guest.png",
+      "identical": true
+    },
+    {
+      "file": "1280-home.png",
+      "identical": true
+    },
+    {
+      "file": "1280-office-link.png",
+      "identical": true
+    },
+    {
+      "file": "1280-records.png",
+      "identical": true
+    },
+    {
+      "file": "1280-tasks.png",
+      "identical": true
+    },
+    {
+      "file": "390-guest.png",
+      "identical": true
+    },
+    {
+      "file": "390-home.png",
+      "identical": true
+    },
+    {
+      "file": "390-office-link.png",
+      "identical": true
+    },
+    {
+      "file": "390-records.png",
+      "identical": true
+    },
+    {
+      "file": "390-tasks.png",
+      "identical": true
+    }
+  ],
+  "sha256": {
+    "index.html": "c45a955d6d7a926c2910b1e60c2e2c7ca8b6587087e552c1334954d53a529d86",
+    "os/guest-search.css": "6b12b49119cf67f6019f5c6b424cdc376154015ef51eba818afc8a6bd692d79c",
+    "js/runtime-config.js": "72a1500580df3f06dd21e385dea9464a9e5c913cde2af2b4966768ec282cfe57"
+  }
+}

@@ -1,0 +1,32 @@
+✔ a new record from the app is created without a matching key (1.410092ms)
+✔ an edit from the app removes the record's matching key in the same write (0.331877ms)
+✔ the key is versioned and carries side, operation and city only (1.464474ms)
+✔ every combination of side × operation × city: an engine-eligible pair is never excluded by the key (7551.111857ms)
+✔ a large random sample of whole records: no eligible pair is excluded (202.913213ms)
+✔ the key narrows: a different operation or a different known city is not queried (0.311197ms)
+✔ district and type narrow further: a counterpart with another district AND another type is not queried (0.859139ms)
+✔ a source without a city cannot be narrowed by city: it asks for a full scan (0.122745ms)
+✔ write guard: a record write that changes a key field without the key also removes the key (0.292949ms)
+✔ write guard on batched commits: masked record updates gain the key paths; full replaces and other docs are left alone (0.255924ms)
+✔ 400 records, index on: every save pairs exactly what the engine pairs over the whole office (214.280998ms)
+✔ 1000 records, index on: every save pairs exactly what the engine pairs over the whole office (298.328601ms)
+✔ 4999 records, index on: every save pairs exactly what the engine pairs over the whole office (961.022997ms)
+✔ 10000 records, index on: every save pairs exactly what the engine pairs over the whole office (1851.631412ms)
+✔ reads per save: the index reads the narrowed candidates, the scan reads the office (10k+ records) (472.315905ms)
+✔ a record written without a key (an import, an old browser) sends matching back to a full scan, said in the answer, and is indexed after (79.333785ms)
+✔ editing a record through the office (its city changes): its key follows the record, never stale (40.369694ms)
+✔ the index answering with an error: matching falls back to a full scan, says so, and stays exact (36.599219ms)
+✔ shadow mode: the scan decides, the index is compared with it, and a disagreement is reported (90.74381ms)
+✔ off (the default): no index read, no count, and the answer is the full scan's (34.155022ms)
+✔ an office outside MATCH_INDEX_OFFICES keeps the full scan (34.655403ms)
+✔ isolation and concurrency: saves in two offices at once only ever pair records of their own office (775.590669ms)
+✔ manual search uses the same retrieval and lists the same counterparts as the engine over the office (364.739811ms)
+✔ the index read stopping at its ceiling is reported as partial, never as complete (54.599823ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7859.75711

@@ -1,0 +1,11 @@
+✖ test/staging-firestore-rules-deploy.test.mjs (77.276781ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 88.728213
+✖ failing tests:
+✖ test/staging-firestore-rules-deploy.test.mjs (77.276781ms)

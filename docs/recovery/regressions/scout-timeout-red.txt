@@ -1,0 +1,13 @@
+✔ setup: the scout on, an offer with no buyer, and a device registered for the office (37.205129ms)
+✖ the alert's push hangs: the round still saves its find, records the beat, alerts once, and says the push failed (25002.880463ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25433.392314
+✖ failing tests:
+✖ the alert's push hangs: the round still saves its find, records the beat, alerts once, and says the push failed (25002.880463ms)
+  Error: the cron beat had not finished after 25000 ms (hung on: https://iaqar-ai-staging--staging-9c4b0k7h.web.app/icons/iaqar-default-icon-192.png)

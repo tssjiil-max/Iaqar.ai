@@ -1,0 +1,38 @@
+✔ 400 records, index on: every save pairs exactly what the engine pairs over the whole office (232.688478ms)
+✔ 1000 records, index on: every save pairs exactly what the engine pairs over the whole office (293.794385ms)
+✔ 4999 records, index on: every save pairs exactly what the engine pairs over the whole office (917.993583ms)
+✔ 10000 records, index on: every save pairs exactly what the engine pairs over the whole office (2348.057924ms)
+✔ reads per save: the index reads the narrowed candidates, the scan reads the office (10k+ records) (626.476524ms)
+✔ a record written without a key (an import, an old browser) sends matching back to a full scan, said in the answer, and is indexed after (131.094388ms)
+✔ editing a record through the office (its city changes): its key follows the record, never stale (49.498198ms)
+✔ the index answering with an error: matching falls back to a full scan, says so, and stays exact (56.59742ms)
+✔ shadow mode: the scan decides, the index is compared with it, and a disagreement is reported (192.130331ms)
+✔ off (the default): no index read, no count, and the answer is the full scan's (64.316503ms)
+✔ an office outside MATCH_INDEX_OFFICES keeps the full scan (36.439658ms)
+✔ isolation and concurrency: saves in two offices at once only ever pair records of their own office (1125.644555ms)
+✔ manual search uses the same retrieval and lists the same counterparts as the engine over the office (461.925171ms)
+✔ the index read stopping at its ceiling is reported as partial, never as complete (56.391518ms)
+✖ backfill never restores keys computed before a concurrent edit (its writes are conditioned on the read) (56.471448ms)
+✖ a record's own key is never written from a read older than a concurrent edit (43.484296ms)
+✖ the counts and every candidate query read one snapshot (the same readTime) (166.276966ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 14
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7209.934792
+✖ failing tests:
+✖ backfill never restores keys computed before a concurrent edit (its writes are conditioned on the read) (56.471448ms)
+  AssertionError [ERR_ASSERTION]: no stale keys on the edited record: {"city":"الرياض","key":"v1|offer|rent|c%3A%D8%A7%D9%84%D9%85%D8%AF%D9%8A%D9%86%D9%87%20%D8%A7%D9%84%D9%85%D9%86%D9%88%D8%B1%D9%87"}
+    actual: false,
+    expected: true,
+✖ a record's own key is never written from a read older than a concurrent edit (43.484296ms)
+  AssertionError [ERR_ASSERTION]: no stale keys: {"city":"الرياض","key":"v1|request|sale|c%3A%D8%A7%D9%84%D9%85%D8%AF%D9%8A%D9%86%D9%87%20%D8%A7%D9%84%D9%85%D9%86%D9%88%D8%B1%D9%87"}
+    actual: false,
+    expected: true,
+✖ the counts and every candidate query read one snapshot (the same readTime) (166.276966ms)
+  AssertionError [ERR_ASSERTION]: the reads carry a readTime: [{"kind":"count","readTime":""},{"kind":"count","readTime":""},{"kind":"query","readTime":"","field":"matchKeyDistrict"},{"kind":"query","readTime":"","field":"matchKeyType"},{"kind":"query","readTime":"","field":"matchKeyType"}]
+    actual: undefined,
+    expected: true,

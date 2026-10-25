@@ -1,0 +1,11 @@
+✔ legacy browser harness supplies canonical records required by the production task projector (28.250218ms)
+✔ legacy browser harness never includes another office canonical records (0.665916ms)
+✔ hydrating match fixtures does not add unrelated completion tasks to the operations feed (3.102527ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 148.96553

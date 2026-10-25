@@ -1,0 +1,53 @@
+✖ 61 records: the qualifying request whose id sorts last is matched when an offer is saved (33.798631ms)
+✖ 300 records: the qualifying request whose id sorts last is matched when an offer is saved (18.091939ms)
+✖ 1000 records: the qualifying request whose id sorts last is matched when an offer is saved (23.148094ms)
+✖ the other direction: a saved request finds the qualifying offer whose id sorts last (61+ records) (13.265597ms)
+✖ manual search («بحث عن مطابقة») lists the qualifying counterpart past the 300th record (12.508895ms)
+✖ a record that stops being active supersedes its current match even when the office has more than 60 matches (1.607043ms)
+✖ when the scan cannot cover every record, the save says so (no silent partial matching) (12.51209ms)
+✔ an office under one page keeps exactly the matches and scores it had (the one-page reader as reference) (24.049883ms)
+✖ the scout's inventory sync reads every record and says when its summary cannot hold them all (46.794534ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 1
+ℹ fail 8
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 514.399578
+✖ failing tests:
+✖ 61 records: the qualifying request whose id sorts last is matched when an offer is saved (33.798631ms)
+  AssertionError [ERR_ASSERTION]: the save found the request (answered 0 matches)
+    actual: false,
+    expected: true,
+✖ 300 records: the qualifying request whose id sorts last is matched when an offer is saved (18.091939ms)
+  AssertionError [ERR_ASSERTION]: the save found the request (answered 0 matches)
+    actual: false,
+    expected: true,
+✖ 1000 records: the qualifying request whose id sorts last is matched when an offer is saved (23.148094ms)
+  AssertionError [ERR_ASSERTION]: the save found the request (answered 0 matches)
+    actual: false,
+    expected: true,
+✖ the other direction: a saved request finds the qualifying offer whose id sorts last (61+ records) (13.265597ms)
+  AssertionError [ERR_ASSERTION]: answered 0 matches
+    actual: false,
+    expected: true,
+✖ manual search («بحث عن مطابقة») lists the qualifying counterpart past the 300th record (12.508895ms)
+  AssertionError [ERR_ASSERTION]: the request is a candidate
+    actual: false,
+    expected: true,
+✖ a record that stops being active supersedes its current match even when the office has more than 60 matches (1.607043ms)
+  AssertionError [ERR_ASSERTION]: the 61-scale request has its current match
+    actual: 0,
+    expected: 1,
+✖ when the scan cannot cover every record, the save says so (no silent partial matching) (12.51209ms)
+  AssertionError [ERR_ASSERTION]: the answer says the scan was partial
+  + actual - expected
+  + undefined
+  - false
+    actual: undefined,
+    expected: false,
+✖ the scout's inventory sync reads every record and says when its summary cannot hold them all (46.794534ms)
+  AssertionError [ERR_ASSERTION]: the sync saw every open record (undefined)
+    actual: false,
+    expected: true,
