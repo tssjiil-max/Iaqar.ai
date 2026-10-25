@@ -23,7 +23,8 @@ import {
   getDoc,
   setDoc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  deleteField
 } from "firebase/firestore";
 import { cooperationSettingsPayload } from "../../public/js/office-domain.js";
 
@@ -529,6 +530,35 @@ test("Phase 3: Office A can read and soft-update its Opportunity Bank records", 
     archivedBy: "broker-a1",
     version: 3
   }));
+});
+
+test("Matching index: a browser never writes the key, and an edit of a key field must remove it", async () => {
+  const path = "offices/office-a/opportunities/opp_index_a";
+  const keyed = { matchKey: "v1|offer|sale|c%3Ax", matchKeyDistrict: "v1|offer|sale|c%3Ax|d%3Ay", matchKeyType: "v1|offer|sale|c%3Ax|t%3Az", matchKeyVersion: "v1" };
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), path), opportunityDoc({ ...keyed }));
+  });
+  const db = authed("broker-a1");
+  // Creating a record with a key of its own choosing (the same record without the key is allowed: the key is the only difference).
+  const { cooperationStatus, ...creatable } = opportunityDoc({ deduplicationFingerprint: "fp-index-new" });
+  await assertFails(setDoc(doc(db, "offices/office-a/opportunities/opp_index_new"), { ...creatable, matchKey: "v1|*|sale|*", matchKeyVersion: "v1" }));
+  await assertFails(setDoc(doc(db, "offices/office-a/opportunities/opp_index_new"), { ...creatable, matchKeyVersion: "v1" }));
+  await assertSucceeds(setDoc(doc(db, "offices/office-a/opportunities/opp_index_new"), creatable));
+  // Changing the city while the key stays: the record would be found under its old city.
+  await assertFails(updateDoc(doc(db, path), { city: "جدة", updatedAt: "2026-08-03T12:00:00.000Z" }));
+  await assertFails(updateDoc(doc(db, path), { purpose: "RENT" }));
+  await assertFails(updateDoc(doc(db, path), { district: "الياسمين" }));
+  await assertFails(updateDoc(doc(db, path), { propertyType: "فيلا", matchKey: deleteField(), matchKeyVersion: deleteField() }), "every key field must go");
+  // Changing the key itself.
+  await assertFails(updateDoc(doc(db, path), { matchKey: "v1|*|sale|*" }));
+  // An edit that does not touch the key's fields keeps the key.
+  await assertSucceeds(updateDoc(doc(db, path), { brokerConfirmed: true, updatedAt: "2026-08-03T12:10:00.000Z" }));
+  // The same city change, removing the key in the same write (what the app does): allowed.
+  await assertSucceeds(updateDoc(doc(db, path), { city: "جدة", matchKey: deleteField(), matchKeyDistrict: deleteField(), matchKeyType: deleteField(), matchKeyVersion: deleteField(), updatedAt: "2026-08-03T12:20:00.000Z" }));
+  let snap;
+  await testEnv.withSecurityRulesDisabled(async (context) => { snap = (await getDoc(doc(context.firestore(), path))).data(); });
+  assert.equal(snap.city, "جدة");
+  assert.equal(snap.matchKey, undefined);
 });
 
 test("Phase 3: Office A cannot read, update, archive, or hard-delete Office B opportunities", async () => {

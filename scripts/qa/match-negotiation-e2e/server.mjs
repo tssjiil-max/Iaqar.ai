@@ -61,6 +61,20 @@ export function installMemoryFirestore({ jwk }) {
   };
   const log = [];
   const fcm = [];
+  // Billed reads, as Firestore counts them: one per document returned (a get or an empty answer counts one), and one
+  // per 1000 index entries for a count. `faults.queries` makes structured queries and counts answer 503.
+  const reads = { documents: 0, requests: 0, byKind: {} };
+  const billed = (kind, n) => { reads.documents += n; reads.requests += 1; reads.byKind[kind] = (reads.byKind[kind] || 0) + n; };
+  const faults = { queries: false };
+  const valueOf = (v = {}) => ("stringValue" in v ? v.stringValue : "integerValue" in v ? Number(v.integerValue) : "booleanValue" in v ? v.booleanValue : "nullValue" in v ? null : undefined);
+  const matches = (p, filter) => {
+    if (!filter) return true;
+    const field = filter.field?.fieldPath || "";
+    const value = valueOf(docs.get(p).fields[field]);
+    if (filter.op === "EQUAL") return value === valueOf(filter.value);
+    if (filter.op === "IN") return (filter.value?.arrayValue?.values || []).some((v) => valueOf(v) === value);
+    return false;
+  };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
@@ -70,6 +84,7 @@ export function installMemoryFirestore({ jwk }) {
     if (url.hostname === "oauth2.googleapis.com") return Response.json({ access_token: "e2e-access", expires_in: 3600 });
     if (url.hostname === "www.googleapis.com" && url.pathname.includes("jwk")) return Response.json({ keys: [jwk] });
     if (url.hostname !== "firestore.googleapis.com") return Response.json({ ok: true });
+    reads.calls = (reads.calls || 0) + 1;
     const pathname = decodeURIComponent(url.pathname);
     if (pathname.endsWith(":commit")) {
       const { writes = [] } = JSON.parse(init.body || "{}");
@@ -93,6 +108,28 @@ export function installMemoryFirestore({ jwk }) {
       }
       return Response.json({ writeResults });
     }
+    // A count over one collection, optionally with one EQUAL filter (…/documents/<parent>:runAggregationQuery).
+    if (pathname.endsWith(":runAggregationQuery")) {
+      if (faults.queries) return Response.json({ error: { code: 503, status: "UNAVAILABLE" } }, { status: 503 });
+      const parent = pathname.slice(base.length, -":runAggregationQuery".length);
+      const agg = JSON.parse(init.body || "{}").structuredAggregationQuery || {};
+      const q = agg.structuredQuery || {};
+      const n = listPaths(`${parent}/${q.from?.[0]?.collectionId || ""}`).filter((p) => matches(p, q.where?.fieldFilter)).length;
+      billed(`count:${q.from?.[0]?.collectionId || ""}`, Math.max(1, Math.ceil(n / 1000)));
+      const alias = agg.aggregations?.[0]?.alias || "count";
+      return Response.json([{ result: { aggregateFields: { [alias]: { integerValue: String(n) } } }, readTime: new Date().toISOString() }]);
+    }
+    // An equality / IN query ordered by document name, with a cursor and a limit (the matching index's query).
+    const ordered = JSON.parse(init.body || "{}").structuredQuery || {};
+    if (pathname.endsWith(":runQuery") && (["IN", "EQUAL"].includes(ordered.where?.fieldFilter?.op) || (!ordered.where && ordered.orderBy?.[0]?.field?.fieldPath === "__name__"))) {
+      if (faults.queries) return Response.json({ error: { code: 503, status: "UNAVAILABLE" } }, { status: 503 });
+      const parent = pathname.slice(base.length, -":runQuery".length);
+      const q = JSON.parse(init.body || "{}").structuredQuery || {};
+      const after = String(q.startAt?.values?.[0]?.referenceValue || "").split("/documents/")[1] || "";
+      const rows = listPaths(`${parent}/${q.from?.[0]?.collectionId || ""}`).filter((p) => matches(p, q.where?.fieldFilter) && (!after || p > after)).slice(0, Number(q.limit || 1000));
+      billed(`query:${q.from?.[0]?.collectionId || ""}`, Math.max(1, rows.length));
+      return Response.json(rows.length ? rows.map((p) => ({ document: docJson(p) })) : [{ readTime: new Date().toISOString() }]);
+    }
     // A query scoped to a parent document (…/documents/<parent>:runQuery): one collection, one range filter on a
     // timestamp field, ordered by it. Root queries (…/documents:runQuery) keep answering with nothing, as before.
     if (pathname.endsWith(":runQuery") && pathname.length > base.length + ":runQuery".length) {
@@ -115,9 +152,10 @@ export function installMemoryFirestore({ jwk }) {
       const after = url.searchParams.get("pageToken") ? Buffer.from(url.searchParams.get("pageToken"), "base64url").toString() : "";
       const rest = listPaths(p).filter((path) => !after || path > after);
       const page = rest.slice(0, pageSize);
+      billed(`list:${p.split("/").pop()}`, Math.max(1, page.length));
       return Response.json({ documents: page.map(docJson), ...(rest.length > pageSize ? { nextPageToken: Buffer.from(page.at(-1)).toString("base64url") } : {}) });
     }
-    if (method === "GET") return docs.has(p) ? Response.json(docJson(p)) : new Response("{}", { status: 404 });
+    if (method === "GET") { billed("get", 1); return docs.has(p) ? Response.json(docJson(p)) : new Response("{}", { status: 404 }); }
     if (method === "PATCH") {
       if (url.searchParams.get("currentDocument.exists") === "false" && docs.has(p)) return Response.json({ error: { status: "ALREADY_EXISTS" } }, { status: 409 });
       const expected = url.searchParams.get("currentDocument.updateTime");
@@ -130,7 +168,7 @@ export function installMemoryFirestore({ jwk }) {
     return new Response("unsupported", { status: 500 });
   };
   return {
-    docs, log, fcm,
+    docs, log, fcm, reads, faults,
     seed(p, obj) { write(p, toFields(obj), null); },
     patch(p, obj) { write(p, toFields(obj), Object.keys(obj)); },
     get(p) { return docs.has(p) ? { id: p.split("/").pop(), ...fromFields(docs.get(p).fields) } : null; },

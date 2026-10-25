@@ -11,6 +11,17 @@ service cloud.firestore {
     function isOfficeOwner(officeId) {
       return signedIn() && officeDoc(officeId).data.ownerUid == request.auth.uid;
     }
+    // Matching index (worker/src/match-index.js): only the Worker writes `matchKey` / `matchKeyVersion`. A browser
+    // write that changes a field the key is built from must remove the key (the record then leaves the index and
+    // matching scans until the Worker indexes it again); it may never set or change the key itself.
+    function matchKeyFields() {
+      return ['matchKey', 'matchKeyDistrict', 'matchKeyType', 'matchKeyVersion'];
+    }
+    function keepsMatchKeyHonest() {
+      return !request.resource.data.keys().hasAny(matchKeyFields())
+        || (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['opportunityKind', 'kind', 'recordType', 'sourceCollection', 'transactionType', 'purpose', 'city', 'district', 'propertyType'])
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(matchKeyFields()));
+    }
     function isOfficeMember(officeId) {
       return signedIn() && (isPlatformAdmin() || isOfficeOwner(officeId) ||
         (exists(/databases/$(database)/documents/offices/$(officeId)/members/$(request.auth.uid)) &&
@@ -279,8 +290,10 @@ service cloud.firestore {
           && request.resource.data.brokerId is string
           && request.resource.data.deduplicationFingerprint is string
           && request.resource.data.sourceType is string
-          && request.resource.data.sourceReference is string;
+          && request.resource.data.sourceReference is string
+          && !request.resource.data.keys().hasAny(matchKeyFields());
         allow update: if isOfficeMember(officeId)
+          && keepsMatchKeyHonest()
           && (!("submitterRole" in resource.data) || resource.data.submitterRole != 'EXTERNAL_BROKER')
           && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['submitterRole', 'externalBrokerOffice', 'externalBrokerLicense', 'representationClaim', 'representationReference', 'representationStatus', 'representationVerifiedBy', 'representationVerifiedAt', 'representationEvidenceReference', 'cooperationStatus', 'commissionStatus', 'commissionValue', 'commissionAgreementReference', 'commissionType'])
           && request.resource.data.officeId == officeId
