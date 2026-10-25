@@ -182,7 +182,9 @@ try {
   check("live: a strong find with no way to reach its advertiser is kept inside only (not shown)", Boolean(silent) && !silent.phone && silent.surface === "HIDDEN", `${silent?.band} ${silent?.surface}`);
   check("live: weak ads were neither stored nor shown", !all.some((f) => f.district === "قباء"), `${all.length} kept`);
   const notes = await alerts();
-  check("live: alerts were written for the very strong finds only, each opening its find, none for the unreachable one", notes.length === 2 && notes.every((n) => /^scout\/opp\/so_/.test(n.route) && !/05\d{8}/.test(`${n.title}${n.body}`)) && !notes.some((n) => n.entityId === silent?.id), notes.map((n) => `${n.title}: ${n.body}`).join(" | "));
+  // Each alert opens a find that exists, and a find is alerted once (a round cut off half way used to leave both broken).
+  check("live: alerts were written for the very strong finds only, each opening its find, none for the unreachable one", notes.length === 2 && notes.every((n) => /^scout\/opp\/so_/.test(n.route) && !/05\d{8}/.test(`${n.title}${n.body}`)) && !notes.some((n) => n.entityId === silent?.id)
+    && notes.every((n) => all.some((f) => f.id === n.entityId && n.route === `scout/opp/${f.id}`)) && new Set(notes.map((n) => n.entityId)).size === notes.length, notes.map((n) => `${n.title}: ${n.body} → ${n.entityId}${all.some((f) => f.id === n.entityId) ? "" : " (no such find)"}`).join(" | "));
   const pushes = notes.map((n) => { try { return JSON.parse(n.providerStateJson || "{}").push; } catch (_) { return ""; } });
   console.log(`push provider states (honest, no delivery claim): ${pushes.join(", ")}`);
   const runs = (await office.collection("scoutRuns").get()).docs.map((d) => d.data());
