@@ -20,3 +20,13 @@ test('legacy browser harness never includes another office canonical records', (
   assert.ok(records.length > 0, 'the feed contains canonical records');
   assert.ok(records.every(item => item.officeId === 'qa-office-client'));
 });
+
+test('hydrating match fixtures does not add unrelated completion tasks to the operations feed', () => {
+  resetWorld();
+  runMatching('qa-office-client');
+  const tasks = mapOperationsItemsToDailyTasks(operationsForOffice('qa-office-client'), new Date(), {
+    officeId: 'qa-office-client', requireOpportunityRecords: true
+  });
+  assert.ok(tasks.some(task => task.cooperationTaskId === 'coop_431'));
+  assert.ok(!tasks.some(task => task.id === 'opportunity_action_qa_offer_incomplete'));
+});
