@@ -133,6 +133,9 @@ jobs:
       - name: Operations projected before the operations domain loads keep «مراجعة التطابق»
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/operations-projection" node scripts/qa/office-os/operations-projection.e2e.mjs
+      - name: Guest search without login (both fields filled right, a quick tap on the phone keeps its focus)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/public-search" node scripts/qa/office-os/public-search.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
