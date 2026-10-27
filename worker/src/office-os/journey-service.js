@@ -184,7 +184,7 @@ async function loadMatchContext(ctx, officeId, matchId) {
  * Match review decision: approve | reject | postpone. (request_info goes through the
  * proposal service with a match context.)
  */
-export async function decideMatchReview(ctx, { actor, officeId, matchId, decision, postponeDays = 1, reason = "", viaBot = false }) {
+export async function decideMatchReview(ctx, { actor, officeId, matchId, decision, postponeDays = 1, reason = "", viaBot = false, botChannel = "telegram" }) {
   const now = ctx.now();
   const { match, offer, request, offerId, requestId, reviewTaskId, reviewTask } = await loadMatchContext(ctx, officeId, matchId);
   assertCanActOn(ctx.deps, actor, reviewTask || match);
@@ -261,7 +261,7 @@ export async function decideMatchReview(ctx, { actor, officeId, matchId, decisio
     add: viaBot ? [] : [{ type: "SEND_PROPOSAL", ref: `start:${matchId}`, reason: "تم اعتماد المطابقة — جهّز أول مقترح للطرفين", actionLabel: "تجهيز المقترح" }],
     event: {
       type: "MATCH_APPROVED", key: [matchId, existing ? "reopen" : "approve"],
-      text: viaBot ? "وافق العميل والمالك عبر بوت تيليجرام — فُتحت الصفقة وبدأ التفاوض" : existing ? "أعيد فتح الفرصة باعتماد مطابقة جديدة" : "تم اعتماد المطابقة وبدء التفاوض",
+      text: viaBot ? (botChannel === 'whatsapp' ? 'أكد الطرفان اهتمامهما عبر واتساب — فُتحت متابعة الصفقة دون اتفاق نهائي' : "وافق العميل والمالك عبر بوت تيليجرام — فُتحت الصفقة وبدأ التفاوض") : existing ? "أعيد فتح الفرصة باعتماد مطابقة جديدة" : "تم اعتماد المطابقة وبدء التفاوض",
       payload: { score: match.score || 0, viaBot: viaBot === true }
     }
   });

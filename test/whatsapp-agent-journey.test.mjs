@@ -8,9 +8,40 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { ingestWhatsAppEvents, drainWhatsAppQueue, actOnWhatsAppCase, listWhatsAppCases, whatsappAgentStatus } from '../worker/src/office-os/whatsapp-agent-service.js';
 import { parseOfferPrice, parseViewingTime, detectAction, readInbound, buttonsMessage, listMessage, WA_LIMITS, viewingConflict } from '../public/os/domain/whatsapp-agent-domain.js';
+import { journeyIdForPair } from '../worker/src/office-os/journey-service.js';
 
 const CLIENT = '966500000001';
 const IMG = (office, rec, n) => ({ id: `${String(n).repeat(32)}`.slice(0, 32), url: `https://cdn.test/${n}.jpg`, path: `record-media/${office}/${rec}/${String(n).repeat(32).slice(0, 32)}.jpg`, contentType: 'image/jpeg' });
+
+test('match qualification travels through simulated Meta webhook, outbox and the canonical journey without Telegram', async () => {
+  const owner='966551234567';
+  const f=fixture({envPatch:{WHATSAPP_MATCH_INTEREST_MODE:'enabled',WHATSAPP_AGENT_ALLOWED_RECIPIENTS:`${CLIENT},${owner}`}});
+  await f.seed();await f.say('مرحبا');
+  const client=(await f.ctx.store.list(['offices','office-a','whatsappConversations']))[0];
+  await f.ctx.store.set(['offices','office-a','whatsappConversations',client.id],{consent:true});
+  const ownerId=(await f.ctx.deps.sha256Hex(`phone-a|${owner}`)).slice(0,40);
+  await f.ctx.store.set(['offices','office-a','whatsappConversations',ownerId],{officeId:'office-a',senderPhone:owner,phoneNumberId:'phone-a',wabaId:'waba-a',consent:true,lastInboundAt:f.now(),pending:[],turns:[]});
+  await f.ctx.store.set(['offices','office-a','opportunities','interest-request'],{officeId:'office-a',opportunityKind:'REQUEST',purpose:'PURCHASE',propertyType:'فيلا',city:'الرياض',district:'الملقا',priceOrBudget:1600000.5,contactPhone:CLIENT,advertiserRole:'CLIENT',lifecycleStatus:'ACTIVE',version:1,brokerId:'broker-1'});
+  await f.ctx.store.set(['offices','office-a','matches','interest-match'],{officeId:'office-a',offerId:'v1',requestId:'interest-request',status:'active',score:95,isCurrent:true,integrityStatus:'valid',dataVersion:'v1',canonicalPairKey:'v1|interest-request',assignedBrokerId:'broker-1'});
+  await drainWhatsAppQueue(f.ctx);
+  const questions=f.calls.map(c=>c.body).filter(b=>b.interactive?.action?.buttons?.[0]?.reply?.id?.startsWith('wi:'));
+  assert.equal(questions.length,2);
+  const clientQuestion=questions.find(b=>b.to===CLIENT),ownerQuestion=questions.find(b=>b.to===owner);
+  assert.ok(clientQuestion&&ownerQuestion);
+  const yes=q=>q.interactive.action.buttons.find(b=>b.reply.id.endsWith(':yes')).reply.id;
+  await f.tap(yes(clientQuestion));
+  assert.equal((await f.ctx.store.list(['offices','office-a','journeys'])).length,0);
+  await f.sayRaw({id:'wamid.owner-interest',from:owner,type:'interactive',interactive:{type:'button_reply',button_reply:{id:yes(ownerQuestion),title:'نعم'}}});
+  const journeys=await f.ctx.store.list(['offices','office-a','journeys']);
+  assert.equal(journeys.length,1);assert.equal(journeys[0].assignedBrokerId,'broker-1');
+  assert.equal(journeys[0].journeyId,await journeyIdForPair(f.ctx.deps,'office-a','v1|interest-request'));
+  assert.equal(journeys[0].outcome,undefined);assert.equal(journeys[0].session?.agreedPrice,undefined);
+  await f.sayRaw({id:'wamid.owner-interest',from:owner,type:'interactive',interactive:{type:'button_reply',button_reply:{id:yes(ownerQuestion),title:'نعم'}}});
+  await drainWhatsAppQueue(f.ctx);
+  assert.equal((await f.ctx.store.list(['offices','office-a','journeys'])).length,1);
+  assert.equal((await f.ctx.store.list(['offices','office-a','operations'])).filter(t=>t.type==='JOURNEY_FOLLOW_UP').length,1);
+  assert.equal(f.calls.filter(c=>c.url.includes('telegram')).length,0);assert.equal(f.paid(),0);
+});
 
 function fixture({ envPatch = {} } = {}) {
   const docs = new Map();
