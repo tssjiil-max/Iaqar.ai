@@ -52,7 +52,8 @@ async function openAs(uid, hash, width = 390) {
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: h.origin }).catch(() => {});
   const page = await ctx.newPage();
   page.setDefaultTimeout(10000);
-  page.on("console", (m) => { if (m.type() === "error") errors.push(`${step}: ${m.text()}`); });
+  page.on("console", (m) => { if (m.type() === "error") errors.push(`${step}: ${m.text()} ${m.location().url || ""}`); });
+  page.on("response",r=>{if(r.status()>=400)console.log("HTTP_DIAGNOSTIC",r.status(),r.url());});
   page.on("pageerror", (e) => errors.push(`${step}: ${e.message}`));
   await page.goto(`${h.origin}/#/${hash}`);
   return page;

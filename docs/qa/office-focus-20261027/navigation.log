@@ -1,0 +1,22 @@
+✔ office page uses the approved work-first hierarchy (1.754896ms)
+✔ office tool labels and order stay exact (0.321585ms)
+✔ office tool cards use the same light boundary token as daily tasks (0.295666ms)
+✔ bare office names are presented as a complete real-estate office title (0.161898ms)
+✔ directory uses a directory-style icon, not the contacts icon (0.219027ms)
+✔ additional-tools heading follows the same title/description row rhythm as daily tasks (0.214113ms)
+✔ office icons match the monochrome offer/request icon treatment (0.654189ms)
+✔ office visual weight follows the daily-tasks page without redesign (0.650877ms)
+✔ office header has the same two-line platform hierarchy as daily tasks (0.32164ms)
+✔ office identity card uses the same soft card treatment as the daily task path (0.330049ms)
+✔ office identity rows follow the reference: icon, then label and value together, name never clipped (0.578789ms)
+✔ every office tool is a real button that opens its own screen (no «قريبًا» placeholders) (0.513834ms)
+✔ five internal destinations in approved RTL order (2.563704ms)
+✔ nested and legacy routes select their owning destination (1.428664ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 214.788778

@@ -1,0 +1,201 @@
+{
+  "base": "1eeee9ddf3d9b917c2f273c0ef48dedf5942015c",
+  "ready": false,
+  "web_tests": {
+    "pass": 2327,
+    "fail": 0
+  },
+  "worker_chain_exit": 0,
+  "focused_tests": {
+    "pass": 49,
+    "fail": 0
+  },
+  "navigation_widths": [
+    320,
+    390,
+    430,
+    1024,
+    1280
+  ],
+  "financial_browser": {
+    "current": 12,
+    "secondary": 7,
+    "emulator": 4
+  },
+  "browser_gate_initial": [
+    {
+      "script": "scripts/qa/office-os/journey.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 320,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 390,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 430,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/deep-links.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/settings.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/community.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/fresh-broker.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/auth-flows.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/library.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/session.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 1024,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 1280,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/broker-steps.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/bot.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/agent.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/completion.e2e.mjs",
+      "width": null,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/smart-fill.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/kapso.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/conversations.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/agent-try.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/guest-desk.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/operations-projection.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/scout.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/bank-activation.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/public-search.e2e.mjs",
+      "width": null,
+      "exit": 0
+    }
+  ],
+  "layout_office_recheck": {
+    "at": "2026-10-27T12:18:15.322Z",
+    "widths": [
+      320,
+      390,
+      430,
+      1024,
+      1280
+    ],
+    "screens": [
+      "office"
+    ],
+    "results": [
+      {
+        "width": 320,
+        "screen": "office",
+        "issues": []
+      },
+      {
+        "width": 390,
+        "screen": "office",
+        "issues": []
+      },
+      {
+        "width": 430,
+        "screen": "office",
+        "issues": []
+      },
+      {
+        "width": 1024,
+        "screen": "office",
+        "issues": []
+      },
+      {
+        "width": 1280,
+        "screen": "office",
+        "issues": []
+      }
+    ],
+    "consoleErrors": []
+  },
+  "pending": [
+    "completion browser console resource diagnosis"
+  ]
+}

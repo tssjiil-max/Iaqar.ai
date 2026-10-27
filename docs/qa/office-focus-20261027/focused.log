@@ -1,0 +1,112 @@
+✔ owner promotes a broker to manager; the change is audited with before/after and the actor (68.460549ms)
+✔ owner deactivates and reactivates a staff member (127.275322ms)
+✔ only the owner: a manager, a broker and another office's owner are refused and nothing changes (32.054879ms)
+✔ no sign-in, no change (1.884026ms)
+✔ the owner cannot hand out owner/admin or any unknown role (72.925153ms)
+✔ the owner's own membership is out of reach here (ownership moves only through the platform) (27.854553ms)
+✔ only existing members: an outsider cannot be added through this route (10.850793ms)
+✔ a request with nothing to change, or a non-boolean active flag, is rejected (38.558503ms)
+✔ the body cannot redirect the change to another office: officeId B with office A's owner is refused (5.574081ms)
+✔ platform admin transfers ownership to an active member, atomically, with an admin audit entry (10.053953ms)
+✔ the previous owner can be left as a broker or deactivated (16.841545ms)
+[iaqar-whatsapp] request failed {
+  requestId: '64d11afa-2dc7-4471-a0cb-12eb0f80d24b',
+  code: 'admin_required',
+  message: 'هذه العملية خاصة بإدارة المنصة'
+}
+[iaqar-whatsapp] request failed {
+  requestId: 'e123314b-da5d-4304-a74e-75e2dbf50c03',
+  code: 'admin_required',
+  message: 'هذه العملية خاصة بإدارة المنصة'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '0ffd9996-2c66-42a0-9b6e-333481a42f60',
+  code: 'auth_required',
+  message: 'يلزم تسجيل الدخول'
+}
+✔ only a platform admin: the owner, a manager and an unsigned caller are refused (11.583529ms)
+[iaqar-whatsapp] request failed {
+  requestId: '3998915d-b251-482a-810f-d496c9780cc0',
+  code: 'new_owner_not_member',
+  message: 'المالك الجديد يجب أن يكون عضوًا فعّالًا في المكتب'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '77b8c10a-94ea-4ca6-8e71-bcca9e615830',
+  code: 'new_owner_not_member',
+  message: 'المالك الجديد يجب أن يكون عضوًا فعّالًا في المكتب'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '991efe7a-0d67-44e2-97f9-b8f58f216377',
+  code: 'new_owner_not_member',
+  message: 'المالك الجديد يجب أن يكون عضوًا فعّالًا في المكتب'
+}
+✔ the new owner must already be an active member of that office (24.863016ms)
+[iaqar-whatsapp] request failed {
+  requestId: 'e535adb6-9448-42be-9685-4c32bebf732f',
+  code: 'reason_required',
+  message: 'يلزم ذكر سبب نقل الملكية'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '6d5322f2-86d3-47c7-bfbe-351556bc4f75',
+  code: 'already_owner',
+  message: 'هذا الحساب هو المالك الحالي'
+}
+[iaqar-whatsapp] request failed {
+  requestId: '0a4742bc-43ed-46c4-bcc2-8ea7817e9902',
+  code: 'previous_owner_role_invalid',
+  message: 'دور المالك السابق غير صالح'
+}
+✔ a reason is required, the target must differ, and previousOwnerRole is validated (18.232602ms)
+[iaqar-whatsapp] request failed {
+  requestId: '8e196da6-63bf-422b-a53e-0671e0c92782',
+  code: 'admin_required',
+  message: 'هذه العملية خاصة بإدارة المنصة'
+}
+✔ subscription changes stay platform-admin only (existing audited route) (6.697021ms)
+✔ five internal destinations in approved RTL order (3.780747ms)
+✔ nested and legacy routes select their owning destination (0.912321ms)
+✔ PURCHASE: Arabic decimal amount survives validation and canonical fields (3.575062ms)
+✔ PURCHASE: embedded text and malformed amounts are rejected (1.079284ms)
+✔ LEASE_REQUEST: Arabic decimal amount survives validation and canonical fields (0.25365ms)
+✔ LEASE_REQUEST: embedded text and malformed amounts are rejected (0.501535ms)
+✔ financial presentation preserves cents without changing whole-number formatting (0.541093ms)
+✔ numeric payloads must obey the same two-decimal money boundary (0.278353ms)
+✔ record price blur preserves valid decimals and leaves invalid text for validation (226.098552ms)
+✔ Worker validates raw prices before persisting purchase and rent records (537.209751ms)
+✔ minimum budget preserves Arabic decimals and persists the exact lower bound (3.732601ms)
+✔ minimum budget rejects malformed nonempty input rather than dropping or sanitizing it (0.635716ms)
+✔ an omitted or zero minimum stays optional, and the lower bound stays below the maximum (0.319764ms)
+✔ proposed price preserves cents in validation and generated message (1.326635ms)
+✔ proposed prices reject malformed input on the shared server boundary (0.406251ms)
+✔ counteroffers preserve cents and normalize the saved reply text (0.567145ms)
+✔ counteroffers reject embedded currency and text beyond the normal text limit (0.265531ms)
+✔ composer default price retains decimals without rounding the visible field (164.811559ms)
+✔ Worker rejects malformed minimum budgets, proposals and counteroffers without writes (2549.615156ms)
+✔ a broker cannot act on an opportunity assigned to another broker; managers can (46.409598ms)
+✔ deal completion: brokerMayClose lets only the assigned broker close (31.450594ms)
+✔ inactive members, other offices and anonymous callers are refused before any data access (23.735375ms)
+✔ reply links: expired, locked and closed states; wrong options refused (31.48904ms)
+[iaqar-whatsapp] request failed {
+  requestId: '18f87b59-4ce6-447a-ad7a-c58bfc1aacb5',
+  code: 'intake_not_found',
+  message: 'لم يتم العثور على الطلب'
+}
+✔ public reply endpoints are rate limited (112.44531ms)
+✔ a visitor cannot move a submission to another office (8.173463ms)
+✔ whole amounts, with or without thousands separators (5.081635ms)
+✔ whitespace normalization preserves every zero and rejects literal escape characters (0.83194ms)
+✔ decimal fractions keep their value (the bug: 600000.00 became 60000000) (0.650698ms)
+✔ Arabic-Indic and Persian digits and Arabic separators are read, not dropped (0.953575ms)
+✔ a currency word next to the number is allowed (0.533377ms)
+✔ anything ambiguous or not a positive amount is rejected instead of guessed (1.158638ms)
+✔ the form handler uses the parser and no longer strips every non-digit from the amount (19.246962ms)
+✔ currency appears only once at the start or end, never inside digits (0.475442ms)
+✔ parsed amount survives client document construction for purchase and rent (12.675789ms)
+ℹ tests 49
+ℹ suites 0
+ℹ pass 49
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4517.026558
