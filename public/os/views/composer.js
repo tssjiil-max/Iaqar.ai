@@ -12,7 +12,8 @@ import { newRequestKey, openSheet, openWhatsApp, runAction, toast } from "../cor
 import {
   RECIPIENT, RECIPIENT_LABEL, SEND_STATE_LABEL, sendStateLabel, TEMPLATE_ORDER, buildProposalMessage, replyOptionsFor, templateOf, validateProposalFields
 } from "../domain/proposal-domain.js";
-import { formatNumber, parseRiyadhLocal, toRiyadhLocalInput } from "../domain/format-domain.js";
+import { parseRiyadhLocal, toRiyadhLocalInput } from "../domain/format-domain.js";
+import { formatMoneyAmount } from "../../js/intake-amount-domain.js";
 
 /** Card for one prepared proposal: open WhatsApp synchronously inside the click. */
 export function proposalPreparedPanel(proposal, { onOpened } = {}) {
@@ -129,7 +130,7 @@ export function openComposer(journey, { offer = {}, request = {}, defaultKind = 
     for (const f of template.fields) {
       let input;
       if (f.type === "price") {
-        input = h("input", { class: "os-input", name: f.key, inputmode: "numeric", value: values.price ? formatNumber(values.price) : "" });
+        input = h("input", { class: "os-input", name: f.key, inputmode: "numeric", value: values.price ? (formatMoneyAmount(values.price) || String(values.price)) : "" });
       } else if (f.type === "datetime") {
         input = h("input", { class: "os-input", name: f.key, type: "datetime-local", value: values.viewingAt });
       } else {

@@ -1,0 +1,154 @@
+{
+  "results": [
+    {
+      "label": "proposal-0",
+      "passed": false,
+      "error": "visible default must retain cents\n+ actual - expected\n\n+ '600,001'\n- '600,000.5'\n         ^\n",
+      "observed": {
+        "raw": null,
+        "prefill": "600,001",
+        "before": 11,
+        "after": 13,
+        "savedPrices": [
+          600000.5,
+          600000.5
+        ],
+        "messages": [
+          "مرحبًا عميل،\nبخصوص فيلا في حي النرجس، الرياض، نقترح عليك سعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:39447/r#nVGME7nT48f4VMf0zEhGG3HHou1szBGJYbl0STTCH4Y",
+          "مرحبًا مالك،\nبخصوص عقارك (فيلا في حي النرجس، الرياض)، وصلنا اهتمام بسعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:39447/r#KZRnaEY1TO9hFDy2fK9cA9S9xdoWTivFJjsMVUTGSc0"
+        ]
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "proposal-1",
+      "passed": false,
+      "error": "visible default must retain cents\n+ actual - expected\n\n+ '600,001'\n- '600,000.5'\n         ^\n",
+      "observed": {
+        "raw": "٦٠٠٬٠٠٠٫٥٠",
+        "prefill": "600,001",
+        "before": 13,
+        "after": 15,
+        "savedPrices": [
+          60000050,
+          60000050
+        ],
+        "messages": [
+          "مرحبًا عميل،\nبخصوص فيلا في حي النرجس، الرياض، نقترح عليك سعر 60,000,050 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:39447/r#LRUKjxRgde7ZApPA-GR0TSrAgWrdeNviN5rpdoE49mU",
+          "مرحبًا مالك،\nبخصوص عقارك (فيلا في حي النرجس، الرياض)، وصلنا اهتمام بسعر 60,000,050 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:39447/r#ny9KMYP8sIRjL4Csj6Yc-MirJY0SXp4bz7yYR5hMOMA"
+        ]
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "proposal-2",
+      "passed": false,
+      "error": "visible default must retain cents\n+ actual - expected\n\n+ '600,001'\n- '600,000.5'\n         ^\n",
+      "observed": {
+        "raw": "600,000.50",
+        "prefill": "600,001",
+        "before": 15,
+        "after": 17,
+        "savedPrices": [
+          600000.5,
+          600000.5
+        ],
+        "messages": [
+          "مرحبًا عميل،\nبخصوص فيلا في حي النرجس، الرياض، نقترح عليك سعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:39447/r#Mw1rCjwrBlY66nqISoNaL-lN-RoVj2Sml9uzIyAor6o",
+          "مرحبًا مالك،\nبخصوص عقارك (فيلا في حي النرجس، الرياض)، وصلنا اهتمام بسعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:39447/r#cn8kE8N9fFXP64tTcucGs2Btpc54QZOmt9mlxDFAA68"
+        ]
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "proposal-3",
+      "passed": false,
+      "error": "invalid prices must not create proposals\n\n2 !== 0\n",
+      "observed": {
+        "raw": "600ريال000",
+        "prefill": "600,001",
+        "before": 17,
+        "after": 19,
+        "savedPrices": [
+          600000,
+          600000
+        ],
+        "messages": [
+          "مرحبًا مالك،\nبخصوص عقارك (فيلا في حي النرجس، الرياض)، وصلنا اهتمام بسعر 600,000 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:39447/r#eNHU9bz9UudD-9nPyuS4nA0ExxE-gQu0iQsL6mgOV3A",
+          "مرحبًا عميل،\nبخصوص فيلا في حي النرجس، الرياض، نقترح عليك سعر 600,000 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:39447/r#kqd55BikbdTDS0Jw9HyzbiaRzAyEMbA7jI3UgkOkW8A"
+        ]
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "counter-4",
+      "passed": false,
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ '60,000,050'\n- '600,000.5'\n     ^\n",
+      "observed": {
+        "raw": "٦٠٠٬٠٠٠٫٥٠",
+        "afterBlur": "60,000,050",
+        "reply": {
+          "optionId": "counter",
+          "label": "أقترح سعرًا آخر",
+          "text": "60000050",
+          "value": 60000050,
+          "effect": "PRICE_COUNTER",
+          "at": "2026-10-27T06:25:53.992Z",
+          "source": "REPLY_LINK",
+          "submissionId": "aee7115f84d24d98843b24a3counter",
+          "revision": 1
+        }
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "counter-5",
+      "passed": false,
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ '600,001'\n- '600,000.5'\n         ^\n",
+      "observed": {
+        "raw": "600,000.50",
+        "afterBlur": "600,001",
+        "reply": {
+          "optionId": "counter",
+          "label": "أقترح سعرًا آخر",
+          "text": "600001",
+          "value": 600001,
+          "effect": "PRICE_COUNTER",
+          "at": "2026-10-27T06:25:54.309Z",
+          "source": "REPLY_LINK",
+          "submissionId": "05fee8b7eb0348f3a6bd27d6counter",
+          "revision": 1
+        }
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "counter-6",
+      "passed": false,
+      "error": "invalid reply must not be rewritten\n+ actual - expected\n\n+ '600,000'\n- '600ريال000'\n      ^\n",
+      "observed": {
+        "raw": "600ريال000",
+        "afterBlur": "600,000",
+        "reply": {
+          "optionId": "counter",
+          "label": "أقترح سعرًا آخر",
+          "text": "600000",
+          "value": 600000,
+          "effect": "PRICE_COUNTER",
+          "at": "2026-10-27T06:25:54.627Z",
+          "source": "REPLY_LINK",
+          "submissionId": "55c18d69e9454b2f8712bee8counter",
+          "revision": 1
+        }
+      },
+      "errors": [],
+      "blocked": []
+    }
+  ]
+}
