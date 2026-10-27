@@ -1,0 +1,37 @@
+✔ propertyCategory classifies land apartment villa (1.232218ms)
+✔ dynamic fields hide rooms for land purchase (0.382383ms)
+✔ rent apartment includes annualRent and furnished (0.2416ms)
+✔ buildClientIntakeDocument uses canonical field names (0.607863ms)
+✔ shared price field is interpreted as request budget for purchase (0.31625ms)
+✔ shared price field is interpreted as request annual budget for rent (0.223587ms)
+✔ whole amounts, with or without thousands separators (1.96805ms)
+✔ whitespace normalization preserves every zero and rejects literal escape characters (0.63242ms)
+✔ decimal fractions keep their value (the bug: 600000.00 became 60000000) (0.281044ms)
+✔ Arabic-Indic and Persian digits and Arabic separators are read, not dropped (0.276636ms)
+✔ a currency word next to the number is allowed (0.222185ms)
+✔ anything ambiguous or not a positive amount is rejected instead of guessed (1.626493ms)
+✔ the form handler uses the parser and no longer strips every non-digit from the amount (0.988814ms)
+✔ currency appears only once at the start or end, never inside digits (0.254695ms)
+✔ parsed amount survives client document construction for purchase and rent (0.897183ms)
+✔ owner sale chip preserves OFFER sale semantics (1.631235ms)
+✔ owner rent chip preserves OFFER rent semantics (0.427026ms)
+✔ client purchase chip preserves request purchase semantics (0.208128ms)
+✔ client rent chip preserves request rent semantics (0.1449ms)
+✔ property chips map to existing propertyType values (0.237573ms)
+✔ other property chip uses existing free-text propertyType field (0.240438ms)
+✔ access-gate exposes role-explicit quick-choice cards (0.523516ms)
+✔ infer owner purpose from transaction type (0.342999ms)
+✔ dynamic intake price labels follow purpose without changing stored field (0.233315ms)
+✔ intake polish uses red asterisk labels without mandatory Arabic suffix (0.323564ms)
+✔ intake forms unify purpose label and compact voice button (0.380059ms)
+✔ intake area is a visible optional field and never a completeness requirement (0.338361ms)
+✔ intake form order places contact fields before submit (0.227975ms)
+✔ property type chips use balanced grid without commercial chip option (0.213728ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 146.630227

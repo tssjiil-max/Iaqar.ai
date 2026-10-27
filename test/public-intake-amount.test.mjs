@@ -14,6 +14,18 @@ test("whole amounts, with or without thousands separators", () => {
   assert.equal(parseIntakeAmount(750000), 750000);
 });
 
+test("whitespace normalization preserves every zero and rejects literal escape characters", () => {
+  for (const [raw, expected] of [
+    ["600000", 600000], ["100020.50", 100020.5],
+    ["600\u00a0000.50", 600000.5], ["600\t000.50", 600000.5], ["٦٠٠٬٠٠٠٫٥٠", 600000.5]
+  ]) {
+    assert.equal(parseIntakeAmount(raw), expected, raw);
+  }
+  for (const raw of ["600s000", "600u000", "600a000", "600\\000"]) {
+    assert.equal(parseIntakeAmount(raw), null, raw);
+  }
+});
+
 test("decimal fractions keep their value (the bug: 600000.00 became 60000000)", () => {
   assert.equal(parseIntakeAmount("600000.00"), 600000);
   assert.equal(parseIntakeAmount("600000.5"), 600000.5);

@@ -1,0 +1,4 @@
+PASS purchase-valid: ٦٠٠٬٠٠٠٫٥٠; documents 0 -> 1
+PASS purchase-invalid: 600ريال000; documents 1 -> 1
+PASS rent-valid: ٦٠٠٬٠٠٠٫٥٠; documents 1 -> 2
+PASS rent-invalid: 600ريال000; documents 2 -> 2

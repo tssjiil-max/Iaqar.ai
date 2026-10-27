@@ -116,7 +116,7 @@ export function parseIntakeAmount(raw) {
   if (new RegExp(currency, "i").test(text)) return null;
   text = text.replace(/[٫]/g, ".")
     .replace(/[٬،]/g, ",")
-    .replace(/[\\s\\u00a0]/g, "");
+    .replace(/[\s\u00a0]/g, "");
   if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(text)) return null;
   const value = Number(text.replace(/,/g, ""));
   return Number.isFinite(value) && value > 0 && value < 1e12 ? value : null;
