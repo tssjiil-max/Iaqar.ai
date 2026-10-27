@@ -59,6 +59,10 @@ service cloud.firestore {
           && request.resource.data.district.size() <= 80
           && request.resource.data.details is string
           && request.resource.data.details.size() <= 1000
+          && (!('area' in request.resource.data) || (request.resource.data.area is number && request.resource.data.area >= 0 && request.resource.data.area <= 100000000))
+          && (!('amount' in request.resource.data) || (request.resource.data.amount is number && request.resource.data.amount >= 0 && request.resource.data.amount <= 1000000000000))
+          && (!('rooms' in request.resource.data) || (request.resource.data.rooms is int && request.resource.data.rooms >= 0 && request.resource.data.rooms <= 100))
+          && (!('transactionType' in request.resource.data) || request.resource.data.transactionType in ['sale', 'rent'])
           && request.resource.data.mediaPaths is list
           && request.resource.data.mediaPaths.size() <= 6
           && request.resource.data.imageCount is int
