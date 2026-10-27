@@ -1,0 +1,183 @@
+✔ propertyCategory classifies land apartment villa (1.797384ms)
+✔ dynamic fields hide rooms for land purchase (0.569543ms)
+✔ rent apartment includes annualRent and furnished (0.353499ms)
+✔ buildClientIntakeDocument uses canonical field names (0.895992ms)
+✔ shared price field is interpreted as request budget for purchase (0.467332ms)
+✔ shared price field is interpreted as request annual budget for rent (0.304629ms)
+✖ whole amounts, with or without thousands separators (2.634615ms)
+✖ decimal fractions keep their value (the bug: 600000.00 became 60000000) (0.397171ms)
+✖ Arabic-Indic and Persian digits and Arabic separators are read, not dropped (0.713321ms)
+✖ a currency word next to the number is allowed (0.440753ms)
+✖ anything ambiguous or not a positive amount is rejected instead of guessed (0.508819ms)
+✔ the form handler uses the parser and no longer strips every non-digit from the amount (2.288309ms)
+✖ currency appears only once at the start or end, never inside digits (0.312794ms)
+✖ parsed amount survives client document construction for purchase and rent (0.383856ms)
+✔ owner sale chip preserves OFFER sale semantics (1.521178ms)
+✔ owner rent chip preserves OFFER rent semantics (0.173083ms)
+✔ client purchase chip preserves request purchase semantics (0.191608ms)
+✔ client rent chip preserves request rent semantics (0.142095ms)
+✔ property chips map to existing propertyType values (0.265977ms)
+✔ other property chip uses existing free-text propertyType field (0.195395ms)
+✔ access-gate exposes role-explicit quick-choice cards (0.422839ms)
+✔ infer owner purpose from transaction type (0.244265ms)
+✔ dynamic intake price labels follow purpose without changing stored field (0.237003ms)
+✔ intake polish uses red asterisk labels without mandatory Arabic suffix (0.317222ms)
+✔ intake forms unify purpose label and compact voice button (0.359751ms)
+✔ intake area is a visible optional field and never a completeness requirement (0.299359ms)
+✔ intake form order places contact fields before submit (0.25235ms)
+✔ property type chips use balanced grid without commercial chip option (0.130994ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 21
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 167.600888
+
+✖ failing tests:
+
+test at test/public-intake-amount.test.mjs:8:1
+✖ whole amounts, with or without thousands separators (2.634615ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  6 !== 600000
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/Iaqar.ai/test/public-intake-amount.test.mjs:9:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 6,
+    expected: 600000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/public-intake-amount.test.mjs:17:1
+✖ decimal fractions keep their value (the bug: 600000.00 became 60000000) (0.397171ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  null !== 600000
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/Iaqar.ai/test/public-intake-amount.test.mjs:18:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: 600000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/public-intake-amount.test.mjs:25:1
+✖ Arabic-Indic and Persian digits and Arabic separators are read, not dropped (0.713321ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  6 !== 600000
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/Iaqar.ai/test/public-intake-amount.test.mjs:26:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 6,
+    expected: 600000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/public-intake-amount.test.mjs:33:1
+✖ a currency word next to the number is allowed (0.440753ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  6 !== 600000
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/Iaqar.ai/test/public-intake-amount.test.mjs:34:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 6,
+    expected: 600000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/public-intake-amount.test.mjs:39:1
+✖ anything ambiguous or not a positive amount is rejected instead of guessed (0.508819ms)
+  AssertionError [ERR_ASSERTION]: «٦٠٠٠٠٠٫٥٠٥» must be rejected
+
+  6.55 !== null
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/Iaqar.ai/test/public-intake-amount.test.mjs:41:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 6.55,
+    expected: null,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/public-intake-amount.test.mjs:54:1
+✖ currency appears only once at the start or end, never inside digits (0.312794ms)
+  AssertionError [ERR_ASSERTION]: ريال 600000
+
+  6 !== 600000
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/Iaqar.ai/test/public-intake-amount.test.mjs:61:13)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 6,
+    expected: 600000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/public-intake-amount.test.mjs:69:1
+✖ parsed amount survives client document construction for purchase and rent (0.383856ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  null !== 600000.5
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/Iaqar.ai/test/public-intake-amount.test.mjs:71:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: 600000.5,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

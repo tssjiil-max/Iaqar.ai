@@ -1,0 +1,68 @@
+{
+  "method": "Connected GitHub Git-data API; terminal git push had no write credentials.",
+  "testedLocalHead": "00e386b423ac3be031d5a70962f775bc84bda7ad",
+  "publishedEquivalentHead": "511739248434e516dc1eaae8a795a22ad15ebeef",
+  "testedTree": "9c4b845093df4c08a4453b1760c57c69e8211cbf",
+  "commits": [
+    {
+      "local": "f03627e81f7a2762ec119a7b36688a6d18a14dcd",
+      "remote": "cb58d50d0de731ae6506387efc35d17a9270a5ac",
+      "tree": "f11ee8290b42408b5567d6b91dbe6cfaf952703b"
+    },
+    {
+      "local": "bcac668353684810f881b6f336c70a34b2f0d48c",
+      "remote": "17a482a207f7c16b56f03b4b5ff89b1e3e00b539",
+      "tree": "3b82f60648ce1e31971caec91ee1a12d8fe6c0e3"
+    },
+    {
+      "local": "96150cc4ea8c07db77edfc50d609955a6a2d0ea0",
+      "remote": "0505b78ac27f753a216fb918a89bdfc36b8692ae",
+      "tree": "a53b2564f3dceb1b7b48a8d70b6742a966262b94"
+    },
+    {
+      "local": "e1f6f138d205b25f899e8cdf84be8cb57362ebc5",
+      "remote": "7a99ea1780130ab749f40e4304a5ce2b229ff9df",
+      "tree": "eac9a30e159dc55a90e6284b3a0ab9a82a570909"
+    },
+    {
+      "local": "8d992134dc9c18fb5869653179685b38b04cb085",
+      "remote": "dba511606756d314ca004ccadbfc9c0096f77cf6",
+      "tree": "454a3a6a19234c405d063e8a17d2c550eb0af503"
+    },
+    {
+      "local": "593e8c24f0c1c5ea911014a3255189f5f81b978d",
+      "remote": "358d7b6fa908ebaa4a215c3b70e8621618f2af79",
+      "tree": "cf1d3e6cfb3c65f38f2050418b887c167312e8a8"
+    },
+    {
+      "local": "38d8e720bbbb752e20080d91e7a5c15ec51f53ac",
+      "remote": "e669a27b4f714d0b83636874f344ee908b7160d7",
+      "tree": "c8f93837cb420b9f6f53ecaf22abcfe8cc3fd872"
+    },
+    {
+      "local": "5999aa3de1f79126bc83f520c902e6a21c69bd48",
+      "remote": "d8c4fede66cc2290b550531997ba666929cf3817",
+      "tree": "27d9cafa8ab8510fa49b20ac42a19dae7a4cc072"
+    },
+    {
+      "local": "a962714213fa36577694355e67908a72f92dbe60",
+      "remote": "af85518dd19ea47a415e50dd456b23fe25a15f57",
+      "tree": "3cc963a3592a899af9bbdb649e28ca64caf7f195"
+    },
+    {
+      "local": "3e8d6c2b750a81c04b746defcbac89a17b803712",
+      "remote": "6371ed251396bbc351beb20ac93cdfc1e3eebdc9",
+      "tree": "566a3976edd9de8baa9bc4fc40a20d945d8f39bf"
+    },
+    {
+      "local": "00e386b423ac3be031d5a70962f775bc84bda7ad",
+      "remote": "511739248434e516dc1eaae8a795a22ad15ebeef",
+      "tree": "9c4b845093df4c08a4453b1760c57c69e8211cbf"
+    }
+  ],
+  "remoteProtectedReferences": [
+    "recovery/reference-20261019-e23b3ae",
+    "recovery/staging-20261024-351e7c3"
+  ],
+  "note": "Each remote tree SHA was required to equal the tested local tree SHA. Author/committer metadata is provider-generated, so remote commit SHAs differ. No merge or force update."
+}

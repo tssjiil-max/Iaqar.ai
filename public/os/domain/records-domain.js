@@ -7,6 +7,7 @@
  */
 
 import { cleanText, formatArea, formatPrice, localPhone, toNumber, whatsappDigits } from "./format-domain.js";
+import { parseIntakeAmount } from "../../js/intake-amount-domain.js";
 
 export const RECORD_KIND = Object.freeze({ OFFER: "OFFER", REQUEST: "REQUEST" });
 
@@ -109,11 +110,17 @@ export function validateRecordInput(input = {}, { requireName = false } = {}) {
   if (!city) errors.city = "اكتب المدينة";
   const district = cleanText(input.district, 80);
   if (!district) errors.district = "اكتب الحي";
-  const price = toNumber(input.price ?? input.priceOrBudget ?? input.budget);
+  const price = parseIntakeAmount(input.price ?? input.priceOrBudget ?? input.budget) ?? 0;
   if (!(price > 0)) errors.price = kind === RECORD_KIND.REQUEST ? "اكتب الميزانية" : "اكتب السعر";
   else if (price > 10_000_000_000) errors.price = "القيمة غير منطقية";
   // A request may give its budget as a range: the lower bound sits beside the budget (never above it).
-  const priceMin = kind === RECORD_KIND.REQUEST ? toNumber(input.priceMin ?? input.budgetMin) : 0;
+  const minimumRaw = input.priceMin ?? input.budgetMin;
+  const minimumText = String(minimumRaw ?? "").trim();
+  // A missing or explicit zero lower bound means no minimum; malformed text must not become a number.
+  const minimumAbsent = minimumText === "" || /^[0٠۰]+(?:[.٫][0٠۰]{1,2})?$/.test(minimumText);
+  const parsedMinimum = kind === RECORD_KIND.REQUEST && !minimumAbsent ? parseIntakeAmount(minimumRaw) : null;
+  const priceMin = parsedMinimum ?? 0;
+  if (kind === RECORD_KIND.REQUEST && !minimumAbsent && parsedMinimum === null) errors.priceMin = "اكتب الحد الأدنى للميزانية بأرقام صحيحة";
   if (priceMin && price > 0 && priceMin >= price) errors.priceMin = "الحد الأدنى للميزانية أقل من الحد الأعلى";
   const areaRaw = input.area;
   const area = toNumber(areaRaw);

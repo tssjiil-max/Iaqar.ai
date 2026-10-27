@@ -1,0 +1,20 @@
+✔ setup: the scout on, an offer with no buyer in the office (45.823851ms)
+✖ a round cut off after its alert and before saving its find → the next round saves the same find and does not alert again (41.459846ms)
+✖ two rounds of the same office at once (a cron beat while another has not finished) → one find and one alert per ad (31.221663ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 640.679128
+✖ failing tests:
+✖ a round cut off after its alert and before saving its find → the next round saves the same find and does not alert again (41.459846ms)
+  AssertionError [ERR_ASSERTION]: still one alert
+    actual: 2,
+    expected: 1,
+✖ two rounds of the same office at once (a cron beat while another has not finished) → one find and one alert per ad (31.221663ms)
+  AssertionError [ERR_ASSERTION]: only the beat that claimed the office worked on it
+    actual: 2,
+    expected: 1,

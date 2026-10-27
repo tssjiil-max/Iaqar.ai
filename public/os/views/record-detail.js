@@ -33,6 +33,8 @@ function candidatesPanel(record) {
   searchBtn.addEventListener("click", () => runAction(searchBtn, async () => {
     const result = await api("/os/records/candidates", { officeId: session.officeId, recordId: view.id });
     clear(listEl);
+    // The scan stopped before the end of the office's records: say so above whatever it found.
+    if (result.matchingComplete === false && result.matchingNotice) append(listEl, h("p", { class: "os-sub", role: "status", "data-matching-incomplete": "", text: result.matchingNotice }));
     if (!result.candidates?.length) {
       append(listEl, emptyState("search", "لا توجد خيارات مناسبة الآن", "سيُعاد فحص السجل تلقائيًا عند إضافة عروض أو طلبات جديدة."));
       return;

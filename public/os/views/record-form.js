@@ -7,7 +7,7 @@ import { session } from "../core/session.js";
 import { recordById, state, subscribe } from "../core/state.js";
 import { newRequestKey, runAction, toast } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, kindOf, priceOf, validateRecordInput } from "../domain/records-domain.js";
-import { formatNumber } from "../domain/format-domain.js";
+import { formatMoneyAmount } from "../../js/intake-amount-domain.js";
 import { recordImages } from "../domain/record-media-domain.js";
 import { imagePicker } from "./record-images.js";
 import { FILL_MODE, INTAKE_CHANNELS, INTAKE_ROLES, notesWithDistricts, splitDistrictInput } from "../domain/smart-fill-domain.js";
@@ -85,8 +85,8 @@ export function recordFormFields({ kind, values = {}, lockKind = false, onKindCh
   );
   const typeInput = h("input", { class: "os-input", name: "propertyType", list: "os-types", value: values.propertyType || "", placeholder: "شقة، فيلا، أرض…", autocomplete: "off" });
   const types = h("datalist", { id: "os-types" }, PROPERTY_TYPES.map((t) => h("option", { value: t })));
-  const priceInput = h("input", { class: "os-input", name: "price", inputmode: "numeric", value: values.price ? formatNumber(values.price) : "", placeholder: "مثال: 850,000" });
-  priceInput.addEventListener("blur", () => { if (priceInput.value) priceInput.value = formatNumber(priceInput.value) || priceInput.value; });
+  const priceInput = h("input", { class: "os-input", name: "price", inputmode: "numeric", value: values.price ? (formatMoneyAmount(values.price) || String(values.price)) : "", placeholder: "مثال: 850,000" });
+  priceInput.addEventListener("blur", () => { if (priceInput.value) priceInput.value = formatMoneyAmount(priceInput.value) || priceInput.value; });
   const priceLabel = field(kind === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)", priceInput);
   priceLabel.firstChild.textContent = kind === RECORD_KIND.REQUEST ? "الميزانية (ريال)" : "السعر (ريال)";
 
@@ -234,6 +234,7 @@ export function renderRecordForm(container, { recordId = "", kind = RECORD_KIND.
       if (!result?.ok) return;
       if (photos.failed) toast("تم حفظ السجل، وتعذر رفع بعض الصور — أعد إضافتها من «تعديل».", "bad");
       if (result.duplicate && result.duplicateMessage) toast(result.duplicateMessage);
+      else if (result.matchingComplete === false && result.matchingNotice) toast(result.matchingNotice, "bad");
       else if (result.matchingPending) toast("تم الحفظ، وسيُستكمل فحص المطابقة تلقائيًا", "ok");
       else if (result.matches > 0) toast(result.matches === 1 ? "تم الحفظ — ظهرت مطابقة للمراجعة في المهام اليومية" : `تم الحفظ — ظهرت ${result.matches} مطابقات للمراجعة`, "ok");
       else if (!photos.failed) toast(existing ? "تم حفظ التعديلات" : "تم الحفظ — سيُعاد فحص السجل عند وصول بيانات مناسبة", "ok");

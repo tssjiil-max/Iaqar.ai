@@ -1,0 +1,43 @@
+✔ PURCHASE: Arabic decimal amount survives validation and canonical fields (1.938494ms)
+✔ PURCHASE: embedded text and malformed amounts are rejected (0.575325ms)
+✔ LEASE_REQUEST: Arabic decimal amount survives validation and canonical fields (0.172249ms)
+✔ LEASE_REQUEST: embedded text and malformed amounts are rejected (0.204637ms)
+✔ financial presentation preserves cents without changing whole-number formatting (0.401123ms)
+✔ numeric payloads must obey the same two-decimal money boundary (0.185719ms)
+✔ record price blur preserves valid decimals and leaves invalid text for validation (193.51526ms)
+✔ Worker validates raw prices before persisting purchase and rent records (354.960813ms)
+✔ area is optional in validation, persistence and matching completeness (4.333954ms)
+✔ purpose must fit the record kind; phone must be Saudi mobile; Arabic digits accepted (1.428907ms)
+✔ repository filters exclude deleted, respect kind/status/price/search (5.259685ms)
+✔ compatibility level comes only from the computed score (0.702256ms)
+✔ daily tasks: overdue first, waiting separate, snoozed hidden until due, broker visibility (2.498956ms)
+✔ proposal templates: fields, message, link once, reply validation, expiry (2.285125ms)
+✔ journey rules: accepted viewing ≠ done, results route next step, flexible stages (0.769146ms)
+✔ deal completion permission and assignment checks (0.276385ms)
+✔ WhatsApp and Riyadh time helpers (0.781795ms)
+✔ minimum budget preserves Arabic decimals and persists the exact lower bound (2.052926ms)
+✔ minimum budget rejects malformed nonempty input rather than dropping or sanitizing it (0.429175ms)
+✔ an omitted or zero minimum stays optional, and the lower bound stays below the maximum (0.275814ms)
+✔ proposed price preserves cents in validation and generated message (0.625049ms)
+✔ proposed prices reject malformed input on the shared server boundary (0.214662ms)
+✔ counteroffers preserve cents and normalize the saved reply text (0.208183ms)
+✔ counteroffers reject embedded currency and text beyond the normal text limit (0.206901ms)
+✔ composer default price retains decimals without rounding the visible field (65.016974ms)
+✔ Worker rejects malformed minimum budgets, proposals and counteroffers without writes (1091.673357ms)
+✔ whole amounts, with or without thousands separators (1.373174ms)
+✔ whitespace normalization preserves every zero and rejects literal escape characters (0.464098ms)
+✔ decimal fractions keep their value (the bug: 600000.00 became 60000000) (0.160732ms)
+✔ Arabic-Indic and Persian digits and Arabic separators are read, not dropped (0.229455ms)
+✔ a currency word next to the number is allowed (0.153681ms)
+✔ anything ambiguous or not a positive amount is rejected instead of guessed (1.726275ms)
+✔ the form handler uses the parser and no longer strips every non-digit from the amount (0.781514ms)
+✔ currency appears only once at the start or end, never inside digits (0.176796ms)
+✔ parsed amount survives client document construction for purchase and rent (0.612631ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1599.997477

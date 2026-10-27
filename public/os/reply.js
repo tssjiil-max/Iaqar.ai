@@ -6,7 +6,8 @@
 
 import { h, ic, clear, append, surface, feedback } from "./core/dom.js";
 import { workerBase } from "./core/runtime.js";
-import { formatDateTime, formatNumber } from "./domain/format-domain.js";
+import { formatDateTime } from "./domain/format-domain.js";
+import { formatMoneyAmount } from "../js/intake-amount-domain.js";
 
 const root = document.getElementById("reply-root");
 const token = String(location.hash || "").replace(/^#/, "").trim();
@@ -78,7 +79,7 @@ function formView(view) {
     });
     append(options, b);
   }
-  extraInput.addEventListener("blur", () => { if (chosen?.textKind === "price" && extraInput.value) extraInput.value = formatNumber(extraInput.value) || extraInput.value; });
+  extraInput.addEventListener("blur", () => { if (chosen?.textKind === "price" && extraInput.value) extraInput.value = formatMoneyAmount(extraInput.value) || extraInput.value; });
   let sending = false;
   submit.addEventListener("click", async () => {
     if (!chosen || sending) return;

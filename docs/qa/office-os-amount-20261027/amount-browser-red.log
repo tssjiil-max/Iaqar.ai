@@ -1,0 +1,96 @@
+FAIL broker-purchase-0: blur must preserve the exact amount or the invalid text
++ actual - expected
+
++ '60,000,050'
+- '600,000.5'
+     ^
+
+FAIL broker-purchase-1: blur must preserve the exact amount or the invalid text
++ actual - expected
+
++ '600,001'
+- '600,000.5'
+         ^
+
+FAIL broker-purchase-2: invalid amount must not save
+
+3 !== 2
+
+FAIL broker-rent-3: blur must preserve the exact amount or the invalid text
++ actual - expected
+
++ '60,000,050'
+- '600,000.5'
+     ^
+
+FAIL broker-rent-4: blur must preserve the exact amount or the invalid text
++ actual - expected
+
++ '600,001'
+- '600,000.5'
+         ^
+
+FAIL broker-rent-5: invalid amount must not save
+
+6 !== 5
+
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_hpzdizivjtd","officeId":"office-alpha","at":"2026-10-27T03:17:47.288Z"}
+FAIL public-owner-purchase-6: blur must preserve the exact amount or the invalid text
++ actual - expected
+
++ '60,000,050'
+- '600,000.5'
+     ^
+
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_xals7sbw93","officeId":"office-alpha","at":"2026-10-27T03:17:48.013Z"}
+FAIL public-owner-purchase-7: blur must preserve the exact amount or the invalid text
++ actual - expected
+
++ '600,001'
+- '600,000.5'
+         ^
+
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_cizyy1f0azq","officeId":"office-alpha","at":"2026-10-27T03:17:48.779Z"}
+FAIL public-owner-purchase-8: invalid amount must not save
+
+3 !== 2
+
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_37zmwilxh4p","officeId":"office-alpha","at":"2026-10-27T03:17:49.613Z"}
+FAIL public-owner-rent-9: blur must preserve the exact amount or the invalid text
++ actual - expected
+
++ '60,000,050'
+- '600,000.5'
+     ^
+
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_ora7dhib23","officeId":"office-alpha","at":"2026-10-27T03:17:50.378Z"}
+FAIL public-owner-rent-10: blur must preserve the exact amount or the invalid text
++ actual - expected
+
++ '600,001'
+- '600,000.5'
+         ^
+
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_13yfmklrmnlh","officeId":"office-alpha","at":"2026-10-27T03:17:51.062Z"}
+FAIL public-owner-rent-11: invalid amount must not save
+
+6 !== 5
+
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Every current-form amount journey must pass
+
+12 !== 0
+
+    at file:///workspace/scratch/b6620274aa2c/Iaqar.ai/scripts/qa/office-os/amount-boundary.e2e.mjs:84:8 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 12,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.22.1

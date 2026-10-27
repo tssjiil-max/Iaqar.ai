@@ -1,0 +1,131 @@
+{
+  "results": [
+    {
+      "label": "proposal-0",
+      "passed": true,
+      "observed": {
+        "raw": null,
+        "prefill": "600,000.5",
+        "before": 11,
+        "after": 13,
+        "savedPrices": [
+          600000.5,
+          600000.5
+        ],
+        "messages": [
+          "مرحبًا مالك،\nبخصوص عقارك (فيلا في حي النرجس، الرياض)، وصلنا اهتمام بسعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:33697/r#1IrOrflzBiNaR4qbEsJQaXbA_LymhamriN2mHuQWq70",
+          "مرحبًا عميل،\nبخصوص فيلا في حي النرجس، الرياض، نقترح عليك سعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:33697/r#josSNuYZnkpGHv1CdZBHiiscxndkNIgCzzbL9uD_HmA"
+        ]
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "proposal-1",
+      "passed": true,
+      "observed": {
+        "raw": "٦٠٠٬٠٠٠٫٥٠",
+        "prefill": "600,000.5",
+        "before": 13,
+        "after": 15,
+        "savedPrices": [
+          600000.5,
+          600000.5
+        ],
+        "messages": [
+          "مرحبًا عميل،\nبخصوص فيلا في حي النرجس، الرياض، نقترح عليك سعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:33697/r#pq8WU3QmqGjxMECZ7KDBQpxIUD-_xQ-_71V3Vj27XmE",
+          "مرحبًا مالك،\nبخصوص عقارك (فيلا في حي النرجس، الرياض)، وصلنا اهتمام بسعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:33697/r#sv3fXuN-hBidil5RL27zeJy6PcjJO-ssLWLt5_M08U0"
+        ]
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "proposal-2",
+      "passed": true,
+      "observed": {
+        "raw": "600,000.50",
+        "prefill": "600,000.5",
+        "before": 15,
+        "after": 17,
+        "savedPrices": [
+          600000.5,
+          600000.5
+        ],
+        "messages": [
+          "مرحبًا مالك،\nبخصوص عقارك (فيلا في حي النرجس، الرياض)، وصلنا اهتمام بسعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:33697/r#z5C4eJ6626_srswRawKH4xj87A2IGJxxMqIvMCPMMSc",
+          "مرحبًا عميل،\nبخصوص فيلا في حي النرجس، الرياض، نقترح عليك سعر 600,000.5 ريال.\nنرجو اختيار ردك من الرابط.\nسلطان الصاعدي — مكتب سلطان العقاري\nhttp://127.0.0.1:33697/r#xPAyCY8CJoSMhzyAAwF-0DO4pHpy2POtoLCHoSPRvKY"
+        ]
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "proposal-3",
+      "passed": true,
+      "observed": {
+        "raw": "600ريال000",
+        "prefill": "600,000.5",
+        "before": 17,
+        "after": 17,
+        "savedPrices": [],
+        "messages": []
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "counter-4",
+      "passed": true,
+      "observed": {
+        "raw": "٦٠٠٬٠٠٠٫٥٠",
+        "afterBlur": "600,000.5",
+        "reply": {
+          "optionId": "counter",
+          "label": "أقترح سعرًا آخر",
+          "text": "600000.5",
+          "value": 600000.5,
+          "effect": "PRICE_COUNTER",
+          "at": "2026-10-27T06:24:43.765Z",
+          "source": "REPLY_LINK",
+          "submissionId": "b832b833e34044058d163ae7counter",
+          "revision": 1
+        }
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "counter-5",
+      "passed": true,
+      "observed": {
+        "raw": "600,000.50",
+        "afterBlur": "600,000.5",
+        "reply": {
+          "optionId": "counter",
+          "label": "أقترح سعرًا آخر",
+          "text": "600000.5",
+          "value": 600000.5,
+          "effect": "PRICE_COUNTER",
+          "at": "2026-10-27T06:24:44.080Z",
+          "source": "REPLY_LINK",
+          "submissionId": "64b2c679d5e2478589ee7fbbcounter",
+          "revision": 1
+        }
+      },
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "counter-6",
+      "passed": true,
+      "observed": {
+        "raw": "600ريال000",
+        "afterBlur": "600ريال000",
+        "reply": null
+      },
+      "errors": [],
+      "blocked": []
+    }
+  ]
+}

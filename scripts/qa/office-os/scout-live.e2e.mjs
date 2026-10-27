@@ -173,6 +173,19 @@ try {
   // The finds are written during the round; the scheduler's own line is written when the round ends, a moment later.
   const beatAfter = (await until(async () => { const health = (await queue()).health; return health.lastWorkAt && health.lastWorkAt !== beatBefore.lastWorkAt ? health : null; }, 90_000, 3000)) || (await queue()).health;
   check("live: the general search ran in the background from the Worker's cron, with nobody on the site", Boolean(found) && beatAfter.lastWorkAt && beatAfter.lastWorkAt !== beatBefore.lastWorkAt, `lastWorkAt ${beatBefore.lastWorkAt || "—"} → ${beatAfter.lastWorkAt || "—"}`);
+  if (!found) {
+    // Why the background round did not finish — ids, times, counts and push states only (no phone, no ad text).
+    const q = await queue();
+    const notes = (await office.collection("notifications").get()).docs.map((d) => d.data()).filter((n) => String(n.type || "").startsWith("SCOUT_"));
+    const runs = (await office.collection("scoutRuns").get()).docs.map((d) => d.data());
+    const iso = (v) => (v?.toDate ? v.toDate().toISOString() : String(v || ""));
+    console.log(`scout diagnosis: ${JSON.stringify({
+      scheduler: { lastTickAt: q.health.lastTickAt, lastWorkAt: q.health.lastWorkAt, lastOkAt: q.health.lastOkAt, lastFailureAt: q.health.lastFailureAt, lastFailure: q.health.lastFailure, rounds: q.health.rounds, ticks: q.health.ticks },
+      queue: { offices: Object.keys(q.entries).length, thisOffice: q.entries[OFFICE] ? { lease: q.entries[OFFICE].l ? new Date(q.entries[OFFICE].l).toISOString() : 0, searches: Object.keys(q.entries[OFFICE].t || {}).length } : null },
+      finds: (await finds()).length, runs: runs.length,
+      alerts: notes.map((n) => ({ at: iso(n.createdAt), entity: n.entityId, push: (() => { try { return JSON.parse(n.providerStateJson || "{}").push; } catch (_) { return ""; } })() }))
+    })}`);
+  }
   const all = found || (await finds());
   const buyer = all.find((f) => f.phone === "0559000111");
   const land = all.filter((f) => f.phone === "0559000222");
@@ -182,7 +195,9 @@ try {
   check("live: a strong find with no way to reach its advertiser is kept inside only (not shown)", Boolean(silent) && !silent.phone && silent.surface === "HIDDEN", `${silent?.band} ${silent?.surface}`);
   check("live: weak ads were neither stored nor shown", !all.some((f) => f.district === "قباء"), `${all.length} kept`);
   const notes = await alerts();
-  check("live: alerts were written for the very strong finds only, each opening its find, none for the unreachable one", notes.length === 2 && notes.every((n) => /^scout\/opp\/so_/.test(n.route) && !/05\d{8}/.test(`${n.title}${n.body}`)) && !notes.some((n) => n.entityId === silent?.id), notes.map((n) => `${n.title}: ${n.body}`).join(" | "));
+  // Each alert opens a find that exists, and a find is alerted once (a round cut off half way used to leave both broken).
+  check("live: alerts were written for the very strong finds only, each opening its find, none for the unreachable one", notes.length === 2 && notes.every((n) => /^scout\/opp\/so_/.test(n.route) && !/05\d{8}/.test(`${n.title}${n.body}`)) && !notes.some((n) => n.entityId === silent?.id)
+    && notes.every((n) => all.some((f) => f.id === n.entityId && n.route === `scout/opp/${f.id}`)) && new Set(notes.map((n) => n.entityId)).size === notes.length, notes.map((n) => `${n.title}: ${n.body} → ${n.entityId}${all.some((f) => f.id === n.entityId) ? "" : " (no such find)"}`).join(" | "));
   const pushes = notes.map((n) => { try { return JSON.parse(n.providerStateJson || "{}").push; } catch (_) { return ""; } });
   console.log(`push provider states (honest, no delivery claim): ${pushes.join(", ")}`);
   const runs = (await office.collection("scoutRuns").get()).docs.map((d) => d.data());
@@ -291,7 +306,9 @@ try {
   await shot("06-lists-and-sources");
 
   // ---------- isolation and the rules
-  const stolen = await api("/os/scout/find", { opportunityId: buyer.id }, ownerB.uid, OFFICE_B);
+  // Any find of this office (the buyer when there is one): another office must not open it.
+  const someFind = buyer || (await finds())[0];
+  const stolen = someFind ? await api("/os/scout/find", { opportunityId: someFind.id }, ownerB.uid, OFFICE_B) : { status: 0 };
   const cross = await api("/os/scout/overview", {}, ownerB.uid, OFFICE);
   const theirs = await api("/os/scout/overview", {}, ownerB.uid, OFFICE_B);
   check("live: another office cannot open this office's find, cannot read its page, and has nothing of it", stolen.status === 404 && cross.status === 403 && theirs.body.board?.length === 0 && theirs.body.tasks?.length === 0, `${stolen.status} ${cross.status}`);

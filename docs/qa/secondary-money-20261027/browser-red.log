@@ -1,0 +1,64 @@
+FAIL proposal-0: visible default must retain cents
++ actual - expected
+
++ '600,001'
+- '600,000.5'
+         ^
+
+FAIL proposal-1: visible default must retain cents
++ actual - expected
+
++ '600,001'
+- '600,000.5'
+         ^
+
+FAIL proposal-2: visible default must retain cents
++ actual - expected
+
++ '600,001'
+- '600,000.5'
+         ^
+
+FAIL proposal-3: invalid prices must not create proposals
+
+2 !== 0
+
+FAIL counter-4: Expected values to be strictly equal:
++ actual - expected
+
++ '60,000,050'
+- '600,000.5'
+     ^
+
+FAIL counter-5: Expected values to be strictly equal:
++ actual - expected
+
++ '600,001'
+- '600,000.5'
+         ^
+
+FAIL counter-6: invalid reply must not be rewritten
++ actual - expected
+
++ '600,000'
+- '600ريال000'
+      ^
+
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Every proposal/counteroffer case must pass
+
+7 !== 0
+
+    at file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/scripts/qa/office-os/secondary-money.e2e.mjs:116:8 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 7,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.22.1

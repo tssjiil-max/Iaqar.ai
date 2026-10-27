@@ -156,7 +156,8 @@ function chooseSheet(x, i, searchToken) {
         h('p', { class: 'os-field-note', text: 'أي حجز أو سعر نهائي يعتمده المكتب.' }));
     }, { onError: (error) => { status.className = 'os-alert bad os-feedback'; status.querySelector('.os-feedback-copy').textContent = error.message; status.hidden = false; } });
   });
-  requestAnimationFrame(() => sheet.querySelector('[name=contactName]')?.focus({ preventScroll: true }));
+  // The name first — unless the guest is already in one of the fields (a quick tap on the phone must keep its focus).
+  requestAnimationFrame(() => { if (!sheet.contains(document.activeElement)) sheet.querySelector('[name=contactName]')?.focus({ preventScroll: true }); });
 }
 
 // ------------------------------------------------------------------ the desk

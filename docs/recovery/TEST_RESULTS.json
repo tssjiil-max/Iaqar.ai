@@ -1,0 +1,187 @@
+{
+  "web": {
+    "command": "node --test --test-concurrency=4 test/*.test.mjs",
+    "tests": 2299,
+    "pass": 2299,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "logSha256": "3f61f81e5cb5b2597355d079763db62e5dd82b537295be83fa3a034041cee061"
+  },
+  "worker": {
+    "command": "npm run test:worker",
+    "tests": 170,
+    "pass": 170,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "logSha256": "3aa2bc9d1660e086cb4161c83d016bdbad920f4089f4ed523ba312848b2a3ba2"
+  },
+  "preHarnessNpmTest": {
+    "command": "npm test",
+    "tests": 2466,
+    "pass": 2466,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "logSha256": "419aff3beb8c6c9d7b448330b249c4a404f14e9532e73400e170c0d7ffe00adb"
+  },
+  "baselineNpmTest": {
+    "command": "npm test (351e7c3)",
+    "tests": 2408,
+    "pass": 2408,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "logSha256": "bb844b03ca6dabb79368c9f9269e5c4d101661267ecf2a7f84e663137c27ff0d"
+  },
+  "rules": {
+    "command": "npm run test:rules",
+    "tests": 83,
+    "pass": 83,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "logSha256": "92b60b3aef8b3e7ed6667c84d7c9a99ad79ebdcd64187442e09b2d60c49c94ee"
+  },
+  "orchestrator": {
+    "command": "npm run test:orchestrator:gate",
+    "tests": 28,
+    "pass": 28,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "logSha256": "db1e2943a15fe0cfe85a8014424cf86b0eabaaf0720f415f66d53f25728fe1a1"
+  },
+  "browserJourneys": [
+    {
+      "name": "journey",
+      "passed": 45,
+      "failed": 0
+    },
+    {
+      "name": "agent",
+      "passed": 19,
+      "failed": 0
+    },
+    {
+      "name": "auth-flows",
+      "passed": 45,
+      "failed": 0
+    },
+    {
+      "name": "bank-activation",
+      "passed": 8,
+      "failed": 0
+    },
+    {
+      "name": "operations-projection",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "name": "fresh-broker",
+      "passed": 31,
+      "failed": 0
+    },
+    {
+      "name": "completion",
+      "passed": 110,
+      "failed": 0
+    },
+    {
+      "name": "broker-steps",
+      "passed": 69,
+      "failed": 0
+    },
+    {
+      "name": "scout",
+      "passed": 82,
+      "failed": 0
+    },
+    {
+      "name": "match-negotiation-A-K",
+      "passed": 11,
+      "failed": 0
+    }
+  ],
+  "mobileWidths": [
+    {
+      "width": 320,
+      "exitCode": 0
+    },
+    {
+      "width": 360,
+      "exitCode": 0
+    },
+    {
+      "width": 375,
+      "exitCode": 0
+    },
+    {
+      "width": 390,
+      "exitCode": 0
+    },
+    {
+      "width": 412,
+      "exitCode": 0
+    },
+    {
+      "width": 430,
+      "exitCode": 0
+    },
+    {
+      "width": 768,
+      "exitCode": 0
+    },
+    {
+      "width": 1024,
+      "exitCode": 0
+    }
+  ],
+  "mobileChecks": 632,
+  "visualComparisons": 10,
+  "syntaxCheck": "passed",
+  "workerBundle": {
+    "command": "wrangler deploy --config worker/wrangler.toml --dry-run --env staging",
+    "exitCode": 0,
+    "deployed": false
+  },
+  "externalLiveTests": {
+    "run": false,
+    "reason": "No paid model call, live messaging, database writes, or deployment authorized as part of local verification."
+  },
+  "legacyPlaywright": {
+    "command": "npm run test:e2e",
+    "state": "completed",
+    "passed": 27,
+    "failed": 12,
+    "exitCode": 1,
+    "failures": [
+      "e2e/access-gate.spec.mjs:19:1 › Party link in a clean context skips Access Gate and broker login",
+      "e2e/daily-tasks.spec.mjs:40:1 › full details open and close without leaving the task",
+      "e2e/golden-journey.spec.mjs:42:1 › golden journey steps 1-18: offers → match → client → owner → appointment",
+      "e2e/opportunity-editor.spec.mjs:159:1 › saving area persists after reload",
+      "e2e/party.spec.mjs:11:1 › send to client opens a WhatsApp deep-link and says تم فتح واتساب",
+      "e2e/party.spec.mjs:26:1 › client party page shows the listing and never the owner phone",
+      "e2e/party.spec.mjs:53:1 › client interested updates the same broker task timeline after reload",
+      "e2e/party.spec.mjs:161:1 › owner party never exposes the client phone and can confirm availability",
+      "e2e/privacy-mobile.spec.mjs:20:1 › complete-deal double click does not create a second completed task",
+      "e2e/privacy-mobile.spec.mjs:56:3 › critical actions remain usable at 360x800",
+      "e2e/privacy-mobile.spec.mjs:56:3 › critical actions remain usable at 390x844",
+      "e2e/privacy-mobile.spec.mjs:56:3 › critical actions remain usable at 430x932"
+    ],
+    "releaseBlocked": true
+  },
+  "preliminaryAttempts": [
+    "A bulk mobile-width run exceeded its 240s runner budget; superseded by all eight widths run individually, 79/79 each.",
+    "Parallel old-suite trials used alternate ports but some old tests hard-code 4191; stopped those trials. Final result above is the complete default-port run, not those trials.",
+    "A first full Chromium executable could not create its Unix singleton socket; the installed default Playwright headless shell successfully ran all listed browser checks."
+  ]
+}

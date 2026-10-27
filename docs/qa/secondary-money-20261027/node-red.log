@@ -1,0 +1,186 @@
+✖ minimum budget preserves Arabic decimals and persists the exact lower bound (2.253296ms)
+✖ minimum budget rejects malformed nonempty input rather than dropping or sanitizing it (0.407582ms)
+✔ an omitted or zero minimum stays optional, and the lower bound stays below the maximum (0.601354ms)
+✖ proposed price preserves cents in validation and generated message (0.376796ms)
+✖ proposed prices reject malformed input on the shared server boundary (0.414092ms)
+✖ counteroffers preserve cents and normalize the saved reply text (0.295584ms)
+✖ counteroffers reject embedded currency and text beyond the normal text limit (0.170756ms)
+✖ composer default price retains decimals without rounding the visible field (73.496185ms)
+✖ Worker rejects malformed minimum budgets, proposals and counteroffers without writes (499.313843ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 1
+ℹ fail 8
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 916.806042
+
+✖ failing tests:
+
+test at test/office-os-secondary-money.test.mjs:10:1
+✖ minimum budget preserves Arabic decimals and persists the exact lower bound (2.253296ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/test/office-os-secondary-money.test.mjs:13:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/office-os-secondary-money.test.mjs:19:1
+✖ minimum budget rejects malformed nonempty input rather than dropping or sanitizing it (0.407582ms)
+  AssertionError [ERR_ASSERTION]: 600ريال000
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/test/office-os-secondary-money.test.mjs:22:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/office-os-secondary-money.test.mjs:36:1
+✖ proposed price preserves cents in validation and generated message (0.376796ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 60000050
+  - 600000.5
+          ^
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/test/office-os-secondary-money.test.mjs:39:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 60000050,
+    expected: 600000.5,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/office-os-secondary-money.test.mjs:43:1
+✖ proposed prices reject malformed input on the shared server boundary (0.414092ms)
+  AssertionError [ERR_ASSERTION]: 600ريال000
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/test/office-os-secondary-money.test.mjs:44:41)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/office-os-secondary-money.test.mjs:47:1
+✖ counteroffers preserve cents and normalize the saved reply text (0.295584ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 60000050
+  - 600000.5
+          ^
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/test/office-os-secondary-money.test.mjs:50:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 60000050,
+    expected: 600000.5,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/office-os-secondary-money.test.mjs:54:1
+✖ counteroffers reject embedded currency and text beyond the normal text limit (0.170756ms)
+  AssertionError [ERR_ASSERTION]: 600ريال000
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/test/office-os-secondary-money.test.mjs:56:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/office-os-secondary-money.test.mjs:60:1
+✖ composer default price retains decimals without rounding the visible field (73.496185ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + '600,001'
+  - '600,000.5'
+           ^
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/test/office-os-secondary-money.test.mjs:69:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '600,001',
+    expected: '600,000.5',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/office-os-secondary-money.test.mjs:80:1
+✖ Worker rejects malformed minimum budgets, proposals and counteroffers without writes (499.313843ms)
+  AssertionError [ERR_ASSERTION]: {"ok":false,"error":"record_invalid","message":"الحد الأدنى للميزانية أقل من الحد الأعلى","details":{"priceMin":"الحد الأدنى للميزانية أقل من الحد الأعلى"},"requestId":"13441b83-91a8-4e41-a18b-cd1ccb70daa0"}
+
+  400 !== 200
+
+      at TestContext.<anonymous> (file:///workspace/scratch/b6620274aa2c/verification/secondary-money-baseline/test/office-os-secondary-money.test.mjs:99:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 400,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

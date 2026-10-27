@@ -1,0 +1,17 @@
+✔ a new record from the app is created without a matching key (2.42637ms)
+✖ an edit from the app removes the record's matching key in the same write (0.869781ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 97.935859
+✖ failing tests:
+✖ an edit from the app removes the record's matching key in the same write (0.869781ms)
+  AssertionError [ERR_ASSERTION]: matchKey
+  + actual - expected
+  + undefined
+  - Symbol(FieldValue.delete)
+    actual: undefined,

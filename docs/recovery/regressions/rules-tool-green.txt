@@ -1,0 +1,18 @@
+✔ decide: only the Staging project, never Production (1.258634ms)
+✔ decide: publishing needs the phrase, the reviewed file hash and the reviewed current release (0.150426ms)
+✔ decide: a rollback names a Staging ruleset and the reviewed current release (0.202441ms)
+✔ plan: keeps a copy of the released rules, shows the difference and the hashes, writes nothing (12.092346ms)
+✔ deploy: publishes the reviewed file and verifies the release now serves it (7.347814ms)
+✔ deploy is refused (nothing written) when the release moved or the file changed after the review (12.831966ms)
+✔ rollback: points the release back at the kept ruleset and verifies it (9.182645ms)
+✔ a Production service account is refused before any request (1.676313ms)
+✔ a failed publish is reported, and the release is left as it was (4.79891ms)
+✔ the workflow: manual or pull request only, Staging environment, integration branch only, emulator tests before any write (0.455984ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 193.560963

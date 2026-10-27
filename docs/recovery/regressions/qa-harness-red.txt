@@ -1,0 +1,19 @@
+✖ legacy browser harness supplies canonical records required by the production task projector (22.038448ms)
+✖ legacy browser harness never includes another office canonical records (0.808552ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 166.014126
+✖ failing tests:
+✖ legacy browser harness supplies canonical records required by the production task projector (22.038448ms)
+  AssertionError [ERR_ASSERTION]: real linked fixture match must survive integrity checks
+    actual: false,
+    expected: true,
+✖ legacy browser harness never includes another office canonical records (0.808552ms)
+  AssertionError [ERR_ASSERTION]: the feed contains canonical records
+    actual: false,
+    expected: true,

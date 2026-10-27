@@ -1,0 +1,388 @@
+{
+  "runs": [
+    {
+      "id": 40140424527,
+      "name": "Firestore rules → Staging (manual)",
+      "sha": "1f04cf89795ef4fd8944a4cfc3328c3b74ea4222",
+      "branch": "ops/staging-firestore-rules-deploy-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T22:52:56Z"
+    },
+    {
+      "id": 40140424490,
+      "name": "Office OS gate",
+      "sha": "1f04cf89795ef4fd8944a4cfc3328c3b74ea4222",
+      "branch": "ops/staging-firestore-rules-deploy-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T22:52:56Z"
+    },
+    {
+      "id": 40135425732,
+      "name": "Office OS gate",
+      "sha": "a269a50ee757b1bbc7c726a5645ac00477094c52",
+      "branch": "feat/match-index-retrieval-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T21:42:48Z"
+    },
+    {
+      "id": 40134903641,
+      "name": "Office OS gate",
+      "sha": "4c9b6e34d2cad92b07e4de72fc0475d72ae68388",
+      "branch": "feat/match-index-retrieval-20261024",
+      "conclusion": "cancelled",
+      "createdAt": "2026-10-24T21:35:35Z"
+    },
+    {
+      "id": 40131222279,
+      "name": "Office OS preview (Staging project, isolated)",
+      "sha": "df83844f13798d451fc490fb8eed21dd486a3f67",
+      "branch": "qa/match-load-baseline-265",
+      "conclusion": "failure",
+      "createdAt": "2026-10-24T20:45:32Z"
+    },
+    {
+      "id": 40130126132,
+      "name": "Office OS preview (Staging project, isolated)",
+      "sha": "cc9b26a59417677fd998e66be868256e90c709db",
+      "branch": "qa/match-load-preview-265",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T20:30:59Z"
+    },
+    {
+      "id": 40129872517,
+      "name": "Office OS gate",
+      "sha": "74e887a75584e484bc44fbe297b9e59792f072f7",
+      "branch": "fix/match-candidates-all-pages-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T20:27:39Z"
+    },
+    {
+      "id": 40127863310,
+      "name": "Office OS gate",
+      "sha": "5804dab2d47ed8c24608c01709a85f44665b883a",
+      "branch": "fix/match-candidates-all-pages-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T20:00:43Z"
+    },
+    {
+      "id": 40121873870,
+      "name": "Office OS preview (Staging project, isolated)",
+      "sha": "8f247ce14496a5370346de19a149245236c7f45e",
+      "branch": "fix/scout-round-completion-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T18:41:41Z"
+    },
+    {
+      "id": 40121864004,
+      "name": "Office OS gate",
+      "sha": "8f247ce14496a5370346de19a149245236c7f45e",
+      "branch": "fix/scout-round-completion-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T18:41:34Z"
+    },
+    {
+      "id": 40120814141,
+      "name": "Office OS preview (Staging project, isolated)",
+      "sha": "1088a3585614d0d7c55da52eb4d9df59e9ae9fc1",
+      "branch": "qa/scout-preview-264",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T18:27:52Z"
+    },
+    {
+      "id": 40120422325,
+      "name": "Office OS preview (Staging project, isolated)",
+      "sha": "a8a577ee0da54462d21319529e30e41e85626454",
+      "branch": "fix/scout-round-completion-20261024",
+      "conclusion": "failure",
+      "createdAt": "2026-10-24T18:22:44Z"
+    },
+    {
+      "id": 40120364092,
+      "name": "Office OS gate",
+      "sha": "a8a577ee0da54462d21319529e30e41e85626454",
+      "branch": "fix/scout-round-completion-20261024",
+      "conclusion": "cancelled",
+      "createdAt": "2026-10-24T18:21:59Z"
+    },
+    {
+      "id": 40118160837,
+      "name": "Office OS gate",
+      "sha": "74c4ef6408b049ce1cc940ad3aa4897edb12d938",
+      "branch": "fix/scout-round-completion-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T17:53:09Z"
+    },
+    {
+      "id": 40116928968,
+      "name": "Deploy unified staging",
+      "sha": "351e7c32b611c9cdd30f61d4fa714af31ddbd136",
+      "branch": "codex/unified-staging-lineage-2026-08-29",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T17:37:02Z"
+    },
+    {
+      "id": 40115435884,
+      "name": "Office OS gate",
+      "sha": "9318a82bf228bcbf7c26668955792153b1ad762f",
+      "branch": "fix/bank-activation-records-race-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T17:17:18Z"
+    },
+    {
+      "id": 40115226870,
+      "name": "Deploy unified staging",
+      "sha": "f90415d3f1a3aaa43ee56d864afa45e546719172",
+      "branch": "codex/unified-staging-lineage-2026-08-29",
+      "conclusion": "failure",
+      "createdAt": "2026-10-24T17:14:40Z"
+    },
+    {
+      "id": 40112511995,
+      "name": "Office OS preview (Staging project, isolated)",
+      "sha": "82b3e1f6a21b6f4c11ca9bbf29a205d3eccf08cc",
+      "branch": "qa/staging-preview-262-263",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T16:38:44Z"
+    },
+    {
+      "id": 40112482931,
+      "name": "Office OS gate",
+      "sha": "e1db37e2f0762cd6a4dedaa3b5a0ec9ef0eae6f1",
+      "branch": "fix/operations-fallback-projection-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T16:38:20Z"
+    },
+    {
+      "id": 40078816973,
+      "name": "Office OS gate",
+      "sha": "8323163bb70277ac60188f51577d48cbeecb7736",
+      "branch": "fix/operations-fallback-projection-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T08:38:19Z"
+    },
+    {
+      "id": 40078810870,
+      "name": "Office OS gate",
+      "sha": "f5a3060bd80173b2a4b1595584447278b39f612e",
+      "branch": "fix/bank-activation-records-race-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T08:38:13Z"
+    },
+    {
+      "id": 40057732473,
+      "name": "Deploy Staging Firestore rules",
+      "sha": "1b0c4684e1fc3a847364184cc56e59b3ae331fe2",
+      "branch": "codex/unified-staging-lineage-2026-08-29",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T03:17:59Z"
+    },
+    {
+      "id": 40057732450,
+      "name": "Deploy unified staging",
+      "sha": "1b0c4684e1fc3a847364184cc56e59b3ae331fe2",
+      "branch": "codex/unified-staging-lineage-2026-08-29",
+      "conclusion": "failure",
+      "createdAt": "2026-10-24T03:17:59Z"
+    },
+    {
+      "id": 40056629333,
+      "name": "Office OS gate",
+      "sha": "048bb3b757e7e0c1561e81ccd71bb071398c1028",
+      "branch": "security/office-delete-lock-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T03:01:54Z"
+    },
+    {
+      "id": 40055697979,
+      "name": "Deploy Staging Firestore rules",
+      "sha": "1fdd147a8fbe8fb3f18175a44d3293be8ba0ade8",
+      "branch": "codex/unified-staging-lineage-2026-08-29",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T02:48:22Z"
+    },
+    {
+      "id": 40055697844,
+      "name": "Deploy unified staging",
+      "sha": "1fdd147a8fbe8fb3f18175a44d3293be8ba0ade8",
+      "branch": "codex/unified-staging-lineage-2026-08-29",
+      "conclusion": "failure",
+      "createdAt": "2026-10-24T02:48:22Z"
+    },
+    {
+      "id": 40054075086,
+      "name": "Office OS gate",
+      "sha": "22514f5f8cbcda0fa200f67c925840b35f5eea82",
+      "branch": "audit/phase0-real-lineage-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T02:25:07Z"
+    },
+    {
+      "id": 40050294850,
+      "name": "Office OS gate",
+      "sha": "560665e58f7c01631fea1d6baab332a6886850cc",
+      "branch": "audit/phase0-real-lineage-20261024",
+      "conclusion": "success",
+      "createdAt": "2026-10-24T01:32:56Z"
+    },
+    {
+      "id": 39900081551,
+      "name": "iAqar safe code audit",
+      "sha": "be585aa63fd175bc4fdd7f81e400c0177332983a",
+      "branch": "maintenance/repository-audit-20261023",
+      "conclusion": "success",
+      "createdAt": "2026-10-23T04:23:41Z"
+    }
+  ],
+  "originalPRs": [
+    {
+      "number": 267,
+      "title": "Ops: Firestore rules → Staging only, manual (plan / deploy / rollback)",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/267",
+      "base": "codex/unified-staging-lineage-2026-08-29",
+      "head": "ops/staging-firestore-rules-deploy-20261024",
+      "sha": "1f04cf89795ef4fd8944a4cfc3328c3b74ea4222",
+      "merged": null,
+      "state": "closed"
+    },
+    {
+      "number": 266,
+      "title": "Matching index (PR-4): indexed candidate retrieval, same matches as the engine over the whole office (off by default)",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/266",
+      "base": "fix/match-candidates-all-pages-20261024",
+      "head": "feat/match-index-retrieval-20261024",
+      "sha": "a269a50ee757b1bbc7c726a5645ac00477094c52",
+      "merged": null,
+      "state": "open"
+    },
+    {
+      "number": 265,
+      "title": "Matching: read every page of the office's records (no more silent misses past the first 60)",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/265",
+      "base": "codex/unified-staging-lineage-2026-08-29",
+      "head": "fix/match-candidates-all-pages-20261024",
+      "sha": "74e887a75584e484bc44fbe297b9e59792f072f7",
+      "merged": null,
+      "state": "open"
+    },
+    {
+      "number": 264,
+      "title": "Scout: a round stalled by its own push no longer loses its finds or duplicates alerts (Staging run 40115226870)",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/264",
+      "base": "codex/unified-staging-lineage-2026-08-29",
+      "head": "fix/scout-round-completion-20261024",
+      "sha": "8f247ce14496a5370346de19a149245236c7f45e",
+      "merged": null,
+      "state": "open"
+    },
+    {
+      "number": 263,
+      "title": "Operations: «مراجعة التطابق» survives operations arriving before the operations domain (P1)",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/263",
+      "base": "codex/unified-staging-lineage-2026-08-29",
+      "head": "fix/operations-fallback-projection-20261024",
+      "sha": "e1db37e2f0762cd6a4dedaa3b5a0ec9ef0eae6f1",
+      "merged": "2026-10-24T17:14:37Z",
+      "state": "closed"
+    },
+    {
+      "number": 262,
+      "title": "Bank: «العروض والطلبات» no longer empties under a running load (Staging run 40057732450)",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/262",
+      "base": "codex/unified-staging-lineage-2026-08-29",
+      "head": "fix/bank-activation-records-race-20261024",
+      "sha": "9318a82bf228bcbf7c26668955792153b1ad762f",
+      "merged": "2026-10-24T17:36:59Z",
+      "state": "closed"
+    },
+    {
+      "number": 261,
+      "title": "إضافة اختيار المدينة والقوائم التابعة في نماذج الزوار",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/261",
+      "base": "main",
+      "head": "codex/public-intake-city-dropdown-20261024",
+      "sha": "6a5c53da4657d0643a31911e060766cc9401aed0",
+      "merged": null,
+      "state": "open"
+    },
+    {
+      "number": 260,
+      "title": "Security: no browser deletes an office or its public profile (D-023)",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/260",
+      "base": "codex/unified-staging-lineage-2026-08-29",
+      "head": "security/office-delete-lock-20261024",
+      "sha": "048bb3b757e7e0c1561e81ccd71bb071398c1028",
+      "merged": "2026-10-24T03:17:57Z",
+      "state": "closed"
+    },
+    {
+      "number": 259,
+      "title": "Phase 0 audit + security and WhatsApp fixes (B-04, B-01, B-02, B-03, B-07)",
+      "url": "https://github.com/tssjiil-max/Iaqar.ai/pull/259",
+      "base": "codex/unified-staging-lineage-2026-08-29",
+      "head": "audit/phase0-real-lineage-20261024",
+      "sha": "22514f5f8cbcda0fa200f67c925840b35f5eea82",
+      "merged": "2026-10-24T02:48:19Z",
+      "state": "closed"
+    }
+  ],
+  "otherRepositoryPRs": [
+    {
+      "number": 9,
+      "title": "Reference layout: bottom tabs, home, properties, more, deal-room stepper",
+      "url": "https://github.com/tssjiil-max/iaqar-one/pull/9",
+      "base": "local/demo-safe-preview",
+      "head": "local/visual-reference-v1",
+      "sha": "95f91bd8db0ee43c95a1b6c5ce6fc2bfdeb2ed71",
+      "merged": null,
+      "state": "open"
+    },
+    {
+      "number": 8,
+      "title": "Demo preview: reconcile export into build, synthetic-data mode, white background + official logo",
+      "url": "https://github.com/tssjiil-max/iaqar-one/pull/8",
+      "base": "build/iaqar-one-v1",
+      "head": "local/demo-safe-preview",
+      "sha": "9f1b9498ef412f4b70d0fc1ebfd574977cf7ae04",
+      "merged": null,
+      "state": "open"
+    },
+    {
+      "number": 7,
+      "title": "docs(architecture): task 001 — audit, gaps, target architecture, MVP, backlog",
+      "url": "https://github.com/tssjiil-max/iaqar-one/pull/7",
+      "base": "build/iaqar-one-v1",
+      "head": "claude/task-001-architecture-audit",
+      "sha": "4e36539ddbefadd2ebac131f091dc1e47ad3ff1d",
+      "merged": null,
+      "state": "open"
+    },
+    {
+      "number": 6,
+      "title": "docs: add iaqar-master-architect Claude Code skill",
+      "url": "https://github.com/tssjiil-max/iaqar-one/pull/6",
+      "base": "build/iaqar-one-v1",
+      "head": "claude/iaqar-master-architect-skill",
+      "sha": "b6e1b1117b4c6c45700304d38949e76c230ebd62",
+      "merged": null,
+      "state": "open"
+    }
+  ],
+  "otherRepositoryAgentEvidence": "# 04 — الموظفون الأذكياء والمتابعة والتفاوض\n\n## القاعدة الأولى: الذكاء ينفذ، والإنسان يقرر [قرار معتمد]\n\n- **الالتزامات للإنسان وحده.** أي التزام بسعر أو معاينة أو عقد أو مال يحتاج موافقة بشرية مسجلة. لا يملكه أي مساعد.\n- **دور المساعد:**\n  - يحضّر الخطوة، ويشرحها، ويقترحها.\n  - الوسيط يوافق.\n  - المساعد لا يلتزم عن أحد أبدًا.\n  - ولا يرسل إلا ضمن الفئة (أ) أو بموافقة (ب). التصنيف أدناه.\n- **الإيقاف:** لكل مساعد مفتاح إيقاف على مستوى المكتب، ومفتاح على مستوى المنصة.\n\n## ما يوجد في هذا المستودع\n\n| الوظيفة | الحالة |\n|---|---|\n| مساعد ذكي (أي نموذج لغوي يقترح أو ينفذ) | **غير موجود** [مخطط] |\n| محرك الإجراءات التالية الحتمي | [منفذ] ومختبر |\n| ملاحظة تفاوض الوسيط | [منفذ]، كتابة عبر الـWorker القديم |\n| إجراءات المعاينة والصفقة | [منفذ]، كتابات عبر الـWorker القديم |\n| المتابعة والتذكيرات | **غير موجودة هنا** [قديم في الـWorker] |\n\n- **محرك القواعد** (`src/rules/evaluate-next-actions.ts`) [منفذ] يحدد الإجراء التالي حتميًا من:\n  - المرحلة؛\n  - وحالة العقار؛\n  - وقرار العميل وقرار المالك: `PENDING` أو `INTERESTED` أو `ACCEPTED` أو `REJECTED` أو `DISCUSS`؛\n  - وحالة الموعد.\n- **أمثلة من الكود:**\n  - تفاوض والطرفان `ACCEPTED`: يعرض `COORDINATE_VIEWING`.\n  - أحد الطرفين `REJECTED`: يعرض `REMATCH`.\n  - انتظار رد: يعرض العائق `WAITING_OWNER` أو `WAITING_CLIENT`، ولا إجراء.\n  - العقار `UNAVAILABLE`: يعرض `REMATCH` مع العائق `PROPERTY_UNAVAILABLE`.\n- **ملاحظة تفاوض الوسيط** (`staging-broker-negotiation.ts`) [منفذ]: يرسل `add_negotiation_note` إلى `/workflow/action` في الـWorker القديم، بالجمهور `both` أو `client` أو `owner`.\n- **دورة الحالة** (`staging-case-lifecycle.ts`): ترسل الإجراءات التالية إلى الـWorker القديم:\n  - المعاينة: `CONFIRM_VIEWING`، و`CONFIRM_VIEWING_COMPLETED`، و`SET_VIEWING_OUTCOME`.\n  - الصفقة: `create_deal`، و`advance_deal`، و`set_brokerage_contract_status`، و`set_deal_stage`.\n- **هذه كتابات حقيقية على STAGING.**\n\n## ما يوجد في المستودع القديم [قديم، مرجع فقط]\n\n- **مدير المكتب الذكي** (`office-os/agent-service.js`):\n  - أدوات ثابتة، والنموذج يسمّي الأداة فقط.\n  - الموافقة لازمة لكل تغيير.\n  - ممنوع عليه المال والعقود والأسعار النهائية.\n- **موظف واتساب** (`whatsapp-agent-service.js`): بوابات تغلق عند الشك، ووضع اقتصادي يمنع الإرسال، وقائمة أرقام مسموحة.\n- **حد المالك** (`mandate-service.js`): يخزّنه الـWorker وحده، ولا يراه المتصفح. واعتماد السعر `PRICE_APPROVAL`.\n- **المتابعة:** تذكيرات المتابعة والمعاينة تعمل بجدولة دورية في الـWorker.\n\n## تصنيف عمليات المساعد\n\n**المصدر:** قرار المالك في مراجعة PR #6 (2026-10-25)، وADR-07. التصنيف نفسه معتمد.\n\n**القوائم أدناه مسودة صاغتها هذه المهارة، وتحتاج اعتماد المالك بندًا بندًا:**\n- قبل تفعيل أي مساعد؛\n- وعند نقل أي عملية بين الفئات.\n\n### (أ) تنفيذ آلي مصرّح به مسبقًا: بلا موافقة لكل مرة\n\n**شروطها:**\n- مفعّلة في تفويض المكتب.\n- قابلة للتراجع أو بلا أثر خارجي.\n- لا تنشئ التزامًا.\n- تُسجّل في سجل التدقيق.\n\n**العمليات:**\n- تلخيص الحالة واقتراح الإجراء التالي، من `evaluateNextActions` نفسه لا بديلًا عنه.\n- استخراج حقول طلب أو عرض من نص، كمسودة يراجعها الوسيط قبل الحفظ.\n- اقتراح مطابقات من المحرك الحتمي، وشرح أسبابها.\n- إنشاء تذكير متابعة داخلي للوسيط.\n- تجهيز مسودة رسالة. لا إرسالها.\n- إرسال رسالة **قالبها معتمد مسبقًا من المكتب**، لطرف وافق على التواصل، **بلا أي التزام**. مثل تذكير بموعد مؤكد، أو طلب تأكيد توفر العقار.\n  - **هذه وحدها تتطلب** تفعيلًا صريحًا للقالب في تفويض المكتب.\n\n### (ب) تحتاج موافقة بشرية مسجّلة لكل مرة\n\n- إرسال أي رسالة بقالب غير معتمد مسبقًا، أو باسم الوسيط أو المكتب.\n- اقتراح سعر أو تعديله، أو الرد على عرض سعر.\n- اقتراح موعد معاينة أو تأكيده.\n- مشاركة أي بيانات مع مكتب آخر، أو طلب تعاون.\n- تغيير مرحلة الـCase، أو حالة العقار (حجز، أو غير متاح، أو إغلاق).\n- نشر سجل في البحث العام.\n\n**شكل الموافقة:** تُسجل بهوية الموافق، ووقتها، والنص أو القيمة التي وافق عليها بالضبط.\n\n### (ج) ممنوعة على المساعد دائمًا، حتى بموافقة\n\n- قبول سعر نهائي أو إلزام أي طرف به.\n- إنشاء عقد أو توقيعه، أو أي التزام مالي، أو تحصيل، أو تحويل.\n- قراءة حد المالك أو كشفه لأي طرف.\n- كشف اسم طرف أو رقمه لطرف آخر أو لمكتب آخر.\n- تعديل الصلاحيات أو الأدوار أو التفويض أو الاشتراك، بما فيه تفويضه هو.\n- حذف بيانات، أو التعامل مع بيانات مكتب غير مكتبه.\n- اختلاق بيانات عقارية أو تقييمات أو أسعار سوق.\n\n## عند بناء مساعد هنا [مخطط]\n\n1. **سجّله كعقد:** `agentId`، و`version`، و`capabilities`، و`allowedTools`، و`requiresApproval`، و`enabled`. سجل المساعدين مخطط (B-10).\n2. **مكانه:** خارج `src/core`. المساعد يستدعي `evaluateNextActions` ولا يتجاوزه.\n3. **كل اقتراح:** يعرض سببه ومصدر بياناته. لا يعرض تقييمًا أو سعرًا غير مدعوم.\n4. **الاشتراك:** يُفحص في الخادم قبل التشغيل. المساعد خدمة مدفوعة حسب المبدأ المعتمد.\n5. **اختبارات إلزامية:**\n   - المساعد لا يستطيع تنفيذ إجراء التزام دون موافقة؛\n   - والإيقاف يوقفه فورًا؛\n   - وتعطيله لا يوقف المحرك الحتمي.\n",
+  "otherRepositorySkillCommits": [
+    {
+      "sha": "b6e1b1117b4c6c45700304d38949e76c230ebd62",
+      "date": "2026-10-25T02:13:32Z",
+      "message": "docs(skill): address PR #6 review — boundaries, agent tiers, Vercel, tags\n\n- 01: data boundaries between office-private data, authorized central\n  information and shared services, with the service-call contract.\n- 04: per-function status table (no agent exists); agent operations\n  classified as pre-authorized, needs recorded approval, or forbidden.\n- 10: Preview vs approved-branch vs Production on Vercel; PR #6 got a\n  public Preview despite vercel.json \"*\": false.\n- SKILL.md: tags apply per function; code proves current state while\n  approved decisions define target behaviour, conflicts are logged.\n- 11: one issue register (I-01..I-09, D-01..D-03) with severity,\n  evidence, impact, verification state and next step; none resolved.\n\nDocumentation only. No product code changed.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01NbMLJ1P8FiUS4DLhq25iEc"
+    },
+    {
+      "sha": "e6fe2164a765cbdd333b4f2b650d1995af842c09",
+      "date": "2026-10-25T01:54:05Z",
+      "message": "docs: add iaqar-master-architect Claude Code skill\n\nProject skill for iAqar.ai 2.0 (iAqar One): SKILL.md with the binding\nworkflow and rules, plus 11 references that tag every item as built,\nlegacy (Iaqar.ai, read-only), planned or proposed, with evidence from\nthis branch. No product code changed.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01NbMLJ1P8FiUS4DLhq25iEc"
+    }
+  ],
+  "notes": [
+    "iaqar-one inspected read-only through connected GitHub; local git transport unavailable for that repository.",
+    "No local Claude Code sessions present in this workspace. Claude-Session links recorded from commit trailers.",
+    "GitHub Actions run 40057732450 logs confirm unstable/detached review_match button; corrected bank and operations projection are already in verified baseline."
+  ]
+}

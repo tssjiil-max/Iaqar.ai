@@ -386,7 +386,13 @@ export function operationsForOffice(officeId) {
       viewerOfficeId: officeId
     });
   }
-  return items;
+  // The production task projector validates both sides against canonical records.
+  // An operations-only fixture feed hides valid matches as unresolved links.
+  const linkedIds = new Set(items.filter(item => item.operationType === "MATCH_REVIEW")
+    .flatMap(item => [item.clientRequestId, item.ownerOfferId]));
+  return [...items, ...opportunitiesForOffice(officeId).filter(record => linkedIds.has(record.id)).map((record) => ({
+    ...record, recordType: "opportunity", recordId: record.id, opportunityId: record.id
+  }))];
 }
 
 export function opportunitiesForOffice(officeId) {

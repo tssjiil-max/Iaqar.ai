@@ -1,0 +1,18 @@
+✔ setup: the scout on, an offer with no buyer, a device registered (39.923591ms)
+✔ the push is not answered: find and alert are saved, the push is FAILED and owed; the next round sends it once for the same alert (10038.712961ms)
+✔ the provider refuses the device: recorded once, not tried again (16.458768ms)
+✔ a push that keeps failing is tried a bounded number of times, then left as FAILED (the alert stays) (30037.103435ms)
+✔ setup: the scout on, an offer with no buyer in the office (43.994264ms)
+✔ a round cut off before saving its find → no alert yet; the next round saves the same find and alerts once (32.75554ms)
+✔ two rounds of the same office at once (a cron beat while another has not finished) → one find and one alert per ad (9.342842ms)
+✔ setup: the scout on, an offer with no buyer, and a device registered for the office (42.576275ms)
+✔ the alert's push hangs: the round still saves its find, records the beat, alerts once, and says the push failed (26053.479498ms)
+✔ the alert cannot be written after the find was saved: the find stays, the alert waits in the outbox and goes out on the next round (22.304993ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40641.017665

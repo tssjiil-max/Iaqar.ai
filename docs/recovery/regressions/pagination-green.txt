@@ -1,0 +1,19 @@
+✔ 61 records: the qualifying request whose id sorts last is matched when an offer is saved (46.606283ms)
+✔ 300 records: the qualifying request whose id sorts last is matched when an offer is saved (24.532588ms)
+✔ 1000 records: the qualifying request whose id sorts last is matched when an offer is saved (54.430071ms)
+✔ the other direction: a saved request finds the qualifying offer whose id sorts last (61+ records) (36.618269ms)
+✔ manual search («بحث عن مطابقة») lists the qualifying counterpart past the 300th record (24.112726ms)
+✔ a record that stops being active supersedes its current match even when the office has more than 60 matches (7.442973ms)
+✔ when the scan cannot cover every record, the save says so (no silent partial matching) (12.482018ms)
+✔ an office under one page keeps exactly the matches and scores it had (the one-page reader as reference) (18.046284ms)
+✔ the scout's inventory sync reads every record and says when its summary cannot hold them all (56.247105ms)
+✔ the emergency one-page reader (MATCH_CANDIDATE_READER=legacy) never passes for a complete scan (22.622152ms)
+✔ isolation: an office's scan never reads or pairs another office's records (37.902793ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 658.648067

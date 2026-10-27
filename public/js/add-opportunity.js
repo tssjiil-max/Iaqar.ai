@@ -404,6 +404,10 @@ async function persistIntake(result, reviewMeta = {}, options = {}) {
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
     }));
   }
+  // The matching index is the Worker's: an edit from here removes the record's key (the Worker indexes it again).
+  if (existing.exists) {
+    for (const field of ["matchKey", "matchKeyDistrict", "matchKeyType", "matchKeyVersion"]) opportunityPayload[field] = window.firebase.firestore.FieldValue.delete();
+  }
   batch.set(opportunityRef, opportunityPayload, { merge: Boolean(existing.exists) });
   await batch.commit();
   return { duplicate: false, opportunityId, sourceId: result.source.id };

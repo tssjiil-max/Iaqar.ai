@@ -4,6 +4,8 @@
  */
 
 import { isLandProperty, normalizeDigits, safeText } from "./opportunity-intake-domain.js";
+import { parseIntakeAmount } from "./intake-amount-domain.js";
+export { parseIntakeAmount } from "./intake-amount-domain.js";
 
 export const REQUEST_KINDS = Object.freeze([
   { id: "purchase", label: "شراء", transactionType: "purchase" },
@@ -200,6 +202,7 @@ if (typeof window !== "undefined") {
     propertyCategory,
     normalizeRequestKind,
     dynamicFieldDefs,
+    parseIntakeAmount,
     buildClientIntakeDocument,
     rememberLastCity,
     readRememberedCity

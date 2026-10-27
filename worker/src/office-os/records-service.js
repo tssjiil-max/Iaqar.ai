@@ -16,6 +16,7 @@ import {
   LIFECYCLE, lifecycleOf, recordFields, recordFingerprint, validateRecordInput, kindOf
 } from "../../../public/os/domain/records-domain.js";
 import { compatibilityLevel } from "../../../public/os/domain/match-review-domain.js";
+import { matchKeysOf } from "../match-index.js";
 import { isJourneyOpen } from "../../../public/os/domain/journey-domain.js";
 import { counterpartsEligible, opportunityToMatchInput, scoreMatch, MATCH_THRESHOLD } from "../matching-engine.js";
 import { recordFailure } from "./journey-service.js";
@@ -23,11 +24,22 @@ import { AUDIT_ACTIONS, writeAudit } from "./audit-log.js";
 import { validityFields, validitySettingsFrom } from "../../../public/os/domain/validity-domain.js";
 import { isExternalBroker, cooperationEligible } from "../../../public/os/domain/external-broker-domain.js";
 
+/** What the broker is told about the scan behind a match result: every record, or only part of the office. */
+function matchingCoverage(scan) {
+  if (!scan) return {};
+  const scanned = Number(scan.scanned || 0);
+  // How the candidates were found: the matching index, or a scan of the office (and why the index was not used).
+  const how = { ...(scan.mode ? { matchingMode: scan.mode } : {}), ...(scan.reason ? { matchingReason: scan.reason } : {}), ...(scan.shadow ? { matchingShadow: scan.shadow } : {}) };
+  return scan.complete === false
+    ? { matchingComplete: false, matchingScanned: scanned, matchingNotice: `فحص المطابقة لم يشمل كل سجلات المكتب (فُحص ${scanned} سجلًا فقط) — راجع المطابقات يدويًا.`, ...how }
+    : { matchingComplete: true, matchingScanned: scanned, ...how };
+}
+
 async function runMatchingSafely(ctx, officeId, opportunityId) {
   if (typeof ctx.deps.runMatching !== "function") return { matchingPending: true, matches: 0 };
   try {
     const result = await ctx.deps.runMatching({ officeId, opportunityId, notify: true });
-    return { matchingPending: false, matches: Number(result?.matches?.length || 0), superseded: Number(result?.superseded || 0) };
+    return { matchingPending: false, matches: Number(result?.matches?.length || 0), superseded: Number(result?.superseded || 0), ...matchingCoverage(result?.candidateScan) };
   } catch (error) {
     // The record is saved; matching is retried by the reconcile pass / next edit.
     await recordFailure(ctx, officeId, "MATCHING_RUN", opportunityId, error);
@@ -112,6 +124,8 @@ export async function saveRecord(ctx, { actor, officeId, recordId = "", input = 
     fields.intakeOrigin = origin;
     if (origin.role === "EXTERNAL_BROKER") Object.assign(fields, EXTERNAL_BROKER_PENDING);
   }
+  // The record's matching key travels in the same write (computed on the record as it will be after the write).
+  Object.assign(fields, matchKeysOf({ ...(existing || {}), ...fields }));
   await ctx.store.set(["offices", officeId, "opportunities", id], fields);
   await writeAudit(ctx, {
     officeId, action: existing ? AUDIT_ACTIONS.RECORD_UPDATED : AUDIT_ACTIONS.RECORD_CREATED, actorUid: actor.uid,
@@ -210,7 +224,10 @@ export async function findCandidates(ctx, { officeId, recordId, limit = 10, allC
   if (!record) throw ctx.deps.appError("record_not_found", 404, "السجل غير موجود");
   if (lifecycleOf(record) !== LIFECYCLE.ACTIVE) return { ok: true, candidates: [], inactive: true };
   const source = opportunityToMatchInput(record, { id: recordId });
-  const all = await ctx.store.list(["offices", officeId, "opportunities"], 300);
+  const found = typeof ctx.deps.listMatchCandidates === "function"
+    ? await ctx.deps.listMatchCandidates({ officeId, source: record, sourceId: recordId })
+    : { ...(await ctx.deps.listMatchingDocuments({ segments: ["offices", officeId, "opportunities"] })), mode: "scan" };
+  const all = (found.documents || []).map((doc) => ({ id: decodeURIComponent(String(doc.name || "").split("/").pop() || ""), ...ctx.deps.firestoreFieldsToJs(doc.fields || {}) }));
   const journeys = await ctx.store.list(["offices", officeId, "journeys"], 300);
   const inJourney = new Set(journeys.filter(isJourneyOpen).flatMap((j) => [`${j.offerId}|${j.requestId}`]));
   const candidates = [];
@@ -234,7 +251,7 @@ export async function findCandidates(ctx, { officeId, recordId, limit = 10, allC
     });
   }
   candidates.sort((a, b) => b.score - a.score);
-  return { ok: true, candidates: allCandidates ? candidates : candidates.slice(0, Math.min(20, Math.max(1, limit))) };
+  return { ok: true, candidates: allCandidates ? candidates : candidates.slice(0, Math.min(20, Math.max(1, limit))), ...matchingCoverage({ scanned: all.length, complete: found.complete, mode: found.mode, reason: found.reason, shadow: found.shadow }) };
 }
 
 /** Broker picked a pair by hand: persist the match and its review task. */
