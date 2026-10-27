@@ -1,3 +1,4 @@
+import { renderSmartOffice, renderDeals, renderMore } from "./views/smart-office.js";
 /**
  * Office OS entry point.
  *   /o/<slug>, /m/<slug>, ?office=<id>&view=public → public office page (no account)
@@ -54,7 +55,7 @@ function parseHash() {
 function view() {
   const { parts, query } = parseHash();
   const [section = "office", id = "", sub = ""] = parts;
-  if (section === "office") return { name: "office", main: true, run: renderOffice };
+  if (section === "office") return { name: "office", main: true, run: renderSmartOffice };
   if (section === "task" && id) return { name: "task", deal: true, run: (el) => renderTaskDetail(el, { taskId: id }) };
   if (section === "repo") return { name: "repo", main: true, run: (el) => renderRepository(el, { query }) };
   if (section === "quick-add") return { name: "form", run: (el) => renderQuickAdd(el) };
@@ -68,7 +69,13 @@ function view() {
   if (section === "community") return { name: "community", run: renderCommunity };
   if (section === "library") return { name: "library", run: renderLibrary };
   if (section === "tools") return { name: "tool", run: (el) => renderOfficeTool(el, { tool: id }) };
-  if (section === "inbox") return { name: "tool", run: renderInbox };
+  if (section === "deals") return { name: "deals", main: true, deal: true, run: renderDeals };
+  if (section === "more") return { name: "more", run: el => renderMore(el, {tools:id === "tools",support:id === "support"}) };
+  if (section === "inbox") return { name: "inbox", run: el => {
+    const conversations=query.get("tab")==="conversations";
+    append(el,h("div",{class:"os-chips",role:"group","aria-label":"الوارد"},...[["الرسائل",false],["المحادثات",true]].map(([label,tab])=>h("button",{type:"button",class:"os-chip","aria-pressed":String(conversations===tab),onClick:()=>go(tab?"inbox?tab=conversations":"inbox"),text:label}))));
+    const body=h("div");append(el,body);return conversations?renderConversations(body):renderInbox(body);
+  } };
   // «المحادثات»: who answers each WhatsApp conversation; the broker takes over, replies and hands back.
   if (section === "conversations" && id) return { name: "tool", run: (el) => renderConversation(el, { conversationId: id }) };
   if (section === "conversations") return { name: "tool", run: renderConversations };
@@ -90,7 +97,7 @@ function view() {
 
 // Each page wears the colour of its office tool («أدوات المكتب»), so a page is recognisable at a glance.
 const SECTION_TONES = {
-  tasks: "blue", task: "blue", inbox: "blue", conversations: "blue", audit: "blue", repo: "gold", record: "gold", "quick-add": "gold",
+  deals: "green", more: "teal", tasks: "blue", task: "blue", inbox: "blue", conversations: "blue", audit: "blue", repo: "gold", record: "gold", "quick-add": "gold",
   scout: "purple", search: "purple", library: "purple", review: "green", journey: "green", session: "green", deal: "green",
   community: "green", agent: "green", settings: "teal", office: "teal",
   "tools/guide": "blue", "tools/forms": "red", "tools/services": "gold", "tools/calculator": "blue", "tools/market": "gold"

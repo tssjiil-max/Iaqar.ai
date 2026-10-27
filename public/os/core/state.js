@@ -16,6 +16,7 @@ export const state = {
   // «تم إنجازها»: tasks completed today (shared by the home card and Daily Tasks so their numbers agree).
   doneToday: [],
   doneReady: false,
+  doneError: false,
   recordsReady: false,
   error: ""
 };
@@ -46,10 +47,11 @@ export function startOfficeData(officeId) {
   const watchDone = () => {
     if (stopDone) { try { stopDone(); } catch (_) { /* ignore */ } }
     stopDone = watchDoneToday(officeId, (tasks) => {
+      state.doneError = false;
       state.doneToday = tasks;
       state.doneReady = true;
       emit("done");
-    }, () => { state.doneToday = []; state.doneReady = true; emit("done"); });
+    }, () => { state.doneError = true; state.doneToday = []; state.doneReady = true; emit("done"); });
     const next = riyadhDayStart(new Date()).getTime() + 86400000 + 1000;
     dayTimer = setTimeout(watchDone, Math.max(60_000, next - Date.now()));
   };

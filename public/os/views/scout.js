@@ -68,14 +68,15 @@ function taskRow(task) {
 // ------------------------------------------------------------------ the home card («أدوات المكتب»)
 
 /** Compact card on the office page: state, how many strong finds wait, and the way in. Hidden where the scout is not available. */
-export function scoutHomeCard() {
+export function scoutHomeCard({ showUnavailable = false } = {}) {
   const pill = h("span", { class: "ref-agent-status", "data-scout-status": "", text: "جارٍ التحقق" });
   const main = h("button", { type: "button", class: "ref-agent-needs", "data-scout-open": "", onClick: () => go("scout") }, h("span", { text: "جارٍ التحميل…" }));
   const facts = h("small", { class: "ref-agent-facts", "data-scout-facts": "" });
   const card = h("div", { class: "ref-agent-card ref-scout-card", "data-scout-card": "", hidden: true },
     h("div", { class: "ref-agent-head" }, h("span", { class: "os-set-icon" }, ic("search")), h("b", { text: "الباحث عن الفرص" }), pill), main, facts);
   loadScout(OFFICE()).then((overview) => {
-    if (!card.isConnected || overview.available === false) return;
+    if (!card.isConnected) return;
+    if (overview.available === false) { if(showUnavailable){card.hidden=false;pill.textContent="غير متاح";main.textContent="الباحث غير متاح في هذه البيئة حاليًا.";main.disabled=true;} return; }
     card.hidden = false;
     const view = statusView(overview);
     pill.textContent = view.label;
@@ -88,7 +89,7 @@ export function scoutHomeCard() {
     else if (strong) append(main, h("strong", { text: String(strong) }), h("span", { text: strong === 1 ? "فرصة قوية جديدة" : strong === 2 ? "فرصتان قويتان جديدتان" : "فرص قوية جديدة" }), ic("chev-left"));
     else append(main, h("span", { text: "لا توجد فرص قوية جديدة الآن — البحث مستمر." }), ic("chev-left"));
     facts.textContent = overview.settings?.enabled ? `عمليات بحث نشطة: ${overview.counters.activeSearches}${overview.counters.urgent ? ` · مستعجل: ${overview.counters.urgent}` : ""}` : "";
-  }).catch(() => { /* the office page works without it */ });
+  }).catch(() => { if(showUnavailable && card.isConnected){card.hidden=false;pill.textContent="تعذر التحقق";main.textContent="تعذر تحميل الباحث — افتح الصفحة لإعادة المحاولة";} });
   return card;
 }
 
