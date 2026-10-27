@@ -39,7 +39,7 @@ try {
       await page.locator('[name="phone"]').fill("0501111111");
       await page.locator('[name="password"]').fill("pass-a");
       await page.getByRole("button", { name: "دخول المكتب", exact: true }).click();
-      await page.locator(".ref-office-tools").waitFor();
+      await page.locator("[data-smart-office]").waitFor();
       const journey = { ...h.store.get(`offices/${OFFICE_A}/journeys/${journeyId}`), journeyId, lastProposal: { fields: { price: 600000.5 } } };
       const offer = h.store.get(`offices/${OFFICE_A}/opportunities/${seeded.negotiation.offerId}`);
       const request = h.store.get(`offices/${OFFICE_A}/opportunities/${seeded.negotiation.requestId}`);

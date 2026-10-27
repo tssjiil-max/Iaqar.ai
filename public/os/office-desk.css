@@ -556,3 +556,21 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
   .ref-office-row-text b { font-size: 13.5px; }
   .ref-office-tool strong { font-size: 15px; }
 }
+
+/* Work first; existing palette, fonts and component vocabulary. */
+.smart-office-identity{display:flex;align-items:center;gap:12px;padding:16px}
+.smart-office-identity p{margin:4px 0 0;overflow-wrap:anywhere}
+.smart-office-logo{display:flex;width:48px;height:48px;flex:0 0 48px;align-items:center;justify-content:center}
+.smart-office-logo img,.smart-office-logo .ref-office-logo-mark{display:block;width:48px;height:48px;object-fit:contain;background-size:contain}
+[data-smart-office] .os-office-section{padding:16px}
+[data-smart-office] .os-h2{margin-bottom:12px}
+[data-smart-office] .ref-home-row{width:100%;min-width:0}
+[data-smart-office] .ref-row-copy{min-width:0;overflow-wrap:anywhere}
+[data-smart-office] .os-office-section>.os-btn{margin-top:10px}
+.os-more-links{display:grid;gap:10px;padding:16px}
+.os-more-links>.os-btn{width:100%;justify-content:flex-start;white-space:normal;text-align:start}
+/* Reuse the navigation's secondary ink: readable on the dashboard's white and tinted cards. */
+[data-smart-office] .ref-row-copy small,
+[data-smart-office] .ref-time,
+[data-smart-office] .ref-agent-facts,
+[data-smart-office] .ref-agent-status{color:#607184}

@@ -1,3 +1,4 @@
+import { enableNotifications, notificationStatus } from '../core/notifications.js';
 /** «الإشعارات» — which kinds of notifications this office / this account receives. */
 
 import { brokerAlertsCard } from "./bot-settings.js";
@@ -10,6 +11,9 @@ import { NOTIFICATION_CATEGORIES } from "../../js/office-domain.js";
 
 export function renderNotificationSettings(container) {
   append(container, pageHeader(h("h1", { class: "os-page-title", text: "الإشعارات" }), { backControl: h("button", { type: "button", class: "os-back", onClick: () => (session.isManager ? go("settings") : back("tasks")) }, ic("chev-right"), "رجوع"), action: h("span") }));
+  const device=h("button",{type:"button",class:"os-btn secondary block","data-enable-device":""},ic("bell"),`تنبيهات هذا الجهاز (${notificationStatus()})`);
+  device.addEventListener("click",()=>runAction(device,async()=>{const result=await enableNotifications();device.textContent=result.message;if(!result.ok)throw new Error(result.message);}));
+  append(container,device);
   const body = h("div", {}, loadingState({ class: "os-skeleton" }));
   append(container, body);
   loadNotificationPrefs().then((prefs) => {

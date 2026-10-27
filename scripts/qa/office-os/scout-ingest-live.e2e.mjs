@@ -134,7 +134,7 @@ try {
   await page.fill('input[name="phone"]', owner.phone);
   await page.fill('input[name="password"]', owner.password);
   await page.getByRole("button", { name: "دخول المكتب" }).click();
-  await page.locator(".ref-office-tools").waitFor();
+  await page.locator("[data-smart-office]").waitFor();
   const api = (route, body) => page.evaluate(async ([w, r, b]) => {
     const token = await firebase.auth().currentUser.getIdToken();
     const response = await fetch(`${w}${r}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(b) });

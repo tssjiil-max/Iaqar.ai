@@ -86,8 +86,8 @@ try {
   await owner.fill('input[name="phone"]', "0501111111");
   await owner.fill('input[name="password"]', "pass-a");
   await owner.getByRole("button", { name: "دخول المكتب" }).click();
-  await owner.locator(".ref-office-tools").waitFor();
-  await owner.locator('[data-reference-tool][data-tool-route="repo"]').click();
+  await owner.locator("[data-smart-office]").waitFor();
+  await owner.locator('.ref-bottom button[data-tool-route="repo"]').click();
   await owner.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await owner.getByRole("button", { name: "إضافة طلب", exact: true }).click();
   await owner.locator('[data-fill-mode="manual"]').click();
@@ -257,7 +257,7 @@ try {
   await desk.fill('input[name="phone"]', "0501111111");
   await desk.fill('input[name="password"]', "pass-a");
   await desk.getByRole("button", { name: "دخول المكتب" }).click();
-  await desk.locator(".ref-office-tools").waitFor();
+  await desk.locator("[data-smart-office]").waitFor();
   await desk.goto(`${h.origin}/#/journey/${journey.id}`);
   await desk.getByText("سجل الإجراءات").waitFor();
   await shot(desk, "21-desktop-workspace");
@@ -271,7 +271,7 @@ try {
   await other.fill('input[name="password"]', "pass-b");
   await other.getByRole("button", { name: "دخول المكتب" }).click();
   await other.getByText("مكتب الأفق للعقار").first().waitFor();
-  await other.locator('[data-reference-tool][data-tool-route="repo"]').click();
+  await other.locator('.ref-bottom button[data-tool-route="repo"]').click();
   await other.locator("[data-record]").first().waitFor();
   const otherText = await other.content();
   check("office B repository contains only its own records", !otherText.includes("المطيري") && !otherText.includes("السبيعي") && await other.locator('[data-record="opp_b_offer"]').count() === 1 && await other.locator("[data-record]").count() === 1);

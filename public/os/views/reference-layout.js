@@ -51,7 +51,7 @@ export function stepStrip({ active = null, counts = [], onSelect = null } = {}) 
     h("div", { class: "ref-path-heading" }, h("h2", { text: "مسار الصفقة" }), h("span", { text: "اضغط أي مرحلة لعرض ما فيها" })),
     h("div", { class: "ref-steps ref-steps-live", role: "group", "aria-label": "مراحل الصفقة" }, steps));
 }
-function homeRow(task){const r=taskRecord(task)||{},v=recordView(r),m=taskCardModel(task),s=taskStep(task);return h("button",{class:"ref-home-row",type:"button",onClick:()=>go("task/"+task.id)},photo(r),h("div",{class:"ref-row-copy"},h("b",{text:s===0?"مراجعة تطابق":m.button}),h("small",{text:v.location||m.title||task.titleText||"مهمة"})),h("span",{class:"ref-status step-"+s,text:STEPS[s][0]}),timeChip(task)||h("span"),ic("chev-left"));}
+export function homeRow(task){const r=taskRecord(task)||{},v=recordView(r),m=taskCardModel(task),s=taskStep(task);return h("button",{class:"ref-home-row",type:"button",onClick:()=>go("task/"+task.id)},photo(r),h("div",{class:"ref-row-copy"},h("b",{text:s===0?"مراجعة تطابق":m.button}),h("small",{text:v.location||m.title||task.titleText||"مهمة"})),h("span",{class:"ref-status step-"+s,text:STEPS[s][0]}),timeChip(task)||h("span"),ic("chev-left"));}
 /** Card time from real data: an appointment shows its day/time (late when passed); otherwise how long ago the task last moved. */
 export function timeInfo(task,now=new Date()){const due=toDate(task.dueAt||task.appointmentAt||task.viewingAt);if(due){const day=formatDay(due,now),near=["اليوم","غدًا","أمس"].includes(day),text=near?formatDateTime(due,now).replace(" · "," "):day.split(" ").slice(1,3).join(" ");return due<now?{text:"متأخرة · "+text,late:true}:{text,late:false};}
  const meta=parseMeta(task),at=toDate(meta.lastEventAt||task.lastEventAt||task.updatedAt||task.createdAt);if(!at)return{text:"",late:false};const min=Math.max(0,Math.round((now-at)/60000));
@@ -83,14 +83,14 @@ export function officeDisplayName(office = {}) {
   return `مكتب ${raw} العقاري`;
 }
 
-function brokerAvatar(office) {
+export function brokerAvatar(office) {
   if (!isSafePhotoDataUrl(office.brokerPhotoUrl)) return null;
   const img = h("img", { class: "ref-office-avatar", src: office.brokerPhotoUrl, alt: "صورة الوسيط", "data-broker-avatar": "" });
   img.addEventListener("error", () => img.replaceWith(officeLogo(office)));
   return img;
 }
 
-function officeLogo(office) {
+export function officeLogo(office) {
   if (/^https?:\/\//.test(String(office.logoUrl || ""))) {
     const img = h("img", { src: office.logoUrl, alt: officeDisplayName(office) || "شعار المكتب" });
     img.addEventListener("error", () => img.replaceWith(h("span", { class: "ref-office-logo-mark", "aria-hidden": "true" })), { once: true });
@@ -113,7 +113,7 @@ function officeToolCard([label, iconName]) {
  * «مدير المكتب»: a compact card at the start of «أدوات المكتب». Every number comes from the same
  * lanes Daily Tasks shows (one function, so the two never disagree); the status is the Worker's.
  */
-function agentCard() {
+export function agentCard() {
   const statusPill = h("span", { class: "ref-agent-status", "data-agent-status": "", text: "جارٍ التحقق" });
   const needs = h("button", { type: "button", class: "ref-agent-needs", "data-agent-needs": "", onClick: () => go(`tasks?lane=${LANE.NEEDS_YOU}`) });
   const facts = h("small", { class: "ref-agent-facts", "data-agent-facts": "" });
@@ -128,15 +128,16 @@ function agentCard() {
     statusPill.textContent = view.label;
     statusPill.dataset.state = view.state;
     statusPill.className = `ref-agent-status${view.tone ? ` is-${view.tone}` : ""}`;
+    if (state.error) { needs.textContent=state.error+" — أعد فتح المكتب للمحاولة";facts.textContent="";return; }
     if (!state.tasksReady) { needs.textContent = "جارٍ تحميل المعاملات…"; facts.textContent = ""; return; }
     const counts = agentCounts(mine(state.tasks), mine(state.doneToday || []));
     clear(needs);
     if (counts.needsYou) append(needs, h("strong", { text: String(counts.needsYou) }), h("span", { text: counts.needsYou === 1 ? "معاملة تحتاج تدخلك" : "معاملات تحتاج تدخلك" }), ic("chev-left"));
     else append(needs, h("span", { text: "جميع المعاملات تحت المتابعة، ولا توجد قرارات تنتظرك حاليًا." }));
     needs.dataset.count = String(counts.needsYou);
-    facts.textContent = `${status.enabled ? "يتابعها مدير المكتب" : "بانتظار رد"}: ${counts.following} · أُنجز اليوم: ${counts.doneToday}`;
+    facts.textContent = `${status.enabled ? "يتابعها مدير المكتب" : "بانتظار رد"}: ${counts.following} · أُنجز اليوم: ${state.doneError ? "تعذر التحميل" : !state.doneReady ? "جارٍ التحميل" : counts.doneToday}`;
     facts.dataset.following = String(counts.following);
-    facts.dataset.done = String(counts.doneToday);
+    if (!state.doneError && state.doneReady) facts.dataset.done = String(counts.doneToday); else delete facts.dataset.done;
   };
   loadAgentStatus(session.officeId).then((s) => { status = s; card.fill(); }).catch(() => { status = { loaded: true, enabled: false, lastErrorAt: new Date().toISOString() }; card.fill(); });
   return card;
@@ -177,7 +178,7 @@ function openSupportTicket() {
  * the platform support account (only when configured) and «بلاغ أو استفسار». The assistant line
  * shows only while the assistant is connected — nothing here claims a connection that is not there.
  */
-function supportCard() {
+export function supportCard() {
   const channels = h("div", { class: "ref-support-channels", "data-support-channels": "" });
   const assistant = h("p", { class: "ref-support-assistant", "data-support-assistant": "", hidden: true }, ic("robot"), h("span", { text: "دعم ذكي مع تحويل للمسؤول عند الحاجة" }));
   const report = h("button", { type: "button", class: "ref-support-chip is-action", "data-support-report": "", onClick: openSupportTicket }, ic("mail"), h("span", { text: "بلاغ أو استفسار" }));

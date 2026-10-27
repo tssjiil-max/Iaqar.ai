@@ -1,3 +1,4 @@
+import { imageFields } from "../domain/record-media-domain.js";
 /**
  * Shared office state: live tasks and records, with a tiny subscribe API so views
  * re-render only what they show.
@@ -16,6 +17,7 @@ export const state = {
   // «تم إنجازها»: tasks completed today (shared by the home card and Daily Tasks so their numbers agree).
   doneToday: [],
   doneReady: false,
+  doneError: false,
   recordsReady: false,
   error: ""
 };
@@ -46,10 +48,11 @@ export function startOfficeData(officeId) {
   const watchDone = () => {
     if (stopDone) { try { stopDone(); } catch (_) { /* ignore */ } }
     stopDone = watchDoneToday(officeId, (tasks) => {
+      state.doneError = false;
       state.doneToday = tasks;
       state.doneReady = true;
       emit("done");
-    }, () => { state.doneToday = []; state.doneReady = true; emit("done"); });
+    }, () => { state.doneError = true; state.doneToday = []; state.doneReady = true; emit("done"); });
     const next = riyadhDayStart(new Date()).getTime() + 86400000 + 1000;
     dayTimer = setTimeout(watchDone, Math.max(60_000, next - Date.now()));
   };
@@ -70,4 +73,15 @@ export function stopOfficeData() {
 
 export function recordById(id) {
   return state.recordsById.get(id) || null;
+}
+
+/** Apply only server-confirmed media fields before a navigation can render a deleted cover. */
+export function patchCachedRecordImages(officeId, recordId, images) {
+  const cached = state.recordsById.get(recordId);
+  if (!cached || cached.officeId !== officeId || !Array.isArray(images)) return false;
+  const updated = { ...cached, ...imageFields(images) };
+  state.recordsById.set(recordId, updated);
+  state.records = state.records.map(record => record.id === recordId ? updated : record);
+  emit("records");
+  return true;
 }

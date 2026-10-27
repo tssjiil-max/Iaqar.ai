@@ -189,7 +189,7 @@ try {
 
   // ---------------- daily access
   step = "daily access";
-  await open("office", ".ref-office-tools");
+  await open("office", "[data-smart-office]");
   check("the office home has a direct entry to «مركز التواصل»", (await page.locator("[data-inbox-entry]").count()) === 1);
   check("the header has search, the bell and the menu", (await page.locator("[data-header-search]").count()) === 1 && (await page.locator("[data-header-bell]").count()) === 1 && (await page.locator(".ref-menu").count()) === 1);
   await shot("03-office-home");
@@ -224,7 +224,7 @@ try {
   await page.locator(".ref-menu").click();
   await page.locator(".os-menu").waitFor();
   const menu = await page.locator(".os-menu").innerText();
-  check("the menu and its pages are all still there", ["البحث الشامل", "مركز التواصل", "مكتبة المكتب", "إعدادات الإشعارات", "التعاون بين الوسطاء", "سجل النشاط", "إعدادات المكتب", "تسجيل الخروج"].every((item) => menu.includes(item)));
+  check("the menu and its pages are all still there", ["المكتب الذكي", "المهام اليومية", "البحث الشامل", "المزيد", "تسجيل الخروج"].every((item) => menu.includes(item)));
   await page.keyboard.press("Escape");
 
   // ---------------- documents: a library file linked to the deal

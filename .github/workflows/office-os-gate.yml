@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - codex/unified-staging-lineage-2026-08-29
+      - integration/claude-verified-20261026
   workflow_dispatch:
 
 permissions:
@@ -71,6 +72,8 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix worker
       - run: npx playwright install --with-deps chromium
+      - name: Smart office navigation (five requested widths, roles, retry)
+        run: OUT_DIR="$RUNNER_TEMP/office-os/office-focus" node scripts/qa/office-os/office-focus.e2e.mjs
       - name: Full journey on public/index.html + r.html
         run: OUT_DIR="$RUNNER_TEMP/office-os/journey" node scripts/qa/office-os/journey.e2e.mjs
       - name: Phone widths 320/360/375/390/412/430

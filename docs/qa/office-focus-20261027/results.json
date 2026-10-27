@@ -1,0 +1,170 @@
+{
+  "base": "1eeee9ddf3d9b917c2f273c0ef48dedf5942015c",
+  "ready": true,
+  "web_tests": {
+    "pass": 2329,
+    "fail": 0
+  },
+  "worker_chain_exit": 0,
+  "focused_tests": {
+    "pass": 51,
+    "fail": 0
+  },
+  "financial_browser": {
+    "current": 12,
+    "secondary": 7,
+    "emulator": 4
+  },
+  "navigation_widths": [
+    320,
+    390,
+    430,
+    1024,
+    1280
+  ],
+  "browser_gate_initial": [
+    {
+      "script": "scripts/qa/office-os/journey.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 320,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 390,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 430,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/deep-links.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/settings.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/community.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/fresh-broker.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/auth-flows.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/library.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/session.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 1024,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/mobile-widths.e2e.mjs",
+      "width": 1280,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/broker-steps.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/bot.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/agent.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/completion.e2e.mjs",
+      "width": null,
+      "exit": 1
+    },
+    {
+      "script": "scripts/qa/office-os/smart-fill.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/kapso.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/conversations.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/agent-try.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/guest-desk.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/operations-projection.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/scout.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/bank-activation.e2e.mjs",
+      "width": null,
+      "exit": 0
+    },
+    {
+      "script": "scripts/qa/office-os/public-search.e2e.mjs",
+      "width": null,
+      "exit": 0
+    }
+  ],
+  "layout": {
+    "cases": 395,
+    "initial_pass": 390,
+    "initial_fail_office_contrast": 5,
+    "targeted_office_recheck_pass": 5,
+    "remaining_failures": 0
+  },
+  "completion": {
+    "before_cache_fix": "109/110; deleted image requested from stale cache, HTTP404",
+    "after_cache_fix": "110/110; no console errors"
+  },
+  "remaining_failures": [],
+  "network": "Local fixtures only. External requests were blocked; legacy bank/operations checks attempted a staging Worker origin but could not connect."
+}

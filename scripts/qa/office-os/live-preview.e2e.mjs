@@ -170,9 +170,9 @@ try {
   await page.fill('input[name="phone"]', owner.phone);
   await page.fill('input[name="password"]', owner.password);
   await page.getByRole("button", { name: "دخول المكتب" }).click();
-  await page.locator(".ref-office-tools").waitFor();
+  await page.locator("[data-smart-office]").waitFor();
   check("live: real «دخول المكتب» login (phone → Worker resolve → Firebase Auth → membership)", true);
-  await page.locator('[data-reference-tool][data-tool-route="repo"]').click();
+  await page.locator('.ref-bottom button[data-tool-route="repo"]').click();
   await page.getByRole("button", { name: "إضافة سجل جديد" }).click();
   await page.getByRole("button", { name: "إضافة طلب", exact: true }).click();
   await page.locator('[data-fill-mode="manual"]').click();
@@ -343,8 +343,22 @@ try {
     check("live: #/forgot opens the password reset form directly (nothing is submitted)", true);
 
     await page.goto(`${PREVIEW_URL}/#/office`);
-    await page.locator(".ref-office-tools").waitFor();
-    check("live: the 12 office tools are working buttons (no «قريبًا» placeholders)", (await page.locator("button.ref-office-tool").count()) === 12 && (await page.locator(".ref-office-soon").count()) === 0);
+    await page.locator("[data-smart-office]").waitFor();
+    // Secondary tools live under More; open each destination rather than count retired tiles.
+    for (const [route, ready] of [
+      ["tools/guide", "[data-tool-guide]"],
+      ["tools/forms", "[data-tool-templates]"],
+      ["tools/calculator", "[data-calc-result]"],
+      ["tools/services", "[data-tool-services]"]
+    ]) {
+      await page.locator(".ref-bottom").getByRole("button", { name: "المزيد", exact: true }).click();
+      await page.locator('[data-more-route="more/tools"]').click();
+      await page.locator(`[data-more-route="${route}"]`).click();
+      await page.waitForURL(`**/#/${route}`);
+      await page.locator(ready).waitFor();
+      check(`live: More opens working ${route} without placeholders`,
+        (await page.locator(ready).count()) === 1 && (await page.locator(".ref-office-soon").count()) === 0);
+    }
 
     const api = (route, body) => page.evaluate(async ([w, r, b]) => {
       const token = await firebase.auth().currentUser.getIdToken();
@@ -425,7 +439,7 @@ try {
   await bPage.fill('input[name="phone"]', ownerB.phone);
   await bPage.fill('input[name="password"]', ownerB.password);
   await bPage.getByRole("button", { name: "دخول المكتب" }).click();
-  await bPage.locator(".ref-office-tools").waitFor();
+  await bPage.locator("[data-smart-office]").waitFor();
   const denied = await bPage.evaluate(async ([a, j]) => {
     const out = {};
     for (const [key, ref] of [["journey", firebase.firestore().doc(`offices/${a}/journeys/${j}`)], ["proposals", firebase.firestore().collection(`offices/${a}/proposals`)], ["opportunities", firebase.firestore().collection(`offices/${a}/opportunities`)]]) {
