@@ -49,3 +49,19 @@ test("the form handler uses the parser and no longer strips every non-digit from
   const domain = fs.readFileSync(new URL("../public/js/public-client-intake-domain.js", import.meta.url), "utf8");
   assert.match(domain, /window\.IAQARPublicClientIntake = \{[\s\S]*parseIntakeAmount/);
 });
+
+
+test("currency appears only once at the start or end, never inside digits", () => {
+  for (const [raw, expected] of [
+    ["ريال 600000", 600000],
+    ["٦٠٠٬٠٠٠ ريال", 600000],
+    ["SR 600000", 600000],
+    ["600000 SAR", 600000],
+    ["600,000 ر.س", 600000]
+  ]) assert.equal(parseIntakeAmount(raw), expected, raw);
+  for (const raw of [
+    "600ريال000", "600SAR000", "600SR000", "ريال 600 ريال",
+    "SAR 600000 SAR", "ريال SAR 600000", "600000 ريال SR",
+    "600000ريال600", "600000 SR ريال", "SARريال600000"
+  ]) assert.equal(parseIntakeAmount(raw), null, raw);
+});
