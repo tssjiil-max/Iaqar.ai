@@ -81,8 +81,8 @@ export function closeAllSheets() {
 }
 
 /** Short confirmation for deletions and important actions only. */
-export function confirmDialog({ title, text = "", confirmLabel = "تأكيد", cancelLabel = "إلغاء", danger = false }) {
-  return new Promise((resolve) => {
+export function confirmDialog({ title, text = "", confirmLabel = "تأكيد", cancelLabel = "إلغاء", danger = false, onConfirm }) {
+  return new Promise((resolve, reject) => {
     const returnFocus = document.activeElement;
     const id = `os-dlg-${Math.random().toString(36).slice(2, 9)}`;
     let settled = false;
@@ -92,6 +92,9 @@ export function confirmDialog({ title, text = "", confirmLabel = "تأكيد", c
       document.removeEventListener("keydown", onKey, true);
       overlay.remove();
       if (returnFocus?.isConnected) returnFocus.focus?.({ preventScroll: true });
+      // Invoke popup actions inside this trusted click, before Promise continuations.
+      try { if (value) onConfirm?.(); }
+      catch (error) { reject(error); return; }
       resolve(value);
     };
     const onKey = (event) => {
