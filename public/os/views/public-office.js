@@ -11,6 +11,7 @@ import { runAction } from "../core/ui.js";
 import { PROPERTY_TYPES, PURPOSES, RECORD_KIND, validateRecordInput, transactionTypeFor } from "../domain/records-domain.js";
 import { priceStatusField, validityField } from "./record-form.js";
 import { buildWhatsAppUrl, cleanText, formatNumber, localPhone, toNumber } from "../domain/format-domain.js";
+import { formatMoneyAmount } from "../../js/intake-amount-domain.js";
 import { imagePicker } from "./record-images.js";
 import { EXTERNAL_BROKER, externalBrokerClaim } from "../domain/external-broker-domain.js";
 import { normalizeAnalysis, notesWithDistricts, splitDistrictInput } from "../domain/smart-fill-domain.js";
@@ -145,7 +146,7 @@ function intakeForm(root, office, kind, { switchKind, carry = null } = {}) {
   });
   role.dispatchEvent(new Event("change"));
   const price = h("input", { class: "os-input", name: "price", inputmode: "numeric", placeholder: "مثال: 850,000" });
-  price.addEventListener("blur", () => { if (price.value) price.value = formatNumber(price.value) || price.value; });
+  price.addEventListener("blur", () => { if (price.value) price.value = formatMoneyAmount(price.value) || price.value; });
   // The rules and the Worker accept up to 5 photos from the public link, for offers only.
   const picker = kind === "owner" ? imagePicker({ max: 5, hint: "حتى 5 صور للعقار. تُصغَّر تلقائيًا قبل الإرسال." }) : null;
   const submit = h("button", { type: "submit", class: "os-btn primary block" }, ic("send"), "إرسال");

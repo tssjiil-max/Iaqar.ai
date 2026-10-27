@@ -1,0 +1,34 @@
+✔ PURCHASE: Arabic decimal amount survives validation and canonical fields (2.69664ms)
+✔ PURCHASE: embedded text and malformed amounts are rejected (0.706307ms)
+✔ LEASE_REQUEST: Arabic decimal amount survives validation and canonical fields (0.242172ms)
+✔ LEASE_REQUEST: embedded text and malformed amounts are rejected (0.327391ms)
+✔ financial presentation preserves cents without changing whole-number formatting (0.557871ms)
+✔ numeric payloads must obey the same two-decimal money boundary (0.258081ms)
+✔ record price blur preserves valid decimals and leaves invalid text for validation (148.654607ms)
+✔ Worker validates raw prices before persisting purchase and rent records (358.65704ms)
+✔ area is optional in validation, persistence and matching completeness (3.378052ms)
+✔ purpose must fit the record kind; phone must be Saudi mobile; Arabic digits accepted (0.925577ms)
+✔ repository filters exclude deleted, respect kind/status/price/search (3.058947ms)
+✔ compatibility level comes only from the computed score (0.696058ms)
+✔ daily tasks: overdue first, waiting separate, snoozed hidden until due, broker visibility (1.241526ms)
+✔ proposal templates: fields, message, link once, reply validation, expiry (1.256223ms)
+✔ journey rules: accepted viewing ≠ done, results route next step, flexible stages (0.630447ms)
+✔ deal completion permission and assignment checks (0.234448ms)
+✔ WhatsApp and Riyadh time helpers (0.574222ms)
+✔ whole amounts, with or without thousands separators (1.870169ms)
+✔ whitespace normalization preserves every zero and rejects literal escape characters (0.660873ms)
+✔ decimal fractions keep their value (the bug: 600000.00 became 60000000) (0.184194ms)
+✔ Arabic-Indic and Persian digits and Arabic separators are read, not dropped (0.469596ms)
+✔ a currency word next to the number is allowed (0.227474ms)
+✔ anything ambiguous or not a positive amount is rejected instead of guessed (1.416483ms)
+✔ the form handler uses the parser and no longer strips every non-digit from the amount (1.368052ms)
+✔ currency appears only once at the start or end, never inside digits (0.26258ms)
+✔ parsed amount survives client document construction for purchase and rent (0.864072ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 977.167547
