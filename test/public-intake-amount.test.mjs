@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { parseIntakeAmount } from "../public/js/public-client-intake-domain.js";
+import { parseIntakeAmount, buildClientIntakeDocument } from "../public/js/public-client-intake-domain.js";
 
 test("whole amounts, with or without thousands separators", () => {
   assert.equal(parseIntakeAmount("600000"), 600000);
@@ -12,6 +12,18 @@ test("whole amounts, with or without thousands separators", () => {
   assert.equal(parseIntakeAmount("600 000"), 600000);
   assert.equal(parseIntakeAmount(" 450000 "), 450000);
   assert.equal(parseIntakeAmount(750000), 750000);
+});
+
+test("whitespace normalization preserves every zero and rejects literal escape characters", () => {
+  for (const [raw, expected] of [
+    ["600000", 600000], ["100020.50", 100020.5],
+    ["600\u00a0000.50", 600000.5], ["600\t000.50", 600000.5], ["٦٠٠٬٠٠٠٫٥٠", 600000.5]
+  ]) {
+    assert.equal(parseIntakeAmount(raw), expected, raw);
+  }
+  for (const raw of ["600s000", "600u000", "600a000", "600\\000"]) {
+    assert.equal(parseIntakeAmount(raw), null, raw);
+  }
 });
 
 test("decimal fractions keep their value (the bug: 600000.00 became 60000000)", () => {
@@ -48,4 +60,39 @@ test("the form handler uses the parser and no longer strips every non-digit from
   assert.match(gate, /parseIntakeAmount/);
   const domain = fs.readFileSync(new URL("../public/js/public-client-intake-domain.js", import.meta.url), "utf8");
   assert.match(domain, /window\.IAQARPublicClientIntake = \{[\s\S]*parseIntakeAmount/);
+});
+
+
+test("currency appears only once at the start or end, never inside digits", () => {
+  for (const [raw, expected] of [
+    ["ريال 600000", 600000],
+    ["٦٠٠٬٠٠٠ ريال", 600000],
+    ["SR 600000", 600000],
+    ["600000 SAR", 600000],
+    ["600,000 ر.س", 600000]
+  ]) assert.equal(parseIntakeAmount(raw), expected, raw);
+  for (const raw of [
+    "600ريال000", "600SAR000", "600SR000", "ريال 600 ريال",
+    "SAR 600000 SAR", "ريال SAR 600000", "600000 ريال SR",
+    "600000ريال600", "600000 SR ريال", "SARريال600000"
+  ]) assert.equal(parseIntakeAmount(raw), null, raw);
+});
+
+test("parsed amount survives client document construction for purchase and rent", () => {
+  const amount = parseIntakeAmount("٦٠٠٬٠٠٠٫٥٠");
+  assert.equal(amount, 600000.5);
+  for (const requestKind of ["purchase", "rent"]) {
+    const document = buildClientIntakeDocument({
+      name: "عميل اختباري",
+      phone: "0500000000",
+      propertyType: "شقة",
+      requestKind,
+      city: "الرياض",
+      district: "الملقا",
+      priceOrBudget: amount
+    }, { targetOffice: "synthetic-office" });
+    assert.equal(document.priceOrBudget, 600000.5);
+    assert.equal(document.amount, 600000.5);
+    assert.equal(requestKind === "purchase" ? document.budget : document.annualRent, 600000.5);
+  }
 });

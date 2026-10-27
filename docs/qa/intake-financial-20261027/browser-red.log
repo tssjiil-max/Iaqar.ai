@@ -1,0 +1,22 @@
+FAIL purchase-valid: page.waitForFunction: Timeout 10000ms exceeded.
+PASS purchase-invalid: 600ريال000; documents 0 -> 0
+FAIL rent-valid: page.waitForFunction: Timeout 10000ms exceeded.
+PASS rent-invalid: 600ريال000; documents 0 -> 0
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: All four financial browser journeys must pass
+
+2 !== 0
+
+    at file:///workspace/scratch/b6620274aa2c/Iaqar.ai/scripts/qa/intake-amount-emulator.mjs:135:8 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 2,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.22.1

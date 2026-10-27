@@ -1,0 +1,41 @@
+{
+  "project": "demo-iaqar-financial-verification",
+  "results": [
+    {
+      "label": "purchase-valid",
+      "passed": false,
+      "error": "page.waitForFunction: Timeout 10000ms exceeded.",
+      "status": "اكتب المبلغ بأرقام فقط، مثل 600000 أو 600,000.50.",
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "purchase-invalid",
+      "passed": true,
+      "input": "600ريال000",
+      "before": 0,
+      "after": 0,
+      "savedAmount": null,
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "rent-valid",
+      "passed": false,
+      "error": "page.waitForFunction: Timeout 10000ms exceeded.",
+      "status": "اكتب المبلغ بأرقام فقط، مثل 600000 أو 600,000.50.",
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "rent-invalid",
+      "passed": true,
+      "input": "600ريال000",
+      "before": 0,
+      "after": 0,
+      "savedAmount": null,
+      "errors": [],
+      "blocked": []
+    }
+  ]
+}

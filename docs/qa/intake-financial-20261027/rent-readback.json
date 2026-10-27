@@ -1,0 +1,112 @@
+{
+  "name": "projects/demo-iaqar-financial-verification/databases/(default)/documents/offices/platform/publicIntake/ieX4APFXw5AzEmTxnekO",
+  "fields": {
+    "kind": {
+      "stringValue": "client"
+    },
+    "name": {
+      "stringValue": "عميل اختباري"
+    },
+    "phone": {
+      "stringValue": "0500000000"
+    },
+    "city": {
+      "stringValue": "الرياض"
+    },
+    "district": {
+      "stringValue": "حي اختباري"
+    },
+    "propertyType": {
+      "stringValue": "شقة"
+    },
+    "transactionType": {
+      "stringValue": "rent"
+    },
+    "requestKind": {
+      "stringValue": "rent"
+    },
+    "budget": {
+      "nullValue": null
+    },
+    "annualRent": {
+      "doubleValue": 600000.5
+    },
+    "amount": {
+      "doubleValue": 600000.5
+    },
+    "priceOrBudget": {
+      "doubleValue": 600000.5
+    },
+    "area": {
+      "nullValue": null
+    },
+    "rooms": {
+      "nullValue": null
+    },
+    "bathrooms": {
+      "nullValue": null
+    },
+    "streetWidth": {
+      "nullValue": null
+    },
+    "facing": {
+      "stringValue": ""
+    },
+    "condition": {
+      "stringValue": ""
+    },
+    "furnished": {
+      "booleanValue": false
+    },
+    "paymentInstallments": {
+      "nullValue": null
+    },
+    "details": {
+      "stringValue": ""
+    },
+    "officeId": {
+      "stringValue": "platform"
+    },
+    "source": {
+      "stringValue": "platform_public"
+    },
+    "status": {
+      "stringValue": "new"
+    },
+    "completeness": {
+      "integerValue": "100"
+    },
+    "mediaPaths": {
+      "arrayValue": {}
+    },
+    "imageCount": {
+      "integerValue": "0"
+    },
+    "hasVideo": {
+      "booleanValue": false
+    },
+    "mediaMissing": {
+      "booleanValue": false
+    },
+    "lifecycleStatus": {
+      "stringValue": "NEW"
+    },
+    "normalizedSource": {
+      "stringValue": "public_site"
+    },
+    "contactType": {
+      "stringValue": "buyer"
+    },
+    "contactName": {
+      "stringValue": "عميل اختباري"
+    },
+    "contactPhone": {
+      "stringValue": "0500000000"
+    },
+    "createdAt": {
+      "timestampValue": "2026-10-27T02:33:11.040Z"
+    }
+  },
+  "createTime": "2026-10-27T02:33:11.092250Z",
+  "updateTime": "2026-10-27T02:33:11.092250Z"
+}
