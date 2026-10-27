@@ -105,11 +105,18 @@ export function dynamicFieldDefs(requestKind, propertyType) {
  */
 export function parseIntakeAmount(raw) {
   if (typeof raw === "number") return Number.isFinite(raw) && raw > 0 && raw < 1e12 ? raw : null;
-  const text = normalizeDigits(raw)
-    .replace(/[٫]/g, ".")
+  let text = normalizeDigits(raw).trim();
+  // Currency is permitted once, only at either edge; never erase tokens inside digits.
+  const currency = "(?:ريال|ر\\.?\\s?س|SAR|SR)";
+  const prefix = new RegExp("^" + currency + "(?=\\s|[0-9٠-٩۰-۹])", "i");
+  const suffix = new RegExp(currency + "$", "i");
+  if (prefix.test(text)) text = text.replace(prefix, "").trim();
+  else if (suffix.test(text)) text = text.replace(suffix, "").trim();
+  // A second currency token (or embedded currency text) makes the input ambiguous.
+  if (new RegExp(currency, "i").test(text)) return null;
+  text = text.replace(/[٫]/g, ".")
     .replace(/[٬،]/g, ",")
-    .replace(/(?:ريال|ر\.?\s?س|SAR|SR)/gi, "")
-    .replace(/[\s\u00a0]/g, "");
+    .replace(/[\\s\\u00a0]/g, "");
   if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(text)) return null;
   const value = Number(text.replace(/,/g, ""));
   return Number.isFinite(value) && value > 0 && value < 1e12 ? value : null;
