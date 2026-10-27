@@ -1,13 +1,13 @@
 /* Approved mobile reference: presentation only. Remove this link to roll back.
    Keep the existing Naskh face, icons, navigation, data and office services. */
 :root {
-  --bg: #F3F8F9;
-  --bg-top: #E8F3F5;
-  --surface-2: #F5FAFB;
-  --frame: #D4E5E9;
-  --frame-soft: #E4EFF1;
-  --shadow: 0 4px 18px rgb(8 47 58 / 5%);
-  --shadow-strong: 0 10px 28px rgb(8 47 58 / 10%);
+  --bg: #f3f5f9;
+  --bg-top: #e8edf5;
+  --surface-2: #f5f9ff;
+  --frame: #d5dce8;
+  --frame-soft: #e4e9f1;
+  --shadow: 0 4px 18px rgb(16 23 51 / 5%);
+  --shadow-strong: 0 10px 28px rgb(16 23 51 / 10%);
   --radius: 20px;
   --radius-sm: 14px;
 }
@@ -38,7 +38,7 @@
   width: 100%; max-width: 520px;
   border-radius: 22px 22px 0 0;
   border: 1px solid var(--frame-soft);
-  box-shadow: 0 -4px 20px rgb(8 47 58 / 5%);
+  box-shadow: 0 -4px 20px rgb(16 23 51 / 5%);
   padding-inline: 12px;
 }
 .ref-bottom button { min-height: 52px; gap: 4px; }
@@ -77,13 +77,13 @@
   padding: 24px 16px 20px;
   border: 1px solid var(--frame-soft);
   border-radius: 26px;
-  background: linear-gradient(180deg, #E1EFF2, #FFF 74%);
+  background: linear-gradient(180deg, #e1e7f2, #FFF 74%);
   box-shadow: var(--shadow);
 }
 .os-public-page .os-public-logo {
   width: 88px; height: 88px; border-radius: 50%;
   border: 4px solid #FFF;
-  box-shadow: 0 4px 16px rgb(8 47 58 / 7%);
+  box-shadow: 0 4px 16px rgb(16 23 51 / 7%);
 }
 .os-public-page .os-public-rule { margin-block: 10px 14px; }
 .os-public-page .os-license { flex-wrap: wrap; row-gap: 10px; }
@@ -135,16 +135,16 @@
 /* Iaqar visual cohesion pass — isolated, CSS-only staging candidate.
    Explicit frames, consistent surfaces and distinct offer/request treatments. */
 :root {
-  --ia-frame: #B4D3DA;
-  --ia-frame-quiet: #CADFE4;
-  --ia-offer-surface: #EAF5F7;
+  --ia-frame: #b5c2d9;
+  --ia-frame-quiet: #cbd3e3;
+  --ia-offer-surface: #eaeff7;
   --ia-request-surface: #F2F5FA;
-  --ia-focus: #03677A;
+  --ia-focus: #1668e3;
 }
 .os-app :is(.os-card, .ref-office-profile, .ref-record-card, .ref-task-card, .ref-office-tool, .ref-office-extra) {
   border: 1px solid var(--ia-frame-quiet);
   border-radius: 18px;
-  box-shadow: 0 4px 16px rgb(8 47 58 / 5%);
+  box-shadow: 0 4px 16px rgb(16 23 51 / 5%);
 }
 .os-app :is(.ref-record-card, .ref-task-card) + :is(.ref-record-card, .ref-task-card) {
   margin-block-start: 12px;
@@ -155,7 +155,7 @@
 }
 .os-app .os-pair-side.offer {
   background: var(--ia-offer-surface);
-  border-color: #8DBEC8;
+  border-color: #8ea3c7;
 }
 .os-app :is(.os-input, .os-select, .os-textarea) {
   border: 1px solid var(--ia-frame);
@@ -197,7 +197,7 @@
 .os-app .os-seg { direction: rtl; flex-wrap: wrap; }
 .os-app .os-seg button[aria-pressed="true"] {
   border-color: var(--brand-primary);
-  box-shadow: 0 2px 8px rgb(3 103 122 / 14%);
+  box-shadow: 0 2px 8px rgb(22 104 227 / 14%);
 }
 .ref-bottom button[aria-current="page"] { background: var(--brand-tint); }
 .ref-bottom button[aria-current="page"]::before { display: block; width: 32px; }
@@ -207,7 +207,7 @@
 /* Kind is on the card itself; text labels remain visible, so colour is never the only cue. */
 .os-app .ref-record-card[data-record-kind="OFFER"] {
   background: var(--ia-offer-surface);
-  border-color: #8DBEC8;
+  border-color: #8ea3c7;
   border-inline-start: 4px solid var(--brand-primary);
 }
 .os-app .ref-record-card[data-record-kind="REQUEST"] {
@@ -223,7 +223,7 @@
 .ref-record-card [data-kind-label] { min-width: 44px; text-align: center; }
 .ref-record-card [data-kind-label="OFFER"] { color: #FFF; background: var(--brand-primary); }
 .ref-record-card [data-kind-label="REQUEST"] { color: #FFF; background: var(--brand-dark); box-shadow: none; }
-.ref-record-card .ref-record-meta { flex-wrap: wrap; justify-content: flex-start; gap: 8px 16px; padding-block-start: 10px; margin-block-start: 10px; border-block-start: 1px solid rgb(8 47 58 / 12%); }
+.ref-record-card .ref-record-meta { flex-wrap: wrap; justify-content: flex-start; gap: 8px 16px; padding-block-start: 10px; margin-block-start: 10px; border-block-start: 1px solid rgb(16 23 51 / 12%); }
 .ref-record-card .ref-record-meta span:first-child { margin-inline-end: auto; }
 .ref-record-card:focus-within { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
 
@@ -270,8 +270,8 @@
 
 /* Figma guest journey: compact office identity and one primary search action. */
 .os-app.os-public-page {
-  --guest-bg:#f5f6f8; --guest-ink:#142635; --guest-muted:#647580;
-  --guest-brand:#086f73; --guest-soft:#e8f3f1;
+  --guest-bg:#f5f6f8; --guest-ink:#142635; --guest-muted:#656d7f;
+  --guest-brand:#183563; --guest-soft:#e8edf3;
   background:var(--guest-bg); color:var(--guest-ink); max-width:600px;
   padding:24px 20px; gap:20px; direction:rtl;
 }
@@ -290,7 +290,7 @@
 }
 .os-smart-search-form > div:first-child .os-h2 {font-size:30px;line-height:1.45;margin:0 0 14px}
 .os-smart-search-form .os-sub {font-size:16px;color:var(--guest-muted);line-height:1.6}
-.os-smart-search-form .os-textarea {min-height:132px;background:#fff;border:1px solid #dfe6e8;border-radius:16px;padding:16px;font-size:17px;line-height:1.6}
+.os-smart-search-form .os-textarea {min-height:132px;background:#fff;border:1px solid #dfe2e8;border-radius:16px;padding:16px;font-size:17px;line-height:1.6}
 .os-smart-search-form .os-field > span:first-child {font-size:14px}
 .os-public-page .os-btn.primary {background:var(--guest-brand);color:#fff;border:1px solid var(--guest-brand);min-height:52px;border-radius:12px;box-shadow:none}
 .os-public-page .os-btn.secondary {background:var(--guest-soft);color:var(--guest-brand);border:1px solid transparent;border-radius:12px;min-height:48px}
@@ -298,16 +298,29 @@
 .os-search-examples .os-btn {padding:8px 12px;font-size:13px;min-height:44px}
 .os-smart-search-form [name=scope] {background:var(--guest-soft);color:var(--guest-brand);border:0;font-size:14px;min-height:52px}
 .os-search-summary {background:var(--guest-soft);color:var(--guest-brand);padding:14px;border-radius:12px;font-size:14px;line-height:1.7;margin:0}
-.os-public-page .os-guest-result {background:#fff;border:1px solid #dfe6e8;box-shadow:none;border-radius:16px;padding:16px}
+.os-public-page .os-guest-result {background:#fff;border:1px solid #dfe2e8;box-shadow:none;border-radius:16px;padding:16px}
 .os-public-page [data-search-criteria] summary,.os-public-page [data-request-review] summary {cursor:pointer;color:var(--guest-brand);padding:12px 0;font-size:14px}
 .os-public-page [data-guest-results]:empty {display:none}
-.os-public-page .os-path-card {background:#fff;border:1px solid #dfe6e8;border-radius:16px;padding:16px}
+.os-public-page .os-path-card {background:#fff;border:1px solid #dfe2e8;border-radius:16px;padding:16px}
 .os-public-page .os-public-trust,.os-public-page .os-public-coop {font-size:12px;line-height:1.6}
 @media(max-width:430px){.os-app.os-public-page{padding:20px}.os-public-page .os-guest-result-head{display:grid}.os-public-page .os-guest-result-price{white-space:normal}}
 .os-public-page .os-path-card[data-path="owner"] {background:#fff;color:var(--guest-ink);box-shadow:none}
 .os-public-page .os-path-card[data-path="owner"] :is(b,small,.ic,.os-path-go),.os-public-page .os-path-card[data-path="owner"] .os-ico {color:var(--guest-brand)}
 .os-public-page .os-path-card[data-path="owner"] :is(.ic,.os-path-go) {background:var(--guest-soft)}
 .os-public-page .os-smart-search-form > div:first-child .os-h2 {max-width:290px;font-size:30px}
-.os-public-page .os-page-header,.os-public-page .os-office-section {background:#fff;box-shadow:none;border:1px solid #dfe6e8;border-radius:16px}
+.os-public-page .os-page-header,.os-public-page .os-office-section {background:#fff;box-shadow:none;border:1px solid #dfe2e8;border-radius:16px}
 .os-public-page .os-page-icon {background:var(--guest-soft);color:var(--guest-brand)}
 .os-public-page .os-page-header .os-sub {color:var(--guest-muted)}
+
+/* ---------- 3D icons (public/icons/3d): the home tiles and the bottom bar only. The line icons stay everywhere else
+   and are the fallback when an image does not load (see icon3d in core/icons.js). ---------- */
+.os-ico3d { display: block; width: 44px; height: 44px; object-fit: contain; flex: none; pointer-events: none; user-select: none; }
+.os-app[data-view="office"] .ref-reference-icon.has-3d { width: 48px; height: 48px; background: transparent; }
+.os-app .ref-reference-bottom button .os-ico3d { width: 28px; height: 28px; filter: saturate(.55) opacity(.85); transition: filter .15s ease, transform .15s ease; }
+.os-app .ref-reference-bottom button[aria-current="page"] .os-ico3d { filter: none; transform: translateY(-1px) scale(1.08); }
+@media (min-width: 600px) {
+  .os-ico3d { width: 64px; height: 64px; }
+  .os-app[data-view="office"] .ref-reference-icon.has-3d { width: 72px; height: 72px; }
+  .os-app .ref-reference-bottom button .os-ico3d { width: 34px; height: 34px; }
+}
+@media (prefers-reduced-motion: reduce) { .os-app .ref-reference-bottom button .os-ico3d { transition: none; } }

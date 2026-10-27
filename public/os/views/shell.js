@@ -5,6 +5,7 @@
 
 import { h, ic, btn, clear, append, emptyState, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
+import { icon3d } from "../core/icons.js";
 import { session, signOutOffice } from "../core/session.js";
 import { openSheet, toast } from "../core/ui.js";
 import { workerBase } from "../core/runtime.js";
@@ -127,6 +128,6 @@ export function renderShellHeader({ active = "office" } = {}) {
 export const BOTTOM_NAV = Object.freeze([["public","الرئيسية","home"],["search","البحث","search"],["office","المكتب","dashboard"],["tools/market","المؤشرات","chart-up"],["settings","حسابي","user"]]);
 export function renderBottomNav(active = "office") {
   const selected = active === "search" ? "search" : location.hash.startsWith("#/tools/market") ? "tools/market" : location.hash.startsWith("#/settings") ? "settings" : "office";
-  return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"}, BOTTOM_NAV.map(([route,label,icon])=>h("button",{type:"button","aria-current":route===selected?"page":null,onClick:()=>route==="public"?location.assign(officePublicLink()):go(route)},ic(icon),h("span",{text:label}))));
+  return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"}, BOTTOM_NAV.map(([route,label,icon])=>h("button",{type:"button","aria-current":route===selected?"page":null,onClick:()=>route==="public"?location.assign(officePublicLink()):go(route)},icon3d(route,icon),h("span",{text:label}))));
 }
 export { btn };
