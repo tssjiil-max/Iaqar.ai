@@ -97,6 +97,31 @@ export function dynamicFieldDefs(requestKind, propertyType) {
   return fields;
 }
 
+/**
+ * The amount a visitor typed in the price / budget field, or null when it cannot be read with certainty.
+ * Reads Arabic-Indic and Persian digits, «٬ ، ,» as thousands separators, «٫ .» as the decimal point and a currency
+ * word next to the number. Anything else («600 ألف», «1.234», «600000..00») is rejected, never guessed:
+ * the old expression stripped every non-digit, so «600000.00» was saved as 60000000.
+ */
+export function parseIntakeAmount(raw) {
+  if (typeof raw === "number") return Number.isFinite(raw) && raw > 0 && raw < 1e12 ? raw : null;
+  let text = normalizeDigits(raw).trim();
+  // Currency is permitted once, only at either edge; never erase tokens inside digits.
+  const currency = "(?:ريال|ر\\.?\\s?س|SAR|SR)";
+  const prefix = new RegExp("^" + currency + "(?=\\s|[0-9٠-٩۰-۹])", "i");
+  const suffix = new RegExp(currency + "$", "i");
+  if (prefix.test(text)) text = text.replace(prefix, "").trim();
+  else if (suffix.test(text)) text = text.replace(suffix, "").trim();
+  // A second currency token (or embedded currency text) makes the input ambiguous.
+  if (new RegExp(currency, "i").test(text)) return null;
+  text = text.replace(/[٫]/g, ".")
+    .replace(/[٬،]/g, ",")
+    .replace(/[\s\u00a0]/g, "");
+  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(text)) return null;
+  const value = Number(text.replace(/,/g, ""));
+  return Number.isFinite(value) && value > 0 && value < 1e12 ? value : null;
+}
+
 function nullableNumber(value) {
   if (value === null || value === undefined || String(value).trim() === "") return null;
   const number = Number(normalizeDigits(value).replace(/,/g, ""));
@@ -200,6 +225,7 @@ if (typeof window !== "undefined") {
     propertyCategory,
     normalizeRequestKind,
     dynamicFieldDefs,
+    parseIntakeAmount,
     buildClientIntakeDocument,
     rememberLastCity,
     readRememberedCity
