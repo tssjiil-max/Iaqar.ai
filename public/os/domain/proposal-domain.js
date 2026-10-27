@@ -7,7 +7,8 @@
  * can never disagree about what a valid reply is.
  */
 
-import { cleanText, formatDateTime, formatPrice, toDate, toNumber } from "./format-domain.js";
+import { cleanText, formatDateTime, formatPrice, toDate } from "./format-domain.js";
+import { parseIntakeAmount } from "../../js/intake-amount-domain.js";
 
 export const RECIPIENT = Object.freeze({ CLIENT: "client", OWNER: "owner" });
 export const RECIPIENT_LABEL = Object.freeze({ client: "العميل", owner: "المالك" });
@@ -130,7 +131,7 @@ export function validateProposalFields(kind, raw = {}, { now = new Date() } = {}
   for (const field of template.fields) {
     const value = raw[field.key];
     if (field.type === "price") {
-      const n = toNumber(value);
+      const n = parseIntakeAmount(value);
       if (!(n > 0)) errors[field.key] = "اكتب السعر";
       else fields[field.key] = n;
     } else if (field.type === "datetime") {
@@ -255,7 +256,7 @@ export function validateReply(kind, optionId, text) {
   const clean = cleanText(text, 500);
   if (option.needsText) {
     if (option.textKind === "price") {
-      const n = toNumber(clean);
+      const n = parseIntakeAmount(text);
       if (!(n > 0)) return { ok: false, error: "reply_text_required", message: "اكتب السعر الذي تقترحه" };
       return { ok: true, option, text: String(n), value: n };
     }
