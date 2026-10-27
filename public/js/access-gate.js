@@ -183,7 +183,15 @@
           <input name="otherPropertyType" maxlength="40"></label>
         <label class="conditional-field full" id="otherDistrictWrap" hidden><span>اكتب اسم الحي الجديد</span>
           <input name="otherDistrict" maxlength="80"></label>
-        <label class="full"><span>تفاصيل إضافية</span><textarea name="details" maxlength="1000"></textarea></label>
+        <label><span>نوع العملية</span><select name="transaction" required>
+          <option value="بيع">بيع / شراء</option><option value="إيجار">إيجار / استئجار</option>
+        </select></label>
+        <label><span>المساحة بالمتر المربع</span><input name="area" inputmode="decimal" maxlength="12" placeholder="مثال: 250"></label>
+        <label><span>${owner ? "السعر المطلوب" : "الميزانية القصوى"} (ريال)</span>
+          <input name="amount" inputmode="numeric" maxlength="14" placeholder="مثال: 850000"></label>
+        <label class="conditional-field" id="roomsWrap" hidden><span>عدد الغرف</span>
+          <select name="rooms"><option value="">غير محدد</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option value="6+">6 وأكثر</option></select></label>
+        <label class="full"><span>المواصفات أو الشروط الإضافية</span><textarea name="details" maxlength="700"></textarea></label>
         ${owner ? `<label class="full"><span>صور العقار (اختياري، حتى 5 صور)</span>
           <input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
           <p class="file-help">يمكن إرسال العرض دون صور، ويطلبها الوسيط لاحقًا عبر واتساب. بحد أقصى 8 ميجابايت للصورة.</p></label>
@@ -205,7 +213,14 @@
       if (!visible) input.value = "";
       if (visible) setTimeout(() => input.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
     };
-    propertySelect.onchange = () => toggleOther(propertySelect, otherPropertyWrap);
+    const roomsWrap = gate.querySelector("#roomsWrap");
+    const updatePropertyFields = () => {
+      toggleOther(propertySelect, otherPropertyWrap);
+      const residential = ["شقة", "فيلا", "دور", "دوبلكس", "قصر", "بيت شعبي"].includes(propertySelect.value);
+      roomsWrap.hidden = !residential;
+      if (!residential) roomsWrap.querySelector("select").value = "";
+    };
+    propertySelect.onchange = updatePropertyFields;
     districtSelect.onchange = () => toggleOther(districtSelect, otherDistrictWrap);
     gate.querySelectorAll("input,select,textarea").forEach(field => field.addEventListener("focus", () => {
       setTimeout(() => field.scrollIntoView({ behavior: "smooth", block: "center" }), 180);
@@ -218,6 +233,21 @@
       if (!validFullName(name)) return showStatus("أدخل الاسم الثنائي على الأقل.");
       const phone = normalizeSaudiPhone(fields.get("phone"));
       if (!phone) return showStatus("أدخل رقم جوال سعودي صحيحًا يبدأ بـ 05.");
+      const areaText = String(fields.get("area") || "").trim();
+      const amountText = String(fields.get("amount") || "").trim();
+      if (areaText && (!/^\d+(?:[.]\d{1,2})?$/.test(areaText) || Number(areaText) <= 0)) {
+        return showStatus("أدخل مساحة صحيحة بالأمتار.");
+      }
+      if (amountText && (!/^\d+$/.test(amountText) || Number(amountText) <= 0)) {
+        return showStatus("أدخل سعرًا أو ميزانية صحيحة بالريال.");
+      }
+      const propertyDetails = [
+        `العملية: ${String(fields.get("transaction") || "بيع")}`,
+        areaText ? `المساحة: ${areaText} م²` : "",
+        amountText ? `${owner ? "السعر المطلوب" : "الميزانية القصوى"}: ${amountText} ريال` : "",
+        fields.get("rooms") ? `عدد الغرف: ${fields.get("rooms")}` : "",
+        String(fields.get("details") || "").trim()
+      ].filter(Boolean).join("\n").slice(0, 1000);
       const images = owner ? Array.from(form.elements.images.files || []) : [];
       const video = owner ? form.elements.video.files[0] : null;
       if (owner && images.length > 5) return showStatus("يمكن إضافة 5 صور كحد أقصى.");
@@ -254,7 +284,7 @@
           city: "المدينة المنورة",
           propertyType,
           district,
-          details: String(fields.get("details") || "").trim(),
+          details: propertyDetails,
           mediaPaths,
           imageCount: images.length,
           hasVideo: Boolean(video),
@@ -271,7 +301,7 @@
         if (matchingResult && Number(matchingResult.matches || 0) > 0) {
           showStatus(`تم الإرسال واكتشاف ${matchingResult.matches} مطابقة مناسبة.`, true);
         } else {
-          showStatus(owner ? "تم رفع عرض العقار وتشغيل المطابقة." : "تم إرسال الطلب وتشغيل المطابقة.", true);
+          showStatus(matchingResult ? "تم استلام البيانات وفحص المطابقة." : "تم حفظ البيانات للمكتب؛ المطابقة لم تتأكد بعد.", true);
         }
       } catch (error) {
         console.warn("[iaqar] intake submit", error);
