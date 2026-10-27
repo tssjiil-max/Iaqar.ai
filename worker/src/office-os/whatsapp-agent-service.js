@@ -11,6 +11,7 @@
  * The agent never accepts a price, never confirms a viewing, never signs, never moves money.
  */
 import { classifyWithClaude, economicModeActive, sendWhatsAppMessage, usesPaidClassifier, whatsappAccessToken } from './whatsapp-agent-transport.js';
+import { recordWhatsAppMatchInterest, runWhatsAppMatchInterests } from './whatsapp-match-interest.js';
 import { extractFacts, mergeDraft, nextMissing, questionFor, personaFromText, PERSONA, wantsHuman, toRecordInput, summaryLines } from '../../../public/os/domain/visitor-domain.js';
 import { LISTING_STATUS_LABEL, mandateDecision, READINESS_EVENT } from '../../../public/os/domain/direct-match-domain.js';
 import { recordImages, keyBelongsTo } from '../../../public/os/domain/record-media-domain.js';
@@ -364,6 +365,11 @@ async function inventoryTurn(ctx, job, c, criteria) {
 }
 
 async function buildReply(ctx,job,c){
+ const interest=/^wi:(wi_[a-f0-9]{40}):(owner|client):(yes|no)$/.exec(job.actionId||'');
+ if(interest){
+  const result=await recordWhatsAppMatchInterest(ctx,{officeId:job.officeId,id:interest[1],role:interest[2],phone:job.senderPhone,answer:interest[3]});
+  return {messages:[textMessage(!result.ok?'هذا السؤال لم يعد صالحًا — سيتحقق المكتب من الحالة.':result.state==='FOLLOW_UP_STARTED'?'تم تأكيد اهتمام الطرفين وبدأت متابعة الصفقة؛ هذا ليس اتفاقًا نهائيًا.':result.state==='DECLINED'?'تم تسجيل عدم الرغبة بمتابعة هذه المطابقة.':'تم تسجيل اهتمامك، وبانتظار رد الطرف الآخر.')],patch:{}};
+ }
  // «موظف» / the button: one honest message, then the conversation belongs to a person until the office resumes it.
  if(job.actionId==='wa:HUMAN'||wantsHuman(job.messageText)){
   await tellOffice(ctx,job.officeId,{key:`human:${job.id}`,title:'عميل واتساب يطلب موظفًا',body:`${job.senderName||'عميل'} طلب التحدث مع المسؤول`});
@@ -505,6 +511,7 @@ async function deliverOfficeUpdate(ctx,{officeId,caseDoc,key,messages,conversati
  // A person's own reply does not depend on the auto-reply switch, only on still holding the conversation.
  if(!whatsappAgentAvailable(ctx.env)||(!humanUid&&!await officeOn(ctx,officeId)))state='AUTOMATION_OFF';
  else if(humanUid&&(!c.handoff||c.heldBy!==humanUid))state='NOT_HELD';
+ else if(!humanUid&&c.handoff)state='HUMAN_REVIEW';
  else if(c.optedOut)state='OPTED_OUT';
  else if(!agentNumber(mapping)||mapping.officeId!==officeId||!recipientAllowed(ctx,caseDoc.senderPhone))state='NOT_AUTHORISED';
  else if(ctx.now().getTime()-millis(c.lastInboundAt)>=DAY)state='TEMPLATE_REQUIRED';
@@ -549,9 +556,22 @@ export async function drainWhatsAppQueue(ctx,{officeId=''}={}) {
  if(!whatsappAgentAvailable(ctx.env))return {ok:true,processed:0,disabled:true};
  const jobs=await ctx.store.queryAfter(queueRoot,'jobs',{field:'dueAt',before:new Date(ctx.now().getTime()+1),limit:50});let processed=0;
  for(const job of jobs){if(officeId&&job.officeId!==officeId)continue;await processJob(ctx,job);processed++;}
- let reminders=0,followUps=0;
+ let reminders=0,followUps=0,simulatedMatchInterests=0;
  for(const id of list(ctx.env.WHATSAPP_AGENT_OFFICE_IDS)){if(officeId&&id!==officeId)continue;if(!await officeOn(ctx,id))continue;const s=await sweepOffice(ctx,id).catch(e=>{console.warn('[whatsapp-agent] sweep failed',errorCode(e));return {reminders:0,followUps:0};});reminders+=s.reminders;followUps+=s.followUps;}
- return {ok:true,processed,reminders,followUps};
+ for(const id of list(ctx.env.WHATSAPP_AGENT_OFFICE_IDS)) {
+  if(officeId&&id!==officeId)continue;
+  const result=await runWhatsAppMatchInterests(ctx,{officeId:id,send:params=>sendMatchInterestQuestion(ctx,params)});
+  simulatedMatchInterests+=result.prepared;
+ }
+ return {ok:true,processed,reminders,followUps,...(ctx.env.WHATSAPP_MATCH_INTEREST_MODE==='simulate'?{simulatedMatchInterests}:{})};
+}
+
+async function sendMatchInterestQuestion(ctx,{officeId,id,role,party}) {
+ const conversations=await ctx.store.list(['offices',officeId,'whatsappConversations'],300);
+ const c=conversations.find(row=>row.officeId===officeId&&digits(row.senderPhone)===digits(party.phone)&&row.consent===true&&!row.optedOut&&!row.handoff);
+ if(!c)return {state:'PARTY_NOT_REACHABLE'};
+ return deliverOfficeUpdate(ctx,{officeId,caseDoc:{...c,id,conversationId:c.id},key:`match-interest:${id}:${role}`,
+  messages:[buttonsMessage(party.text,[{id:`wi:${id}:${role}:yes`,title:'نعم، مناسب'},{id:`wi:${id}:${role}:no`,title:'غير مناسب'}])]});
 }
 
 // ------------------------------------------------------------------ office endpoints
