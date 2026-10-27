@@ -6,14 +6,15 @@ const shell = fs.readFileSync(new URL("../public/os/views/shell.js", import.meta
 const office = fs.readFileSync(new URL("../public/os/views/reference-layout.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/os/office-desk.css", import.meta.url), "utf8");
 
-test("office page uses the approved digital-office hierarchy", () => {
-  assert.match(shell, /مكاتب عقارية ذكية/, "main shell header must carry the platform brand");
-  assert.match(office, /ref-office-profile/, "office identity must be a dedicated card below the header");
-  assert.doesNotMatch(office, /ref-office-share/, "the reference card has no share button; sharing stays in the settings menu");
-  assert.match(shell, /shareOfficeLink\(\); \} \}, ic\("link"\), "مشاركة رابط المكتب"/, "sharing the office link must remain available from the menu");
-  assert.match(office, /ref-office-tools/, "primary office tools grid must exist");
-  assert.doesNotMatch(office, /ref-office-extras-wrap/, "the four duplicate placeholder extras were removed from the home page");
-  assert.match(office, /ref-office-heading[^\n]*text:\s*["']أدوات المكتب["']/, "the heading names what is under it («أدوات المكتب», not «مكتبي»)");
+test("office page uses the approved work-first hierarchy", () => {
+ const smart=fs.readFileSync(new URL('../public/os/views/smart-office.js',import.meta.url),'utf8');
+ assert.match(shell,/مكاتب عقارية ذكية/);
+ let cursor=-1;
+ for(const title of ['المطلوب مني الآن','فرص ومطابقات للمراجعة','الصفقات الجارية','مدير المكتب الذكي','الباحث عن الفرص']) {
+  const next=smart.indexOf("section('"+title+"'",cursor+1);assert.ok(next>cursor,title);cursor=next;
+ }
+ assert.match(smart,/smart-office-identity/);
+ assert.match(smart,/معاينة ومشاركة رابط المكتب/);
 });
 
 test("office tool labels and order stay exact", () => {

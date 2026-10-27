@@ -70,7 +70,7 @@ try {
   // 1 — one header on the three main screens
   step = "1: unified header";
   const page = await openAs(OWNER_A, "office");
-  await page.locator(".ref-office-tools").waitFor();
+  await page.locator("[data-smart-office]").waitFor();
   const headerShape = async () => page.evaluate(() => {
     const box = (sel) => { const el = document.querySelector(sel); if (!el) return null; const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return [Math.round(r.width), Math.round(r.height), s.backgroundColor, s.borderRadius].join("|"); };
     return { bell: box(".ref-shell-header .ref-bell"), menu: box(".ref-shell-header .ref-menu"), title: document.querySelector(".ref-reference-header h1")?.textContent };
@@ -86,8 +86,8 @@ try {
   step = "2: office card";
   h.store.patch(`offices/${OFFICE_A}`, { officeName: "مكتب سلطان الصاعدي للخدمات والاستشارات العقارية" });
   const narrow = await openAs(OWNER_A, "office", 320);
-  await narrow.locator(".ref-office-profile-head h2").waitFor();
-  const name = await narrow.evaluate(() => { const el = document.querySelector(".ref-office-profile-head h2"); const s = getComputedStyle(el); return { text: el.textContent, clipped: el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1, overflow: s.textOverflow, wrap: s.whiteSpace }; });
+  await narrow.locator("[data-office-name]").waitFor();
+  const name = await narrow.evaluate(() => { const el = document.querySelector("[data-office-name]"); const s = getComputedStyle(el); return { text: el.textContent, clipped: el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1, overflow: s.textOverflow, wrap: s.whiteSpace }; });
   check("a long office name shows in full at 320px (wraps, never «…»)", name.text === "مكتب سلطان الصاعدي للخدمات والاستشارات العقارية" && !name.clipped && name.overflow !== "ellipsis" && name.wrap === "normal", JSON.stringify(name));
   await shot(narrow, "01-office-long-name-320");
   await narrow.context().close();
@@ -114,8 +114,9 @@ try {
 
   // 3 — the six office tools all work
   step = "3: office tools";
-  check("twelve tool buttons, none marked «قريبًا» or disabled", (await page.locator("button.ref-office-tool").count()) === 12 && (await page.locator(".ref-office-soon, .ref-office-tool[aria-disabled='true']").count()) === 0);
-  const openTool = async (label, wait) => { await go(page, "office", ".ref-office-tools"); await page.locator(`button.ref-office-tool[data-office-tool="${label}"]`).click(); await page.locator(wait).first().waitFor(); };
+  check("five internal navigation buttons",await page.locator('.ref-bottom button').count()===5);
+  const tools={"ملفاتي":"library","النماذج":"tools/forms","الدليل":"tools/guide","الخدمات":"tools/services","الحاسبة":"tools/calculator","السوق":"tools/market"};
+  const openTool=async(label,wait)=>{await go(page,tools[label].startsWith('tools/')&&label!=="السوق"?'more/tools':'more','.os-more-links');await page.locator(`[data-more-route="${tools[label]}"]`).click();await page.locator(wait).first().waitFor();};
   await openTool("ملفاتي", "[data-lib-content]");
   check("«ملفاتي» opens the office library", page.url().endsWith("#/library"));
   await openTool("النماذج", "[data-template]");
@@ -148,7 +149,7 @@ try {
   check("«السوق»: counts come from this office's own active records", stats.join("|") === "2|1|1", stats.join("|"));
   check("«السوق»: a request with no matching offer is listed as a gap", (await page.locator("[data-market-gap]").count()) === 1);
   await shot(page, "06-tool-market");
-  await page.goto(`${h.origin}/#/tools/unknown`); await page.locator(".ref-office-tools").waitFor();
+  await page.goto(`${h.origin}/#/tools/unknown`); await page.locator("[data-smart-office]").waitFor();
   check("an unknown tool address returns to the office page (no blank screen)", page.url().endsWith("#/office"));
 
   // 4 — the deal path is interactive
@@ -438,11 +439,9 @@ try {
   await page.locator('[data-audit-filter="channel"]').click();
   check("audit filter narrows to channel actions", (await page.locator("[data-audit-item]").evaluateAll((els) => els.every((el) => /^(CHANNEL_|INBOX_)/.test(el.getAttribute("data-audit-action"))))));
   await shot(page, "35-audit");
-  await go(page, "office", ".ref-menu");
-  await page.locator(".ref-menu").click();
-  await page.locator(".os-menu").waitFor();
-  check("the menu opens search, the communication center and the audit trail", (await page.locator('.os-menu [data-menu="search"]').count()) === 1 && (await page.locator('.os-menu [data-menu="inbox"]').count()) === 1 && (await page.locator('.os-menu [data-menu="audit"]').count()) === 1);
-  await page.locator('.os-menu [data-menu="inbox"]').click();
+  await go(page,"more",".os-more-links");
+  check("More retains search and the manager audit trail",await page.locator('[data-more-route="search"]').count()===1&&await page.locator('[data-more-route="audit"]').count()===1);
+  await page.locator('.ref-bottom [data-tool-route="inbox"]').click();
   await page.locator("[data-inbox]").waitFor();
   check("menu → «مركز التواصل» opens the page", page.url().includes("#/inbox"));
 

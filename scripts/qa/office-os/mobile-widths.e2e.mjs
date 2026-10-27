@@ -77,7 +77,7 @@ const SCREENS = [
   { name: "register", url: "/#/register", wait: "[data-broker-form]", auth: false },
   { name: "register-states", url: "/#/register", wait: "[data-broker-form]", auth: false, act: async (p) => { await p.fill('input[name="email"]', "x"); await p.fill('input[name="password"]', "short"); await p.fill('input[name="phone"]', "0512345678"); await p.locator('input[name="brokerName"]').focus(); await p.locator('[data-field="password"].invalid').waitFor(); } },
   { name: "forgot-password", url: "/", wait: "[data-forgot]", auth: false, act: async (p) => { await p.locator("[data-forgot]").click(); await p.locator("[data-forgot-form]").waitFor(); } },
-  { name: "office", url: "/#/office", wait: ".ref-office-tools" },
+  { name: "office", url: "/#/office", wait: "[data-smart-office]" },
   { name: "task-detail", url: `/#/task/${s.reviewTaskId}`, wait: ".ref-detail-step" },
   { name: "tasks", url: "/#/tasks", wait: "[data-task]" },
   { name: "menu-sheet", url: "/#/tasks", wait: "[data-task]", act: async (p) => { await p.getByRole("button", { name: "القائمة والإعدادات" }).click(); await p.locator(".os-sheet").waitFor(); } },

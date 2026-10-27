@@ -569,3 +569,8 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 [data-smart-office] .os-office-section>.os-btn{margin-top:10px}
 .os-more-links{display:grid;gap:10px;padding:16px}
 .os-more-links>.os-btn{width:100%;justify-content:flex-start;white-space:normal;text-align:start}
+/* Reuse the navigation's secondary ink: readable on the dashboard's white and tinted cards. */
+[data-smart-office] .ref-row-copy small,
+[data-smart-office] .ref-time,
+[data-smart-office] .ref-agent-facts,
+[data-smart-office] .ref-agent-status{color:#607184}

@@ -1,3 +1,4 @@
+import { officePublicLink, shareOfficeLink } from './shell.js';
 /** Work-first presentation over existing services. No workflow or permission changes. */
 import { h, ic, append, clear, surface, pageHeader, loadingState, feedback, emptyState } from '../core/dom.js';
 import { session } from '../core/session.js';
@@ -107,8 +108,14 @@ export function renderSmartOffice(container) {
   });
   draw(); const off = subscribe(draw); return () => { alive = false; off(); stop(); };
 }
-export function renderMore(container, { tools = false, support = false } = {}) {
-  append(container, pageHeader(support ? 'الدعم والمساعدة' : tools ? 'أدوات مساندة' : 'المزيد'));
+export function renderMore(container, { tools = false, support = false, publicLink = false } = {}) {
+  append(container, pageHeader(publicLink ? 'رابط المكتب' : support ? 'الدعم والمساعدة' : tools ? 'أدوات مساندة' : 'المزيد'));
+  if(publicLink){
+    append(container,section('معاينة ومشاركة رابط المكتب',
+      h('a',{class:'os-btn secondary',href:officePublicLink(),target:'_blank',rel:'noopener noreferrer'},ic('link'),'معاينة بوابة العميل'),
+      h('button',{type:'button',class:'os-btn primary',onClick:shareOfficeLink},ic('link'),'مشاركة رابط المكتب')));
+    return null;
+  }
   if (support) {
     const card = supportCard(); append(container, card); let alive = true;
     Promise.all([loadChannels(session.officeId), loadSupportStatus(session.officeId)]).then(([channels, status]) => {
@@ -121,8 +128,9 @@ export function renderMore(container, { tools = false, support = false } = {}) {
     ['أدوات مساندة', 'more/tools', 'clipboard'], ['مؤشرات المكتب', 'tools/market', 'chart-up'],
     ['البيانات والمستندات', 'library', 'archive'], ['التعاون بين الوسطاء', 'community', 'handshake'],
     ['البحث الشامل', 'search', 'search'], ['الإشعارات', 'settings/notifications', 'bell'],
-    ['الدعم والمساعدة', 'more/support', 'support'], ...(session.isManager ? [
-      ['ملف المكتب والإعدادات', 'settings', 'gear'], ['معاينة ومشاركة رابط المكتب', 'settings/link', 'link'],
+    ['الدعم والمساعدة', 'more/support', 'support'],
+    ['معاينة ومشاركة رابط المكتب', session.isManager ? 'settings/link' : 'more/link', 'link'], ...(session.isManager ? [
+      ['ملف المكتب والإعدادات', 'settings', 'gear'],
       ['سجل النشاط', 'audit', 'clipboard']] : [])];
   append(container, surface('section', { class: 'os-card os-more-links' }, items.map(([label, route, icon]) => link(label, route, icon))));
   return null;

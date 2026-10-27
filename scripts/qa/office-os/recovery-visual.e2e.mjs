@@ -49,7 +49,7 @@ if (process.argv[2] !== '--capture') {
       }, { fixed, uid: OWNER_A, officeId: OFFICE_A });
       const page = await ctx.newPage();
       for (const [name, route, ready] of [
-        ['home', '/#/office', '.ref-office-tools'],
+        ['home', '/#/office', '[data-smart-office]'],
         ['tasks', '/#/tasks', '[data-type="MATCH_REVIEW"]'],
         ['records', '/#/repo', '[data-record]'],
         ['guest', '/?view=search', '.os-guest-path'],

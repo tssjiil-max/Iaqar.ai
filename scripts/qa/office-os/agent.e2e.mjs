@@ -38,7 +38,6 @@ page.on("pageerror", (e) => errors.push(e.message));
 try {
   step = "home";
   await page.goto(`${h.origin}/#/office`);
-  await page.locator(".ref-office-status > summary").click();
   await page.locator("[data-agent-card]").waitFor();
   await page.waitForFunction(() => document.querySelector("[data-agent-needs]")?.dataset.count !== undefined && document.querySelector("[data-agent-status]")?.dataset.state);
   const home = await page.evaluate(() => ({
@@ -47,7 +46,7 @@ try {
     status: document.querySelector("[data-agent-status]").dataset.state,
     order: [...document.querySelectorAll(".ref-office-section")].map((s) => s.querySelector("h2, b")?.textContent.trim())
   }));
-  check("the agent status stays accessible in the expandable office status panel", (await page.locator(".ref-office-status[open] [data-agent-card]").count()) === 1);
+  check("the agent status stays accessible in the expandable office status panel", (await page.locator("[data-smart-office] [data-agent-card]").count()) === 1);
   check("the agent is shown as off before the manager switches it on (never «يعمل» by default)", home.status === "OFF", home.status);
   check("there are seeded decisions waiting", home.needs > 0, String(home.needs));
   await shot(page, "01-home-card");
@@ -71,7 +70,6 @@ try {
 
   step = "lane-filter";
   await page.goto(`${h.origin}/#/office`);
-  await page.locator(".ref-office-status > summary").click();
   await page.locator("[data-agent-needs][data-count]").click();
   await page.waitForFunction(() => location.hash.includes("lane=NEEDS_YOU"));
   await page.locator(".os-task-list > [data-lane]:not(.ref-lane-head)").first().waitFor();
@@ -103,7 +101,6 @@ try {
 
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto(`${h.origin}/#/office`);
-  await page.locator(".ref-office-status > summary").click();
   await page.locator("[data-agent-card]").waitFor();
   await shot(page, "06-home-320");
   check("no browser console errors", errors.length === 0, errors.slice(0, 4).join(" | "));

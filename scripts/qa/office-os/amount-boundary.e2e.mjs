@@ -36,7 +36,7 @@ try {
             await page.locator('[name="phone"]').fill("0501111111");
             await page.locator('[name="password"]').fill("pass-a");
             await page.getByRole("button", { name: "دخول المكتب", exact: true }).click();
-            await page.locator('[data-reference-tool][data-tool-route="repo"]').click();
+            await page.locator('.ref-bottom button[data-tool-route="repo"]').click();
             await page.getByRole("button", { name: "إضافة سجل جديد" }).click();
             await page.getByRole("button", { name: "إضافة طلب", exact: true }).click();
           } else {

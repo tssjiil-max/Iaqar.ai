@@ -143,7 +143,6 @@ try {
   await page.fill('input[name="phone"]', owner.phone);
   await page.fill('input[name="password"]', owner.password);
   await page.getByRole("button", { name: "دخول المكتب" }).click();
-  await page.locator(".ref-office-status > summary").click();
   await page.locator("[data-scout-card]:not([hidden])").waitFor();
   check("live: the office page shows «الباحث عن الفرص», stopped by default", (await page.locator("[data-scout-card] [data-scout-status]").getAttribute("data-scout-status")) === "off");
   await page.locator("[data-scout-open]").click();
@@ -225,7 +224,6 @@ try {
 
   // ---------- the find opened from the broker's office
   await page.goto(`${APP}/#/office`);
-  await page.locator(".ref-office-status > summary").click();
   await page.locator('[data-scout-card] [data-scout-status="on"]').waitFor();
   await shot("01-home-card");
   await page.locator("[data-scout-open]").click();

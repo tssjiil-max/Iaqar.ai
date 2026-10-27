@@ -70,7 +70,7 @@ function view() {
   if (section === "library") return { name: "library", run: renderLibrary };
   if (section === "tools") return { name: "tool", run: (el) => renderOfficeTool(el, { tool: id }) };
   if (section === "deals") return { name: "deals", main: true, deal: true, run: renderDeals };
-  if (section === "more") return { name: "more", run: el => renderMore(el, {tools:id === "tools",support:id === "support"}) };
+  if (section === "more") return { name: "more", run: el => renderMore(el, {tools:id === "tools",support:id === "support",publicLink:id === "link"}) };
   if (section === "inbox") return { name: "inbox", run: el => {
     const conversations=query.get("tab")==="conversations";
     append(el,h("div",{class:"os-chips",role:"group","aria-label":"الوارد"},...[["الرسائل",false],["المحادثات",true]].map(([label,tab])=>h("button",{type:"button",class:"os-chip","aria-pressed":String(conversations===tab),onClick:()=>go(tab?"inbox?tab=conversations":"inbox"),text:label}))));
