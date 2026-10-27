@@ -36,9 +36,15 @@ try {
    if (client === 'first') await page.screenshot({ path: path.join(OUT, `${width}-1-results.png`), fullPage: true });
    await page.locator('[data-choose-result]').first().click();
    await page.locator('[data-guest-select-form]').waitFor();
-   await page.locator('[name=contactName]').fill(client === 'first' ? 'عميل أول' : 'عميل ثان');
-   await page.locator('[name=contactPhone]').fill(phone);
+   // The sheet moves focus to the name one frame after it opens: type only once that has happened (a state, not a delay).
+   await page.waitForFunction(() => document.activeElement?.name === 'contactName');
+   const name = client === 'first' ? 'عميل أول' : 'عميل ثان';
+   await page.locator('[data-guest-select-form] [name=contactName]').fill(name);
+   await page.locator('[data-guest-select-form] [name=contactPhone]').fill(phone);
    await page.locator('[name=consentProcessing]').check(); await page.locator('[name=consentContact]').check();
+   // Each value is in its own field before sending.
+   assert.equal(await page.locator('[data-guest-select-form] [name=contactName]').inputValue(), name, `${width}px ${client}: name field`);
+   assert.equal(await page.locator('[data-guest-select-form] [name=contactPhone]').inputValue(), phone, `${width}px ${client}: phone field`);
    if (client === 'first') await page.screenshot({ path: path.join(OUT, `${width}-2-choose.png`) });
    await page.locator('[data-guest-select]').click();
    const link = page.locator('[data-whatsapp-handoff]');
@@ -64,6 +70,24 @@ try {
   assert.equal(await run('first', '0557000222'), 0, 'no interest notice without real interest');
   assert.equal(await run('second', '0557000333'), 1, 'the next client sees real interest from another client');
   console.log(`✔ ${width}px guest journey`);
+ }
+ // Regression (Staging deploy run 40057732450): a guest who taps the phone field at once keeps it — the sheet's own
+ // first focus never takes the field back mid-typing (the phone once landed in the name: «عميل ثان0557000333»).
+ {
+  const ctx = await browser.newContext({ viewport: { width: 320, height: 844 }, locale: 'ar-SA' });
+  const quick = await ctx.newPage();
+  await quick.goto(`${h.origin}/?view=search`); await quick.locator('[data-guest-search-form]').waitFor();
+  await quick.locator('textarea[name=description]').fill('مطلوب شقة تمليك في حي الملقا بالرياض ميزانيتي 550 ألف 4 غرف');
+  await quick.locator('[data-guest-analyze]').click(); await quick.locator('[data-choose-result]').first().waitFor();
+  // Choose and go straight to the phone in the same moment, before the sheet's next frame.
+  await quick.evaluate(() => { document.querySelector('[data-choose-result]').click(); document.querySelector('[data-guest-select-form] [name=contactPhone]').focus(); });
+  await quick.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await quick.evaluate(() => document.activeElement?.name), 'contactPhone', 'the phone field kept the guest\'s focus');
+  await quick.keyboard.type('0557000555');
+  assert.equal(await quick.locator('[data-guest-select-form] [name=contactPhone]').inputValue(), '0557000555');
+  assert.equal(await quick.locator('[data-guest-select-form] [name=contactName]').inputValue(), '', 'nothing typed into the name');
+  await ctx.close();
+  console.log('✔ a quick tap on the phone keeps its focus (no digits in the name)');
  }
  const page = await browser.newPage(); await page.goto(`${h.origin}/m/sultan`); await page.locator('[data-guest-search-form]').waitFor(); assert.equal(await page.locator('[name=scope]').inputValue(), 'office'); await page.close();
  // No match → «أرسل طلبي للمكاتب»: the office link sends to this office, through the shared request path.

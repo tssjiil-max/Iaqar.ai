@@ -1,0 +1,72 @@
+commit	date	subject	in_baseline_351e7c3	in_pr268_head	added_lines_found_in_pr268_code	status	reason
+ac3b014	2026-10-25	docs(recovery): link draft 268 and verified GitHub transfer map	no	yes	87/87	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+5117392	2026-10-25	docs(recovery): record integration evidence, preserved visuals and release blockers	no	yes	1949/1976	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+6371ed2	2026-10-25	test(e2e): limit canonical hydration to linked match fixtures	no	yes	10/10	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+af85518	2026-10-25	test(e2e): supply canonical office records to legacy task harness	no	yes	20/21	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+d8c4fed	2026-10-25	chore(ops): recover reviewed staging-only rules tool without publishing	no	yes	321/321	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+e669a27	2026-10-25	fix(matching): recover conditional indexing and snapshot-consistent reads	no	yes	101/101	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+358d7b6	2026-10-25	feat(matching): recover opt-in indexed retrieval and stale-key guards	no	yes	756/780	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+dba5116	2026-10-25	fix(matching): recover complete office pagination with explicit scan ceilings	no	yes	183/189	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+7a99ea1	2026-10-25	fix(scout): recover durable alert outbox and bounded push retries	no	yes	202/202	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+0505b78	2026-10-25	fix(push): recover bounded icon probes and FCM delivery	no	yes	74/74	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+17a482a	2026-10-25	fix(scout): recover stable finds and atomic office leases	no	yes	90/93	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+cb58d50	2026-10-25	docs(recovery): preserve refs and verified Firebase source before integration	no	yes	481/489	PR268 integration commit	Commit تكامل أنشأه PR #268 نفسه
+1f04cf8	2026-10-24	ops: Firestore rules -> Staging only, manual (plan / deploy / rollback)	no	no	191/191	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+135a512	2026-10-24	test(ops): a Staging-only Firestore rules tool that publishes only what was reviewed	no	no	130/130	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+a269a50	2026-10-24	fix(matching-index): key writes conditioned on the version read; one readTime for counts and queries	no	no	35/35	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+0242e4b	2026-10-24	test(matching-index): concurrent edits never leave stale keys; counts and candidate reads share one 	no	no	66/66	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+4c9b6e3	2026-10-24	feat(matching): indexed candidate retrieval behind MATCH_INDEX_RETRIEVAL (off by default)	no	no	391/412	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+5dbd378	2026-10-24	test(matching-index): retrieval never drops a pair the engine accepts; same matches as the engine ov	no	no	365/368	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+6e04d3c	2026-10-24	Office OS live preview evidence for df83844f13798d451fc490fb8eed21dd486a3f67 (run 40131222279)	no	no	0/28	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+df83844	2026-10-24	QA (not for merge): baseline timings of the same measurement on the integration branch without PR #2	no	no	4/137	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+74a2e21	2026-10-24	Office OS live preview evidence for cc9b26a59417677fd998e66be868256e90c709db (run 40130126132)	no	no	0/140	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+cc9b26a	2026-10-24	QA (not for merge): measure matching at 400 / 1000 / 4999 records and past the ceiling on the previe	no	no	4/137	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+74e887a	2026-10-24	test(matching): the legacy one-page reader always reports a partial scan; no scan crosses offices	no	no	22/22	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+fd576f9	2026-10-24	docs: target architecture — growth without patching, central control and delegation (direction only,	no	no	80/80	documentation_preserved	وثيقة محفوظة، لا كود
+5804dab	2026-10-24	fix(matching): read every page of the office's records and matches	no	no	55/61	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+9b6c31d	2026-10-24	test(matching): every record of the office is a candidate, not the first page	no	no	106/106	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+08edd01	2026-10-24	Office OS live preview evidence for 8f247ce14496a5370346de19a149245236c7f45e (run 40121873870)	no	no	0/140	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+8f247ce	2026-10-24	Preview deploy: record what the channel served for runtime-config.js	no	no	0/7	deferred_preview_tooling	مؤجل: أداة تشخيص نشر المعاينة، لا ميزة منتج
+2c530e7	2026-10-24	Office OS live preview evidence for 1088a3585614d0d7c55da52eb4d9df59e9ae9fc1 (run 40120814141)	no	no	0/140	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+1088a35	2026-10-24	QA (not for merge): print what the preview channel serves for runtime-config.js	no	no	0/6	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+a8a577e	2026-10-24	fix(scout): save finds before alerting; outbox with controlled push retry	no	no	75/75	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+03ad562	2026-10-24	test(scout): alerts wait in an outbox after finds are saved; failed pushes retried, bounded	no	no	122/122	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+74c4ef6	2026-10-24	Backlog: B-14, the scout round stalled by its own push	no	no	18/19	documentation_preserved	وثيقة محفوظة، لا كود
+e2951c5	2026-10-24	Scout live check: say why the background round did not finish; no crash without a find	no	no	14/14	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+f2b633a	2026-10-24	Push: an icon or a send that does not answer can no longer stall a round	no	no	11/11	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+cfeb03f	2026-10-24	QA: regression check for a scout round stalled by its own push	no	no	63/63	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+23e9c10	2026-10-24	Scout: one ad, one find, one alert — even when a round is cut off or two overlap	no	no	90/93	recovered by PR268 (code verified)	استعاده PR #268؛ تحققتُ من وجود أسطره في الكود (90% فأكثر)
+eb21ca5	2026-10-24	Office OS live preview evidence for 82b3e1f6a21b6f4c11ca9bbf29a205d3eccf08cc (run 40112511995)	no	no	0/140	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+82b3e1f	2026-10-24	QA (not for merge): run the «العروض والطلبات» click check 5× on the isolated preview for PR #262 + #	no	no	4/19	reference_only_qa_measurement_or_evidence	قياس/دليل QA مؤقت، لا ميزة منتج؛ لا يُنقل
+e1db37e	2026-10-24	Backlog: the projection entry is B-13 (B-10 is already the unified agent contract)	yes	yes	1/1	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+8323163	2026-10-24	Gate: run the operations projection check on every PR; backlog B-10	yes	yes	10/11	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+1679b15	2026-10-24	Operations: re-project the last answer once the operations domain is ready	yes	yes	22/22	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+4fcb735	2026-10-24	QA: regression check for operations projected before the operations domain loads	yes	yes	84/84	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+f5a3060	2026-10-24	Bank: rows kept on screen never belong to another office or user	yes	yes	70/70	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+6a5c53d	2026-10-24	test(intake): guard city selection and district reset	no	no	0/15	deferred_visual_conflict	مؤجل: يغيّر نماذج المدن (واجهة محمية) — يحتاج قرارك
+49c0c60	2026-10-24	feat(intake): select Saudi city or specify custom city, reset district options	no	no	0/30	deferred_visual_conflict	مؤجل: يغيّر نماذج المدن (واجهة محمية) — يحتاج قرارك
+43dffff	2026-10-24	feat(intake): select Saudi city or specify custom city, reset district options	no	no	0/16	deferred_visual_conflict	مؤجل: يغيّر نماذج المدن (واجهة محمية) — يحتاج قرارك
+137ce2b	2026-10-24	Gate: run the «العروض والطلبات» activation check on every PR; backlog B-09 with the related defects	yes	yes	24/26	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+7eeb68d	2026-10-24	Bank: opening «العروض والطلبات» again during a load no longer empties the list	yes	yes	2/4	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+f1ad4d4	2026-10-24	QA: regression check for «العروض والطلبات» emptied under a running load	yes	yes	230/231	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+ac793fe	2026-10-24	Gate: run guest search and the Bank re-render check on every PR; backlog B-08	no	no	3/22	partially transferred (adapted)	نُقلت خطوة بحث الضيف إلى البوابة وقيد B-08 في الـbacklog؛ لم تُنقل خطوة bank-rerender لأن إصلاحها معلّق
+e0d7634	2026-10-24	Guest search: a quick tap on the phone keeps its focus	no	no	1/26	transferred	نُقل إلى فرع التكامل (أحمر ثم أخضر، 7 عروض شاشة × عميلين)
+078c537	2026-10-24	Bank: the card a broker taps is not rebuilt under the tap	no	no	0/81	held — proposal branch	معلّق: يتعارض مع اختبار البوابة bank-activation (11/12 معه، 12/12 بدونه). محفوظ في proposal/bank-rerender-guard-20261026. التفاصيل: docs/recovery/PROPOSAL_BANK_RERENDER_AR.md
+815f16f	2026-10-24	Scout: one ad, one find, one alert — even when a round is cut off or two overlap	no	no	90/93	equivalent to 17a482a	مطابق بالـpatch-id لـ23e9c10 المستعاد في 17a482a؛ لا يحتاج نقلًا
+22514f5	2026-10-24	fix(security): count login attempts atomically before the password check (B-02)	yes	yes	106/107	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+e428182	2026-10-24	fix(security): no browser deletes an office or its public profile (D-023)	yes	yes	51/51	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+560665e	2026-10-24	fix(whatsapp): diagnose unrouted numbers and keep media out of records (B-03, B-07)	yes	yes	328/328	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+97bbc6e	2026-10-24	fix(security): phone login discloses nothing and is bound to this project (B-02)	yes	yes	358/416	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+11843e0	2026-10-24	fix(security): office roles, ownership and platform state are server-only (B-01)	yes	yes	437/439	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+02b25fb	2026-10-24	docs: record D-019, correct audit W3 and add backlog B-07	yes	yes	67/69	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+edebc54	2026-10-24	test(whatsapp): pin the legacy intake path end to end (B-04)	yes	yes	197/218	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+5f5e9bc	2026-10-24	docs: phase-0 audit and prioritized backlog on the real integration lineage	yes	yes	287/300	in baseline 351e7c3	موجود في النسخة المعتمدة؛ لا يحتاج نقلًا
+c7b9bb7	2026-10-24	docs: add Arabic engineering handoff report for Claude Code	no	no	0/214	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل
+50df9a8	2026-10-23	docs: add evidence-based phase-zero architecture and WhatsApp ingestion audit	no	no	0/44	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل
+26059c8	2026-10-23	docs: add Claude Code audit and central brain three-agent brief	no	no	0/56	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل
+26ad34b	2026-10-23	docs: record isolated security and cleanup execution plan	no	no	0/47	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل
+a2dc099	2026-10-23	docs: document test execution blocker and Firestore security review	no	no	0/25	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل
+6581cfa	2026-10-23	docs: record functional retention matrix and CI verification limitations	no	no	0/38	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل
+2807d5d	2026-10-23	docs: record iAqar maintenance charter and approval gates	no	no	0/27	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل
+be585aa	2026-10-23	ci: add read-only manual and maintenance branch worker audit	no	no	0/25	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل
+0b13506	2026-10-23	docs: record branch comparison and safe cleanup gates	no	no	0/24	reference_only_historical_audit_or_tooling	تدقيق/وثائق تاريخية على main؛ لا تُنقل

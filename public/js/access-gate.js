@@ -618,6 +618,13 @@
     return window.IAQARPublicIntakeQuickChoice || null;
   }
 
+  /** Amount from the price / budget field. If the intake module is missing, only plain digits are accepted. */
+  function parseAmountField(raw) {
+    const api = clientIntakeApi();
+    if (api?.parseIntakeAmount) return api.parseIntakeAmount(raw);
+    return /^[0-9]+$/.test(raw) && Number(raw) > 0 ? Number(raw) : null;
+  }
+
   function accessRequiredLabel(text) {
     return `<span class="access-field-label">${escapeHtml(text)} <span class="access-required-mark" aria-hidden="true">*</span></span>`;
   }
@@ -1024,7 +1031,11 @@
         ? clientIntakeApi().normalizeRequestKind(fields.get("requestKind"))
         : String(fields.get("requestKind") || "").trim());
       const district = String(fields.get("district") || "").trim();
-      const priceOrBudget = Number(String(fields.get("priceOrBudget") || "").replace(/\D/g, ""));
+      // What was typed is read exactly or refused: never stripped to digits (600000.00 used to become 60000000).
+      const rawAmount = String(fields.get("priceOrBudget") || "").trim();
+      const parsedAmount = parseAmountField(rawAmount);
+      if (rawAmount && parsedAmount === null) return showStatus("اكتب المبلغ بأرقام فقط، مثل 600000 أو 600,000.50.");
+      const priceOrBudget = parsedAmount ?? 0;
       const missing = [];
       if (!propertyType) missing.push("نوع العقار");
       if (!purposeChip || (!owner && !requestKind)) missing.push("العملية");
