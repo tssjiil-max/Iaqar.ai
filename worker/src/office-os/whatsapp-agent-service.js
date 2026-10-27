@@ -11,6 +11,7 @@
  * The agent never accepts a price, never confirms a viewing, never signs, never moves money.
  */
 import { classifyWithClaude, economicModeActive, sendWhatsAppMessage, usesPaidClassifier, whatsappAccessToken } from './whatsapp-agent-transport.js';
+import { simulateWhatsAppMatchInterests } from './whatsapp-match-interest.js';
 import { extractFacts, mergeDraft, nextMissing, questionFor, personaFromText, PERSONA, wantsHuman, toRecordInput, summaryLines } from '../../../public/os/domain/visitor-domain.js';
 import { LISTING_STATUS_LABEL, mandateDecision, READINESS_EVENT } from '../../../public/os/domain/direct-match-domain.js';
 import { recordImages, keyBelongsTo } from '../../../public/os/domain/record-media-domain.js';
@@ -549,9 +550,14 @@ export async function drainWhatsAppQueue(ctx,{officeId=''}={}) {
  if(!whatsappAgentAvailable(ctx.env))return {ok:true,processed:0,disabled:true};
  const jobs=await ctx.store.queryAfter(queueRoot,'jobs',{field:'dueAt',before:new Date(ctx.now().getTime()+1),limit:50});let processed=0;
  for(const job of jobs){if(officeId&&job.officeId!==officeId)continue;await processJob(ctx,job);processed++;}
- let reminders=0,followUps=0;
+ let reminders=0,followUps=0,simulatedMatchInterests=0;
  for(const id of list(ctx.env.WHATSAPP_AGENT_OFFICE_IDS)){if(officeId&&id!==officeId)continue;if(!await officeOn(ctx,id))continue;const s=await sweepOffice(ctx,id).catch(e=>{console.warn('[whatsapp-agent] sweep failed',errorCode(e));return {reminders:0,followUps:0};});reminders+=s.reminders;followUps+=s.followUps;}
- return {ok:true,processed,reminders,followUps};
+ for(const id of list(ctx.env.WHATSAPP_AGENT_OFFICE_IDS)) {
+  if(officeId&&id!==officeId)continue;
+  const result=await simulateWhatsAppMatchInterests(ctx,{officeId:id});
+  simulatedMatchInterests+=result.prepared;
+ }
+ return {ok:true,processed,reminders,followUps,...(ctx.env.WHATSAPP_MATCH_INTEREST_MODE==='simulate'?{simulatedMatchInterests}:{})};
 }
 
 // ------------------------------------------------------------------ office endpoints
