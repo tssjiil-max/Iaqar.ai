@@ -3,4 +3,4 @@ npm warn Unknown env config "http-proxy". This will stop working in the next maj
 > iaqar-ai@1.0.0 check
 > node scripts/check.mjs
 
-check passed: 885 targets parsed (792 JS, 81 JSON, 16 HTML shells).
+check passed: 889 targets parsed (793 JS, 84 JSON, 16 HTML shells).

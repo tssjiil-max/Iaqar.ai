@@ -13,7 +13,7 @@ Constraints: no cloud database, messages, paid services, merge or deployment; pr
 - [x] Add deals list over existing journeys, older-result loading and follow hub links.
 - [x] Add More/tools/support/link, inbox tabs and preserve notification enrollment.
 - [x] Verify financial regressions and emulator round trips.
-- [ ] Complete the broader browser gate and independently review; attach final results and screenshots.
-- [ ] Open ready review PR; never merge or deploy within this task.
+- [x] Complete the broader browser gate and independently review; attach final results and screenshots.
+- [x] Open ready review PR; never merge or deploy within this task.
 
 Review focus: inactive/member access; closed and unassigned deals; view cleanup and late callbacks; office switching; loading/error must not masquerade as zero.

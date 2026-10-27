@@ -1,0 +1,119 @@
+✔ bell and settings have the same shape on المكتب / المهام اليومية / العروض والطلبات — [{"bell":"36|40|rgba(0, 0, 0, 0)|10px","menu":"36|40|rgba(0, 0, 0, 0)|10px","title":"مكاتب عقارية ذكية"},{"bell":"36|40|rgba(0, 0, 0, 0)|10px","menu":"36|40|rgba(0, 0, 0, 0)|10px","title":"مكاتب عقارية ذكية"},{"bell":"36|40|rgba(0, 0, 0, 0)|10px","menu":"36|40|rgba(0, 0, 0, 0)|10px","title":"مكاتب عقارية ذكية"}]
+✔ a long office name shows in full at 320px (wraps, never «…») — {"text":"مكتب سلطان الصاعدي للخدمات والاستشارات العقارية","clipped":false,"overflow":"clip","wrap":"normal"}
+✔ no horizontal scroll: 01-office-long-name-320 — 0px
+✔ a wide logo is stored whole: both side edges kept, letterboxed top and bottom (no crop) — {"w":256,"h":256,"top":[255,255,255],"midLeft":[2,103,121],"midRight":[2,103,121],"bottom":[255,255,255]}
+✔ the office card shows the image with contain fit and no circular mask — {"fit":"contain","radius":"0px"}
+✔ no horizontal scroll: 02-office-card-logo — 0px
+✔ five internal navigation buttons
+✔ «ملفاتي» opens the office library
+✔ «النماذج»: drafts are filled with the office name and link, no raw placeholders — لوب، وصور حديثة. ⏎ ويمكنكم تسجيله مباشرة من رابط المكتب: ⏎ http://127.0.0.1:36819/m/sultan
+✔ «النماذج»: copy puts the draft on the clipboard
+✔ «النماذج»: groups switch (للعميل)
+✔ no horizontal scroll: 03-tool-forms — 0px
+✔ «الدليل»: seven working steps for a manager
+✔ «الدليل»: a step opens its screen (مرحلة التطابق)
+✔ «الخدمات»: official https links that open outside the app — ["https://rega.gov.sa/","https://www.ejar.sa/","https://srem.moj.gov.sa/","https://najiz.sa/","https://sakani.sa/","https://balady.gov.sa/"]
+✔ no horizontal scroll: 04-tool-services — 0px
+✔ «الحاسبة»: sale of 1,000,000 → 25,000 commission, 3,750 VAT, 50,000 tax, 1,078,750 total
+✔ «الحاسبة»: rent has no transaction tax row
+✔ no horizontal scroll: 05-tool-calculator — 0px
+✔ «السوق»: counts come from this office's own active records — 2|1|1
+✔ «السوق»: a request with no matching offer is listed as a gap
+✔ no horizontal scroll: 06-tool-market — 0px
+✔ an unknown tool address returns to the office page (no blank screen)
+✔ six stage buttons
+✔ stage badges count the tasks in each stage and the closed deals of this office only — 0|0|1|1|0|1
+✔ pressing «معاينة» lists only viewing-stage tasks
+✔ no horizontal scroll: 07-path-viewing — 0px
+✔ an empty stage says so instead of showing other tasks
+✔ «إغلاق» lists the office's closed deals — never another office's
+✔ no horizontal scroll: 08-path-closed — 0px
+✔ «عرض كل المهام» clears the stage
+✔ a stage survives reload (deep link ?step=5)
+✔ one list: no section tabs
+✔ offers and requests are listed together, each labelled «عرض» or «طلب» — عرض|طلب
+✔ kind filter under «خيارات البحث» narrows to requests
+✔ «مسح الفلاتر» restores the full list
+✔ search works across offers and requests
+✔ no horizontal scroll: 09-repository-unified — 0px
+✔ three photos preview before saving; nothing is uploaded yet
+✔ choose the main photo and remove one before saving
+✔ no horizontal scroll: 10-offer-form-photos — 0px
+✔ a non-image file is refused with a clear message
+✔ the offer is saved with two photos linked to the record and the office
+✔ the chosen main photo is the cover, and it loads from the Worker — {"rgb":[41,60,199],"w":640,"h":480}
+✔ a 2400×1600 photo is resized to 1600 on its long edge and stored as a light JPEG — 1600x1067 10812B
+✔ no horizontal scroll: 11-offer-with-photos — 0px
+✔ the repository card shows the cover photo
+✔ editing shows the saved photos
+[iaqar-whatsapp] request failed {
+  requestId: 'cba64c5b-4c44-4226-b494-ce0e8ebc8812',
+  code: 'media_not_found',
+  message: 'الصورة غير موجودة'
+}
+✔ removing a photo on edit updates the record and deletes the file
+HTTP_DIAGNOSTIC 404 http://127.0.0.1:36819/worker/media/public/record-media/office-alpha/opp_os_14eda79a5177c0e4184b8989263a/b0bcda3654f3442e9786b798175a47db.jpg
+✔ a request form has no photo picker
+✔ an active record offers تعديل · إيقاف · أرشفة · حذف
+✔ cancelling the confirmation changes nothing
+✔ pause: the record is «موقوف مؤقتًا» and offers استئناف
+✔ no horizontal scroll: 12-record-paused — 0px
+✔ a paused record leaves the active list
+✔ …and is found under «الموقوفة مؤقتًا» with a state label
+✔ resume returns it to the active list
+✔ archive: «مؤرشف», with إعادة للنشطة and حذف
+✔ delete asks first and is a soft delete (the document and its data stay)
+✔ the audit trail has pause, restore, archive, delete and photo changes — RECORD_MEDIA_UPDATED,RECORD_ARCHIVED,RECORD_CREATED,RECORD_RESTORED,RECORD_PAUSED,RECORD_UPDATED,RECORD_DELETED
+✔ six viewing answers, none preselected — مناسب|يحتاج تفاوض|معاينة أخرى|لم يحضر|لا يوجد رد|غير مناسب
+✔ no horizontal scroll: 13-viewing-answers — 0px
+✔ choosing «لم يحضر» shows the next step before saving
+✔ «لم يحضر» keeps the deal open in the viewing stage and asks for a new time
+✔ the workspace now asks for a new viewing time
+✔ the documents checklist is open in the agreement stage with the rent template
+✔ summary: المطلوب · الموجود · الناقص · المراجعة
+✔ statuses are saved by the Worker and the summary follows
+✔ an own document can be added (it counts as required)
+✔ no horizontal scroll: 14-deal-documents — 0px
+✔ the checklist survives reload
+✔ the deal card moved to «مستندات» in Daily Tasks
+✔ every document change is on the deal timeline — 5
+✔ closing names the missing documents before the final confirmation — إتمام الصفقة مع مستندات ناقصة؟  هذا إجراء نهائي يُغلق الفرصة كصفقة تمت، ويؤرشفها مع حفظ سجلها. مستندات ناقصة (2): عقد ال
+✔ the deal closes with its full history and the documents state kept
+✔ a closed deal shows its documents read-only
+✔ the closed deal appears under «إغلاق»
+✔ before setup both channels say «غير مرتبط» and offer no button that cannot work
+✔ WhatsApp card shows number, webhook status and the coexistence method
+✔ no horizontal scroll: 30-channels-not-configured — 0px
+✔ Telegram link: a one-time deep link to the central bot, state «بانتظار إتمام الربط»
+✔ no horizontal scroll: 31-telegram-pending — 0px
+✔ after «ابدأ» in Telegram the screen turns «مرتبط» by itself, with reconnect and disconnect
+{"event":"operations_coverage_shadow","entityType":"opportunity","source":"canonical_intake_complete","officeId":"office-alpha","entityId":"opp_024e5c3eb656a4cac2743583bc0a0fc69879acaa","intent":"MISSING_DATA","reason":"missing_data_authoritative","dueAt":"","missingFields":["advertiserRole","contactPhone"],"lifecycleStatus":"NEW","workflowStage":"","matchingReadiness":"NEEDS_COMPLETION"}
+✔ messages follow the linked chat: greeting kept, offer processed, unknown chat ignored
+✔ WhatsApp can be linked once Meta is configured: a «ربط» button and a ready webhook
+✔ before opening Meta the manager is told the number and the app stay as they are
+✔ a linked WhatsApp shows «مرتبط», the masked number, reconnect and disconnect
+✔ the channels screen never shows a token, a secret or a full number
+✔ no horizontal scroll: 32-channels-linked — 0px
+✔ disconnect switches off routing on the server without deleting the account record
+✔ «إعادة الربط» shows a new one-time link while the current chat stays «مرتبط»
+✔ «مركز التواصل» lists the office's messages with their class
+✔ a kept greeting says why it was not converted and can be converted by hand; a processed offer cannot
+✔ class chips filter the list
+✔ no horizontal scroll: 33-inbox — 0px
+✔ search asks for at least two letters before searching
+✔ search finds the office's records by district
+✔ search finds closed deals, and never another office's
+✔ search finds channel messages
+✔ search finds a record by phone number
+✔ no horizontal scroll: 34-search — 0px
+✔ a search result opens its record
+✔ search says clearly when nothing matches
+✔ «سجل النشاط» lists who did what: records, deals and channels — CHANNEL_LINK_STARTED,CHANNEL_UNLINKED,DEAL_CLOSED,DEAL_DOCUMENT_UPDATED,RECORD_DELETED,RECORD_ARCHIVED,RECORD_RESTORED,RECORD_PAUSED,RECORD_MEDIA_UPDATED,RECORD_UPDATED,RECORD_CREATED
+✔ audit lines are plain Arabic (no internal codes on screen)
+✔ audit filter narrows to channel actions
+✔ no horizontal scroll: 35-audit — 0px
+✔ More retains search and the manager audit trail
+✔ menu → «مركز التواصل» opens the page
+✘ no browser console errors — 8: property photos: Failed to load resource: the server responded with a status of 404 (Not Found) http://127.0.0.1:36819/worker/media/public/record-media/office-alpha/opp_os_14eda79a5177c0e4184b8989263a/b0bcda3654f3442e9786b798175a47db.jpg
+
+109/110 checks passed

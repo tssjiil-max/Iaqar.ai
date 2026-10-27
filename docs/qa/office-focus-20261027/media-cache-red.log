@@ -1,0 +1,25 @@
+file:///workspace/scratch/b6620274aa2c/Iaqar.ai/test/office-record-media-cache.test.mjs:3
+import { state, patchCachedRecordImages, subscribe } from '../public/os/core/state.js';
+                ^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: The requested module '../public/os/core/state.js' does not provide an export named 'patchCachedRecordImages'
+    at #asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+
+Node.js v24.22.1
+✖ test/office-record-media-cache.test.mjs (245.121758ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 258.880289
+
+✖ failing tests:
+
+test at test/office-record-media-cache.test.mjs:1:1
+✖ test/office-record-media-cache.test.mjs (245.121758ms)
+  'test failed'
