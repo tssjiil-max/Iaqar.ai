@@ -344,7 +344,21 @@ try {
 
     await page.goto(`${PREVIEW_URL}/#/office`);
     await page.locator("[data-smart-office]").waitFor();
-    check("live: the 12 office tools are working buttons (no «قريبًا» placeholders)", (await page.locator("button.ref-office-tool").count()) === 12 && (await page.locator(".ref-office-soon").count()) === 0);
+    // Secondary tools live under More; open each destination rather than count retired tiles.
+    for (const [route, ready] of [
+      ["tools/guide", "[data-tool-guide]"],
+      ["tools/forms", "[data-tool-templates]"],
+      ["tools/calculator", "[data-calc-result]"],
+      ["tools/services", "[data-tool-services]"]
+    ]) {
+      await page.locator(".ref-bottom").getByRole("button", { name: "المزيد", exact: true }).click();
+      await page.locator('[data-more-route="more/tools"]').click();
+      await page.locator(`[data-more-route="${route}"]`).click();
+      await page.waitForURL(`**/#/${route}`);
+      await page.locator(ready).waitFor();
+      check(`live: More opens working ${route} without placeholders`,
+        (await page.locator(ready).count()) === 1 && (await page.locator(".ref-office-soon").count()) === 0);
+    }
 
     const api = (route, body) => page.evaluate(async ([w, r, b]) => {
       const token = await firebase.auth().currentUser.getIdToken();
