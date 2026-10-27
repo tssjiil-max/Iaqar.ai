@@ -869,7 +869,7 @@ function structuredPublicIntakeToParsed(intake) {
   const senderName = cleanText(intake.name || detailsParsed.senderName, 200);
   const city = cleanText(intake.city || DEFAULT_CITY, 100);
   const rawText = [isOwner ? "عرض مالك" : "طلب عميل", propertyType, district, intake.details].filter(Boolean).join(" — ");
-  const extractedCount = [propertyType, district, transactionType, amount, detailsParsed.area, phone, senderName].filter(Boolean).length;
+  const extractedCount = [propertyType, district, transactionType, amount, (intake.area || detailsParsed.area), phone, senderName].filter(Boolean).length;
   const completeness = Math.max(Number(intake.completeness || 0), Math.round((extractedCount / 7) * 100));
   return {
     kind: isOwner ? "owner_offer" : "client_request",
@@ -883,7 +883,7 @@ function structuredPublicIntakeToParsed(intake) {
     directOwner: isOwner || Boolean(detailsParsed.directOwner), furnished: Boolean(detailsParsed.furnished),
     completeness: Math.min(100, completeness), confidence: Math.max(70, Number(detailsParsed.confidence || 0)),
     missing: [!propertyType && "propertyType", !district && "district", !transactionType && "transactionType",
-      !amount && "price", !detailsParsed.area && "area", !phone && "phone", !senderName && "senderName"].filter(Boolean)
+      !amount && "price", !(intake.area || detailsParsed.area) && "area", !phone && "phone", !senderName && "senderName"].filter(Boolean)
   };
 }
 
