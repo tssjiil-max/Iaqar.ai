@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { parseIntakeAmount } from "../public/js/public-client-intake-domain.js";
+import { parseIntakeAmount, buildClientIntakeDocument } from "../public/js/public-client-intake-domain.js";
 
 test("whole amounts, with or without thousands separators", () => {
   assert.equal(parseIntakeAmount("600000"), 600000);
@@ -64,4 +64,23 @@ test("currency appears only once at the start or end, never inside digits", () =
     "SAR 600000 SAR", "ريال SAR 600000", "600000 ريال SR",
     "600000ريال600", "600000 SR ريال", "SARريال600000"
   ]) assert.equal(parseIntakeAmount(raw), null, raw);
+});
+
+test("parsed amount survives client document construction for purchase and rent", () => {
+  const amount = parseIntakeAmount("٦٠٠٬٠٠٠٫٥٠");
+  assert.equal(amount, 600000.5);
+  for (const requestKind of ["purchase", "rent"]) {
+    const document = buildClientIntakeDocument({
+      name: "عميل اختباري",
+      phone: "0500000000",
+      propertyType: "شقة",
+      requestKind,
+      city: "الرياض",
+      district: "الملقا",
+      priceOrBudget: amount
+    }, { targetOffice: "synthetic-office" });
+    assert.equal(document.priceOrBudget, 600000.5);
+    assert.equal(document.amount, 600000.5);
+    assert.equal(requestKind === "purchase" ? document.budget : document.annualRent, 600000.5);
+  }
 });
