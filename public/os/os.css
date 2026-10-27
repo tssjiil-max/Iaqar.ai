@@ -124,6 +124,7 @@ a { color: var(--blue); }
 .os-section-tab { min-height: 48px; border-radius: 14px; border: 0; background: var(--tint); color: var(--navy); font-weight: var(--fw-semi); line-height: var(--lh-ui); font-size: clamp(.9rem, 3.9vw, 1.05rem); display: flex; align-items: center; justify-content: center; gap: 7px; padding: 8px; white-space: nowrap; }
 .os-section-tab svg { width: 24px; height: 24px; color: var(--ico); flex: none; }
 .os-section-tab .n { font-weight: 600; opacity: .85; }
+.os-section-tab[aria-selected="true"] .n { opacity: 1; }
 .os-section-tab[aria-selected="true"] { background: var(--grad); color: #fff; box-shadow: var(--shadow-strong); }
 .os-section-tab[aria-selected="true"] svg { color: #fff; }
 
@@ -139,6 +140,7 @@ a { color: var(--blue); }
 .os-chip { min-height: 44px; padding: 6px 16px; border-radius: 999px; border: 0; background: var(--tint); color: var(--navy); font-weight: var(--fw-semi); font-size: var(--fs-sm); line-height: var(--lh-ui); }
 .os-chip[aria-pressed="true"] { background: var(--grad); color: #fff; }
 .os-chip .n { margin-inline-start: 6px; opacity: .8; font-weight: 500; }
+.os-chip[aria-pressed="true"] .n { opacity: 1; }
 
 .os-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--tint); color: var(--blue); border-radius: 999px; padding: 3px 12px; font-size: var(--fs-meta); font-weight: var(--fw-semi); line-height: var(--lh-ui); }
 .os-badge.late { background: var(--warn-tint); color: var(--warn); }

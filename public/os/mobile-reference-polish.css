@@ -218,7 +218,7 @@
 .ref-record-card .ref-record-open { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; }
 .ref-record-card .ref-record-open .ref-photo { width: 64px; height: 76px; background: rgb(255 255 255 / 80%); }
 .ref-record-card .ref-record-copy :is(h3, p, b) { overflow-wrap: anywhere; }
-.ref-record-card .ref-record-copy b { color: var(--brand-primary); font-size: var(--fs-lg); line-height: var(--lh-title); }
+.ref-record-card .ref-record-copy b { color: #135ccc; font-size: var(--fs-lg); line-height: var(--lh-title); }
 .ref-record-card[data-record-kind="REQUEST"] .ref-record-copy b { color: var(--brand-dark); }
 .ref-record-card [data-kind-label] { min-width: 44px; text-align: center; }
 .ref-record-card [data-kind-label="OFFER"] { color: #FFF; background: var(--brand-primary); }

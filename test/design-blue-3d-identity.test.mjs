@@ -103,3 +103,17 @@ test('the line icon stays as the fallback and the routes of tiles and tabs did n
   assert.deepEqual(tileRoutes(), ['tasks', 'repo', 'scout', 'tasks?step=0', 'tools/guide', 'tools/forms', 'tools/services', 'tools/calculator', 'agent', 'library', 'tools/market', 'support']);
   assert.deepEqual(navRoutes(), ['public', 'search', 'office', 'tools/market', 'settings']);
 });
+
+test('blue text on the blue tints and white text on the selected blue keep AA contrast (found by the mobile-widths gate)', () => {
+  const theme = read('public/os/site-theme.css');
+  const tone = theme.match(/\.tone-teal\{--tool-color:#[0-9a-f]{6};--tool-text:(#[0-9a-f]{6});--tool-bg:(#[0-9a-f]{6})\}/i);
+  assert.ok(tone, 'blue tone rule');
+  assert.ok(contrast(tone[1], tone[2]) >= 4.5, `tone text ${tone[1]} on ${tone[2]}`);
+  const step = theme.match(/\.step-5\{--stage:#[0-9a-f]{6};--stage-ink:(#[0-9a-f]{6});--stage-bg:(#[0-9a-f]{6})\}/i);
+  assert.ok(step && contrast(step[1], step[2]) >= 4.5, 'closed-deal status text');
+  assert.ok(contrast(step[1], '#eaeff7') >= 4.5, 'record price on the offer surface');
+  const os = read('public/os/os.css');
+  assert.match(os, /\.os-section-tab\[aria-selected="true"\] \.n \{ opacity: 1; \}/);
+  assert.match(os, /\.os-chip\[aria-pressed="true"\] \.n \{ opacity: 1; \}/);
+  assert.match(read('public/os/mobile-reference-polish.css'), /\.ref-record-copy b \{ color: #135ccc;/);
+});

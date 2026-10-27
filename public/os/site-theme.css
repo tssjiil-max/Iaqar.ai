@@ -363,7 +363,7 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
    Every page wears the colour of its tool on «أدوات المكتب» (app.js sets data-tone on .os-app), in the
    same language as those tiles: a white→pastel wash, white frame, coloured icon. --tool-color is for
    icons and fills; --tool-text is the darker ink used wherever the colour carries text (≥4.5:1). */
-.os-app[data-tone="teal"],.os-app .tone-teal{--tool-color:#1668e3;--tool-text:#1668e3;--tool-bg:#e4eeff}
+.os-app[data-tone="teal"],.os-app .tone-teal{--tool-color:#1668e3;--tool-text:#135ccc;--tool-bg:#e4eeff}
 .os-app[data-tone="blue"],.os-app:not([data-view="office"]) .tone-blue{--tool-color:#0878eb;--tool-text:#095ba8;--tool-bg:#e0f0ff}
 .os-app[data-tone="gold"],.os-app:not([data-view="office"]) .tone-gold{--tool-color:#b67e19;--tool-text:#7f5610;--tool-bg:#fff0d7}
 .os-app[data-tone="purple"],.os-app:not([data-view="office"]) .tone-purple{--tool-color:#6331cf;--tool-text:#5a2bbf;--tool-bg:#eee5ff}
@@ -397,7 +397,7 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-app .ref-step[data-step="2"],.os-app .step-2{--stage:#b67e19;--stage-ink:#7f5610;--stage-bg:#fff0d7}
 .os-app .ref-step[data-step="3"],.os-app .step-3{--stage:#6331cf;--stage-ink:#5a2bbf;--stage-bg:#eee5ff}
 .os-app .ref-step[data-step="4"],.os-app .step-4{--stage:#dc1526;--stage-ink:#ad1424;--stage-bg:#ffe2e7}
-.os-app .ref-step[data-step="5"],.os-app .step-5{--stage:#1668e3;--stage-ink:#1668e3;--stage-bg:#e4eeff}
+.os-app .ref-step[data-step="5"],.os-app .step-5{--stage:#1668e3;--stage-ink:#135ccc;--stage-bg:#e4eeff}
 .os-app .ref-steps>.ref-step>span{background:var(--stage-bg);color:var(--stage);--ico:currentColor}
 .os-app .ref-steps>.ref-step .ref-step-count{background:var(--stage-ink)}
 .os-app .ref-steps>.ref-step:is(.active,[aria-pressed="true"])>span{background:var(--stage);color:#fff;box-shadow:0 0 0 3px var(--stage-bg)}
