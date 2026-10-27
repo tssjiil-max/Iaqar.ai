@@ -136,6 +136,9 @@ jobs:
       - name: Guest search without login (both fields filled right, a quick tap on the phone keeps its focus)
         if: always()
         run: OUT_DIR="$RUNNER_TEMP/office-os/public-search" node scripts/qa/office-os/public-search.e2e.mjs
+      - name: Approved identity (blue palette, 3D logo and the 17 3D icon places, tiles and tabs still open their pages)
+        if: always()
+        run: OUT_DIR="$RUNNER_TEMP/office-os/design-icons" node scripts/qa/office-os/design-icons.e2e.mjs
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
