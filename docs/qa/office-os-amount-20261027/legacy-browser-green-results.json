@@ -1,0 +1,45 @@
+{
+  "project": "demo-iaqar-financial-verification",
+  "results": [
+    {
+      "label": "purchase-valid",
+      "passed": true,
+      "input": "٦٠٠٬٠٠٠٫٥٠",
+      "before": 0,
+      "after": 1,
+      "savedAmount": 600000.5,
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "purchase-invalid",
+      "passed": true,
+      "input": "600ريال000",
+      "before": 1,
+      "after": 1,
+      "savedAmount": null,
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "rent-valid",
+      "passed": true,
+      "input": "٦٠٠٬٠٠٠٫٥٠",
+      "before": 1,
+      "after": 2,
+      "savedAmount": 600000.5,
+      "errors": [],
+      "blocked": []
+    },
+    {
+      "label": "rent-invalid",
+      "passed": true,
+      "input": "600ريال000",
+      "before": 2,
+      "after": 2,
+      "savedAmount": null,
+      "errors": [],
+      "blocked": []
+    }
+  ]
+}

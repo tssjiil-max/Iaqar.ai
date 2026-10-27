@@ -7,6 +7,7 @@
  */
 
 import { cleanText, formatArea, formatPrice, localPhone, toNumber, whatsappDigits } from "./format-domain.js";
+import { parseIntakeAmount } from "../../js/intake-amount-domain.js";
 
 export const RECORD_KIND = Object.freeze({ OFFER: "OFFER", REQUEST: "REQUEST" });
 
@@ -109,7 +110,7 @@ export function validateRecordInput(input = {}, { requireName = false } = {}) {
   if (!city) errors.city = "اكتب المدينة";
   const district = cleanText(input.district, 80);
   if (!district) errors.district = "اكتب الحي";
-  const price = toNumber(input.price ?? input.priceOrBudget ?? input.budget);
+  const price = parseIntakeAmount(input.price ?? input.priceOrBudget ?? input.budget) ?? 0;
   if (!(price > 0)) errors.price = kind === RECORD_KIND.REQUEST ? "اكتب الميزانية" : "اكتب السعر";
   else if (price > 10_000_000_000) errors.price = "القيمة غير منطقية";
   // A request may give its budget as a range: the lower bound sits beside the budget (never above it).

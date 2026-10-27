@@ -4,6 +4,8 @@
  * phones so numbers stay unambiguous inside Arabic sentences.
  */
 
+import { formatMoneyAmount } from "../../js/intake-amount-domain.js";
+
 const NUMBER = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
 export function cleanText(value, max = 500) {
@@ -28,7 +30,7 @@ export function formatNumber(value) {
 }
 
 export function formatPrice(value) {
-  const text = formatNumber(value);
+  const text = formatMoneyAmount(value);
   return text ? `${text} ريال` : "";
 }
 
