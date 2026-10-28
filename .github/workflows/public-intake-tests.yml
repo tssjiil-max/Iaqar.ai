@@ -1,0 +1,27 @@
+name: Public Intake Fixture Tests
+on:
+  push:
+    branches:
+      - test/public-intake-fixtures-20261028
+  pull_request:
+    paths:
+      - 'tests/**'
+      - 'public/js/access-gate.js'
+      - 'firestore.rules'
+      - '.github/workflows/public-intake-tests.yml'
+permissions:
+  contents: read
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test synthetic intake cases
+        run: node --test tests/public-intake-fixtures.test.mjs
+      - name: Verify JavaScript syntax
+        run: |
+          node --check public/js/access-gate.js
+          node --check worker/src/index.js
