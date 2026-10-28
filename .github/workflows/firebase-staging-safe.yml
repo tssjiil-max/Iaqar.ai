@@ -30,6 +30,19 @@ jobs:
         run: node scripts/prepare-firebase-staging.mjs
       - name: Block mixed staging/production traffic
         run: node scripts/preflight-firebase-staging.mjs
+      - name: Inspect non-secret OIDC identity claims
+        run: |
+          node --input-type=module <<'NODE'
+          const response = await fetch(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, {
+            headers: {Authorization: 'Bearer ' + process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}
+          });
+          if (!response.ok) throw new Error('OIDC request failed: ' + response.status);
+          const {value} = await response.json();
+          console.log('::add-mask::' + value);
+          const claims = JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString());
+          const keys = ['repository', 'repository_id', 'repository_owner_id', 'ref', 'sub', 'workflow_ref'];
+          console.log(JSON.stringify(Object.fromEntries(keys.map(key => [key, claims[key]]))));
+          NODE
       - name: Authenticate to staging with OIDC
         uses: google-github-actions/auth@v3
         with:
