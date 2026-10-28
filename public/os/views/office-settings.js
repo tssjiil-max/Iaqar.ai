@@ -14,7 +14,7 @@ import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
 import { COOPERATION_OPTIONS, loadCooperationMode, photoToDataUrl, saveBrokerPhoto, officeNameIsFree, saveCooperationMode, saveOfficeProfile, savePublicSlug } from "../core/office-profile.js";
 import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
-import { connectWhatsapp, disconnectWhatsapp, loadChannels, startTelegramLink, unlinkTelegram } from "../core/channels.js";
+import { prepareWhatsapp, connectWhatsapp, disconnectWhatsapp, loadChannels, startTelegramLink, unlinkTelegram } from "../core/channels.js";
 import { automationLabel } from "../domain/channels-domain.js";
 import { CHANNEL_REGISTRY, SIGNUP_TEXT } from "../domain/channel-link-domain.js";
 import { botCard, brokerAlertsCard } from "./bot-settings.js";
@@ -304,17 +304,23 @@ function channelAction(id, label, { kind = "secondary", icon = "link", run }) {
 function whatsappCard(view, reload) {
   const meta = CHANNEL_REGISTRY.whatsapp;
   const coexistence = view.onboardingMode !== "standard";
-  const link = async (button) => {
+  const link = (button) => runAction(button, async () => {
+    const officeId = session.officeId;
+    const prepared = await prepareWhatsapp(officeId);
+    let connection;
     const yes = await confirmDialog({
       title: "ربط واتساب للأعمال",
       text: coexistence
         ? "ستفتح نافذة Meta الرسمية. سجّل الدخول هناك واختر ربط «تطبيق واتساب للأعمال» الحالي، ثم امسح الرمز من جوالك. يبقى رقمك وتطبيقك كما هما — لا يُنقل الرقم ولا يُحذف التطبيق."
         : "ستفتح نافذة Meta الرسمية لإكمال الربط. سجّل الدخول ووافق هناك.",
-      confirmLabel: "فتح نافذة Meta"
+      confirmLabel: "فتح نافذة Meta",
+      onConfirm: () => { connection = connectWhatsapp(officeId, prepared); }
     });
     if (!yes) return;
-    await runAction(button, async () => { const result = await connectWhatsapp(session.officeId); await reload(); toast(result?.coexistence === true ? SIGNUP_TEXT.done : SIGNUP_TEXT.doneStandard, "ok"); });
-  };
+    const result = await connection;
+    await reload();
+    toast(result?.coexistence === true ? SIGNUP_TEXT.done : SIGNUP_TEXT.doneStandard, "ok");
+  });
   const unlink = async (button) => {
     const yes = await confirmDialog({
       title: "فصل واتساب عن المكتب؟",
