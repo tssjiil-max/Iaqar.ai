@@ -44,12 +44,17 @@ test("type scale for Naskh: real weights only, a named size scale off the root, 
   const rules = os.slice(os.indexOf("color-scheme: light;"));
   assert.deepEqual([...rules.matchAll(/font-size:\s*[\d.]+rem/g)].map((m) => m[0]), []);
   // Secondary, success, warning and error text pass WCAG AA on white and on the tinted surfaces.
-  for (const colour of ["--muted: #566E77", "--faint: #5B7279", "--ok: #23764B", "--warn: #96571A", "--bad: #B03A3A"]) assert.ok(os.includes(`${colour};`), colour);
+  // Blue palette (approved 2026-10-26): the values moved off the old teal greys; the AA claim is now computed, not only pinned.
+  for (const colour of ["--muted: #576176", "--faint: #5c6578", "--ok: #23764B", "--warn: #96571A", "--bad: #B03A3A"]) assert.ok(os.includes(`${colour};`), colour);
+  const lum = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const ratio = (x, y) => { const [hi, lo] = [lum(x), lum(y)].sort((m, n) => n - m); return (hi + 0.05) / (lo + 0.05); };
+  const token = (name) => os.match(new RegExp(`(?<![\\w-])${name}:\\s*(#[0-9a-fA-F]{6})`))[1];
+  for (const name of ["--muted", "--faint", "--ok", "--warn", "--bad"]) for (const surface of ["#FFFFFF", token("--brand-tint"), token("--brand-tint-2")]) assert.ok(ratio(token(name), surface) >= 4.5, `${name} on ${surface}`);
 });
 
-test("cards share one light petrol frame; tiles inside use the softer one", () => {
+test("cards share one light blue frame; tiles inside use the softer one", () => {
   const os = read("public/os/os.css");
-  assert.match(os, /--frame: #B4D3DA;/);
+  assert.match(os, /--frame: #b5c2d9;/); // was the petrol #B4D3DA before the blue identity
   assert.match(os, /\.os-card \{[^}]*border: 1px solid var\(--frame\)/);
   assert.match(read("public/os/reference-layout.css"), /\.os-app \.os-card\{[^}]*border:1px solid var\(--frame\)/);
   assert.match(read("public/os/office-desk.css"), /\.ref-office-tool \{\n  border: 1px solid var\(--frame-soft\)/);

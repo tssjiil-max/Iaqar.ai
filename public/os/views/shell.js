@@ -6,6 +6,7 @@ import { OFFICE_NAV, navigationSection } from "../domain/office-navigation-domai
 
 import { h, ic, btn, clear, append, emptyState, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
+import { icon3d } from "../core/icons.js";
 import { session, signOutOffice } from "../core/session.js";
 import { openSheet, toast } from "../core/ui.js";
 import { workerBase } from "../core/runtime.js";
@@ -117,6 +118,6 @@ export function renderShellHeader({ active = "office" } = {}) {
 export const BOTTOM_NAV = OFFICE_NAV;
 export function renderBottomNav() {
  const selected=navigationSection(location.hash);
- return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"},BOTTOM_NAV.map(([route,label,icon])=>h("button",{type:"button","data-tool-route":route,"data-inbox-entry":route==="inbox"?"":null,"aria-current":route===selected?"page":null,onClick:()=>go(route)},ic(icon),h("span",{text:label}))));
+ return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"},BOTTOM_NAV.map(([route,label,icon])=>h("button",{type:"button","data-tool-route":route,"data-inbox-entry":route==="inbox"?"":null,"aria-current":route===selected?"page":null,onClick:()=>go(route)},icon3d(route,icon),h("span",{text:label}))));
 }
 export { btn };

@@ -129,6 +129,34 @@ export function iconMarkup(name) {
   return OUTLINE_ICONS[name] || P[name] || OUTLINE_ICONS.info;
 }
 
+/**
+ * Real 3D icons (public/icons/3d/*.webp). Only the home tiles and the bottom bar use them (17 places);
+ * every other icon in the app stays a line icon. Keyed by the route the tile or tab opens.
+ */
+export const ICON_3D = Object.freeze({
+  // Home tiles («أدوات المكتب»)
+  "tasks": "calendar", "repo": "dashboard", "scout": "search", "tasks?step=0": "favorite",
+  "tools/guide": "help", "tools/forms": "document", "tools/services": "services", "tools/calculator": "calculator",
+  "agent": "assistant", "library": "upload", "support": "chat",
+  // Bottom bar (tools/market is also the «مؤشرات المكتب» tile)
+  "tools/market": "reports", "public": "property", "search": "search", "office": "office", "settings": "user", "deals": "favorite", "inbox": "chat", "more": "services", "more/tools": "document", "more/support": "chat"
+});
+
+/** The 3D icon for a route, or the line icon when there is none or the image does not load. */
+export function icon3d(route, fallbackName) {
+  const key = ICON_3D[route];
+  if (!key) return icon(fallbackName);
+  const img = document.createElement("img");
+  img.className = "os-ico3d";
+  img.src = `/icons/3d/${key}.webp`;
+  img.alt = "";
+  img.setAttribute("aria-hidden", "true");
+  img.decoding = "async";
+  img.dataset.icon3d = key;
+  img.addEventListener("error", () => img.replaceWith(icon(fallbackName)), { once: true });
+  return img;
+}
+
 export function icon(name, { filled, label = "" } = {}) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 24 24");

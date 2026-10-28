@@ -4,6 +4,7 @@ import { h, ic, append, clear, surface, pageHeader, loadingState, feedback, empt
 import { session } from '../core/session.js';
 import { state, subscribe, startOfficeData } from '../core/state.js';
 import { db, docData } from '../core/runtime.js';
+import { icon3d } from '../core/icons.js';
 import { go } from '../core/nav.js';
 import { visibleToActor, taskCardModel } from '../domain/task-domain.js';
 import { visibleCards, laneOfGroup, LANE, needsYouTask } from '../domain/agent-domain.js';
@@ -16,7 +17,7 @@ import { followSummary } from '../domain/deal-follow-domain.js';
 const actor = () => ({ uid: session.user?.uid, isManager: session.isManager, officeId: session.officeId });
 const link = (label, route, icon = 'chev-left') => h('button', {
   type: 'button', class: 'os-btn secondary', 'data-more-route': route, onClick: () => go(route)
-}, ic(icon), label);
+}, icon3d(route, icon), label);
 const section = (title, ...children) => surface('section', { class: 'os-card os-office-section' },
   h('h2', { class: 'os-h2', text: title }), ...children);
 function watchDeals(onRows, onError, limit = 100) {

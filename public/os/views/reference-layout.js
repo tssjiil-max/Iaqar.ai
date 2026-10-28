@@ -2,7 +2,7 @@ import { SPECIALTIES } from "../domain/office-profile-domain.js";
 import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
 import { openGeneralTask } from "./task-fallback.js";
 import { h, ic, clear, append, surface, pageHeader, controlGroup } from "../core/dom.js";
-import { propertyTypeIcon } from "../core/icons.js";
+import { propertyTypeIcon, icon3d, ICON_3D } from "../core/icons.js";
 import { go, back } from "../core/nav.js";
 import { watchCooperation } from "../core/community.js";
 import { watchInbox } from "../core/live.js";
@@ -224,7 +224,7 @@ const REFERENCE_TOOLS = [
 ];
 function referenceTool([label,hint,route,icon,tone]) {
  return h("button",{type:"button",class:`ref-reference-tool ref-office-tool tone-${tone}`,"data-office-tool":route === "library" ? "ملفاتي" : route === "tools/market" ? "السوق" : label,"data-reference-tool":"","data-tool-route":route,onClick:()=>route === "support" ? openSupportTicket() : go(route)},
- h("span",{class:"ref-reference-icon"},ic(icon)),h("span",{class:"ref-reference-copy"},h("strong",{text:label}),h("small",{text:hint})));
+ h("span",{class:ICON_3D[route] ? "ref-reference-icon has-3d" : "ref-reference-icon"},icon3d(route,icon)),h("span",{class:"ref-reference-copy"},h("strong",{text:label}),h("small",{text:hint})));
 }
 
 export function renderOffice(container){
