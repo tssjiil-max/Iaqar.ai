@@ -22,6 +22,8 @@ jobs:
           node --check public/js/access-gate.js
           node --check worker/src/index.js
           node --test tests/public-intake-fixtures.test.mjs
+      - name: Prepare isolated staging frontend
+        run: node scripts/prepare-firebase-staging.mjs
       - name: Block mixed staging/production traffic
         run: node scripts/preflight-firebase-staging.mjs
       - name: Verify deployment credentials
