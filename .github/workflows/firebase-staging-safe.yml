@@ -49,6 +49,7 @@ jobs:
           project_id: iaqar-ai-staging
           workload_identity_provider: projects/1010507631812/locations/global/workloadIdentityPools/github-staging/providers/github
           service_account: github-staging-deploy@iaqar-ai-staging.iam.gserviceaccount.com
+          token_format: access_token
           create_credentials_file: true
           export_environment_variables: true
       - name: Deploy hosting and rules to staging only
