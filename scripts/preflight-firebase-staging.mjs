@@ -5,13 +5,15 @@ const read = p => readFileSync(new URL("../" + p, import.meta.url), "utf8");
 const html = read("public/index.html");
 const scripts = ["public/js/access-gate.js", "public/js/workflow-office.js", "public/js/firebase-office.js"];
 const problems = [];
-if (html.includes("https://aqar-b5d76.web.app/__/firebase/init.js"))
-  problems.push("index.html initializes PRODUCTION Firebase (aqar-b5d76).");
+if (!html.includes('src="/__/firebase/init.js"') || html.includes("https://aqar-b5d76.web.app/__/firebase/init.js"))
+  problems.push("index.html must initialize Firebase from current Hosting project.");
 for (const path of scripts) {
   const contents = read(path);
   if (contents.includes("https://iaqar-macrodroid-intake.iaqar-ai.workers.dev"))
     problems.push(path + " targets PRODUCTION Cloudflare Worker.");
 }
+if (read("public/js/firebase-office.js").includes('const PROJECT_ID = "aqar-b5d76"'))
+  problems.push("Firebase office runtime hardcodes production.");
 if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PROJECT_ID !== "iaqar-ai-staging")
   problems.push("Target project must be iaqar-ai-staging.");
 if (problems.length) {
