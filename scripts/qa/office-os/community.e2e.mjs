@@ -87,14 +87,10 @@ let a; let b;
 try {
   a = await openAs(OWNER_A, "office");
   await simulateWorker(a, OFFICE_A, OWNER_A);
-  await a.locator("[data-community-entry]").waitFor();
-  check("office home has the «التعاون» card", (await a.locator("[data-community-entry]").innerText()).includes("التعاون"));
-  await until(async () => (await a.locator("[data-coop-summary]").innerText()).includes("بانتظار الرد"), "summary badge");
-  check("the card shows a light summary only", /بانتظار الرد/.test(await a.locator("[data-coop-summary]").innerText()), await a.locator("[data-coop-summary]").innerText());
-  await shot(a, "01-office-card");
-
-  // A: no internal match → the suggestion is on the page; A asks office B (one office at a time).
-  await a.locator("[data-community-entry]").click();
+  await a.goto(`${h.origin}/#/more`);
+  await a.locator('[data-more-route="community"]').waitFor();
+  check("cooperation remains reachable under More",await a.locator('[data-more-route="community"]').count()===1);
+  await a.locator('[data-more-route="community"]').click();
   await a.locator("[data-coop]").first().waitFor();
   check("page title and subtitle", (await a.locator(".os-page-title").innerText()) === "التعاون بين الوسطاء" && (await a.locator(".os-sub").first().innerText()).includes("وسيط العرض ووسيط الطلب"));
   check("only three states: نشط · بانتظار رد · السجل", (await a.locator("[data-tab]").allInnerTexts()).map((s) => s.replace(/\d+/g, "").trim()).join("|") === "نشط|بانتظار رد|السجل");

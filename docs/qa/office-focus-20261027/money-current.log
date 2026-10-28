@@ -1,0 +1,16 @@
+PASS broker-purchase-0: ٦٠٠٬٠٠٠٫٥٠
+PASS broker-purchase-1: 600,000.50
+PASS broker-purchase-2: 600ريال000
+PASS broker-rent-3: ٦٠٠٬٠٠٠٫٥٠
+PASS broker-rent-4: 600,000.50
+PASS broker-rent-5: 600ريال000
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_4f2njbrvvcg","officeId":"office-alpha","at":"2026-10-27T12:12:17.549Z"}
+PASS public-owner-sale-6: ٦٠٠٬٠٠٠٫٥٠
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_v2agj688ris","officeId":"office-alpha","at":"2026-10-27T12:12:21.497Z"}
+PASS public-owner-sale-7: 600,000.50
+PASS public-owner-sale-8: 600ريال000
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_vbhoiz25pwk","officeId":"office-alpha","at":"2026-10-27T12:12:27.889Z"}
+PASS public-owner-rent-9: ٦٠٠٬٠٠٠٫٥٠
+{"event":"opportunityRouter.directAssigned","opportunityId":"opp_intake_5a0u413i3kt","officeId":"office-alpha","at":"2026-10-27T12:12:30.658Z"}
+PASS public-owner-rent-10: 600,000.50
+PASS public-owner-rent-11: 600ريال000

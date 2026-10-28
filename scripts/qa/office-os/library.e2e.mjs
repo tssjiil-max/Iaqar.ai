@@ -42,8 +42,8 @@ const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
 try {
   const page = await openAs(OWNER_A, "tasks");
   step = "entry from the menu";
-  await page.locator(".ref-menu, [aria-label='القائمة والإعدادات']").first().click();
-  await page.getByRole("button", { name: "مكتبة المكتب" }).click();
+  await page.locator(".ref-bottom").getByRole("button",{name:"المزيد",exact:true}).click();
+  await page.locator('[data-more-route="library"]').click();
   await page.getByRole("heading", { name: "مكتبة المكتب" }).waitFor();
   check("the menu opens the library inside Office OS", page.url().includes("#/library"));
   await page.locator('[data-lib-section="brokerage"]').waitFor();

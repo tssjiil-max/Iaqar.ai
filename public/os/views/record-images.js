@@ -1,3 +1,5 @@
+import { patchCachedRecordImages } from "../core/state.js";
+import { session } from "../core/session.js";
 /**
  * Property photos UI.
  *   imagePicker()  — in the offer form: add several photos, preview before saving, choose the
@@ -83,6 +85,7 @@ export function imagePicker({ existing = [], max = MAX_RECORD_IMAGES, hint = "" 
     changed: () => items.some((item) => item.blob) || items.map((item) => item.id).join(",") !== initial,
     /** Upload the new photos, then save the final order. Photos that fail are reported, never silently dropped. */
     async commit(recordId) {
+      const officeId = session.officeId;
       let uploaded = 0;
       let failed = 0;
       for (const item of items) {
@@ -98,7 +101,10 @@ export function imagePicker({ existing = [], max = MAX_RECORD_IMAGES, hint = "" 
         }
       }
       const order = items.filter((item) => item.id).map((item) => item.id);
-      if (uploaded || order.join(",") !== initial) await arrangeRecordImages(recordId, order, [...removedIds]);
+      if (uploaded || order.join(",") !== initial) {
+        const saved = await arrangeRecordImages(recordId, order, [...removedIds]);
+        if (saved?.ok) patchCachedRecordImages(officeId, recordId, saved.images);
+      }
       draw();
       return { uploaded, failed };
     },

@@ -1,3 +1,4 @@
+import { OFFICE_NAV, navigationSection } from "../domain/office-navigation-domain.js";
 /**
  * Compact platform header + main navigation. The platform brand stays stable
  * across the three main screens; each screen keeps its own local content below.
@@ -5,6 +6,7 @@
 
 import { h, ic, btn, clear, append, emptyState, loadingState, feedback } from "../core/dom.js";
 import { go } from "../core/nav.js";
+import { icon3d } from "../core/icons.js";
 import { session, signOutOffice } from "../core/session.js";
 import { openSheet, toast } from "../core/ui.js";
 import { workerBase } from "../core/runtime.js";
@@ -92,20 +94,9 @@ function openNotifications() {
 function openMenu() {
   const filters = document.querySelector(".os-app[data-view=tasks] .ref-filters");
   const items = [
-    filters ? h("button", { type: "button", onClick: () => { sheet.close(); filters.open = true; } }, ic("filter"), "تصفية المهام") : null,
-    h("button", { type: "button", "data-menu": "search", onClick: () => { sheet.close(); go("search"); } }, ic("search"), "البحث الشامل"),
-    h("button", { type: "button", "data-menu": "inbox", onClick: () => { sheet.close(); go("inbox"); } }, ic("inbox-in"), "مركز التواصل"),
-    h("button", { type: "button", onClick: () => { sheet.close(); shareOfficeLink(); } }, ic("link"), "مشاركة رابط المكتب"),
-    h("button", { type: "button", onClick: async () => {
-      const result = await enableNotifications();
-      toast(result.message, result.ok ? "ok" : "bad");
-    } }, ic("bell"), h("span", {}, "تنبيهات هذا الجهاز ", h("small", { class: "os-sub", text: `(${notificationStatus()})` }))),
-    h("button", { type: "button", onClick: () => { sheet.close(); go("library"); } }, ic("archive"), "مكتبة المكتب"),
-    h("button", { type: "button", onClick: () => { sheet.close(); go("settings/notifications"); } }, ic("bell"), "إعدادات الإشعارات"),
-    h("button", { type: "button", onClick: () => { sheet.close(); go("community"); } }, ic("handshake"), "التعاون بين الوسطاء"),
-    session.isManager ? h("button", { type: "button", "data-menu": "audit", onClick: () => { sheet.close(); go("audit"); } }, ic("clipboard"), "سجل النشاط") : null,
-    session.isManager ? h("button", { type: "button", onClick: () => { sheet.close(); go("settings"); } }, ic("gear"), "إعدادات المكتب") : null,
-    h("button", { type: "button", onClick: async () => { sheet.close(); await signOutOffice(); location.replace("/"); } }, ic("logout"), "تسجيل الخروج")
+    filters ? h("button",{type:"button",onClick:()=>{sheet.close();filters.open=true;}},ic("filter"),"تصفية المهام") : null,
+    ...[["المكتب الذكي","office","dashboard"],["المهام اليومية","tasks","clipboard"],["البحث الشامل","search","search"],["المزيد","more","reference-menu"]].map(([label,route,icon])=>h("button",{type:"button",onClick:()=>{sheet.close();go(route);}},ic(icon),label)),
+    h("button",{type:"button",onClick:async()=>{sheet.close();await signOutOffice();location.replace("/");}},ic("logout"),"تسجيل الخروج")
   ];
   const sheet = openSheet("القائمة", h("nav", { class: "os-menu" }, items));
 }
@@ -120,13 +111,13 @@ export function renderShellHeader({ active = "office" } = {}) {
       h("span",{class:"ref-logo","aria-label":"iAqar.ai"}),
       h("h1",{text:"مكاتب عقارية ذكية"}),
       h("button",{type:"button",class:"os-icon-btn ref-search","data-header-search":"","aria-label":"البحث الشامل",onClick:()=>go("search")},ic("search")),bell,
-      h("button",{type:"button",class:"os-icon-btn","aria-label":"حسابي",onClick:()=>go("settings")},ic("user")));
+      h("button",{type:"button",class:"os-icon-btn","aria-label":"حسابي",onClick:()=>go("more")},ic("user")));
 }
 
 // One order on every page (RTL, right to left): المكتب — المهام اليومية — العروض والطلبات.
-export const BOTTOM_NAV = Object.freeze([["public","الرئيسية","home"],["search","البحث","search"],["office","المكتب","dashboard"],["tools/market","المؤشرات","chart-up"],["settings","حسابي","user"]]);
-export function renderBottomNav(active = "office") {
-  const selected = active === "search" ? "search" : location.hash.startsWith("#/tools/market") ? "tools/market" : location.hash.startsWith("#/settings") ? "settings" : "office";
-  return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"}, BOTTOM_NAV.map(([route,label,icon])=>h("button",{type:"button","aria-current":route===selected?"page":null,onClick:()=>route==="public"?location.assign(officePublicLink()):go(route)},ic(icon),h("span",{text:label}))));
+export const BOTTOM_NAV = OFFICE_NAV;
+export function renderBottomNav() {
+ const selected=navigationSection(location.hash);
+ return h("nav",{class:"ref-bottom ref-reference-bottom","aria-label":"أقسام المكتب"},BOTTOM_NAV.map(([route,label,icon])=>h("button",{type:"button","data-tool-route":route,"data-inbox-entry":route==="inbox"?"":null,"aria-current":route===selected?"page":null,onClick:()=>go(route)},icon3d(route,icon),h("span",{text:label}))));
 }
 export { btn };

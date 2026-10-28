@@ -187,7 +187,8 @@ export function renderLinkSettings(container) {
   const slug = h("input", { class: "os-input", name: "publicSlug", dir: "ltr", maxlength: "20", autocomplete: "off", placeholder: "wadi" });
   slug.value = session.office?.publicSlug || "";
   const hint = h("small", { class: "os-field-note", "data-slug-hint": "", role: "status", text: "أحرف إنجليزية صغيرة وأرقام وشرطة، من 3 إلى 20." });
-  const sync = () => { linkBox.value = permanentLinkOf(); };
+  const preview=h("a",{class:"os-btn secondary",target:"_blank",rel:"noopener noreferrer","data-preview-office":""},ic("link"),"معاينة بوابة العميل");
+  const sync = () => { linkBox.value = permanentLinkOf(); preview.href=linkBox.value; };
   sync();
 
   const cardImg = h("img", { class: "os-share-card-img", alt: "صورة معاينة الرابط", "data-share-card-preview": "", hidden: true });
@@ -245,7 +246,7 @@ export function renderLinkSettings(container) {
     h("div", { class: "os-office-sections" },
       officeSection({ title: "رابط المكتب", iconName: "link",
         description: "رابط دائم للمكتب. النسخ والمشاركة يستخدمان معاينة محدثة تلقائيًا." },
-        field("رابط المكتب الدائم", linkBox), actionBar(copy, share)),
+        field("رابط المكتب الدائم", linkBox), actionBar(preview, copy, share)),
       officeSection({ title: "معرّف الرابط", iconName: "edit", description: "خصّص الاسم القصير الذي يسهل مشاركته مع عملائك." },
         field("معرّف الرابط القصير", slug, { hint }), actionBar(save)),
       officeSection({ title: "صورة معاينة الرابط", iconName: "photos", className: "os-share-card",
