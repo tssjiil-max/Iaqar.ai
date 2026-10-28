@@ -123,7 +123,7 @@
   width: min(98px,70%);
   aspect-ratio: 1;
   display: block;
-  background: url('/icons/iaqar-logo.png') center/contain no-repeat;
+  background: url('/icons/iaqar-logo-3d.webp') center/contain no-repeat;
 }
 
 /* ---------- «مكتبي» and «أدوات إضافية» sections ---------- */
@@ -367,22 +367,22 @@ a.os-service-row { text-decoration: none; color: inherit; }
 .os-center-list { display: grid; gap: 10px; }
 .os-center-group { margin: 0 0 18px; }
 .os-center-group .os-h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
-.os-center-count { font-size: .78rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #4d6a72; }
-.os-center-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; width: 100%; text-align: start; border: 1px solid var(--brand-line, #DCE8EB); font: inherit; color: inherit; min-height: 56px; }
+.os-center-count { font-size: .78rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--brand-tint, #eef4ff); color: #5b6475; }
+.os-center-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; width: 100%; text-align: start; border: 1px solid var(--brand-line, #dce5f2); font: inherit; color: inherit; min-height: 56px; }
 div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-center-row .os-set-text b, .os-center-row .os-set-text small { overflow-wrap: anywhere; }
-.os-center-row > svg { width: 18px; height: 18px; color: #7c979e; }
-.os-center-tag { font-size: .74rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #2f5d68; white-space: nowrap; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
+.os-center-row > svg { width: 18px; height: 18px; color: #7d889d; }
+.os-center-tag { font-size: .74rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--brand-tint, #eef4ff); color: #3f4a63; white-space: nowrap; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
 .os-app[data-view="tool"] .os-search { margin: 0 0 12px; }
 .os-inbox-card { display: grid; gap: 8px; }
 .os-inbox-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .os-inbox-head small { margin-inline-start: auto; }
-.os-inbox-class { font-size: .76rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--brand-tint, #EDF5F7); color: #2f5d68; }
+.os-inbox-class { font-size: .76rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--brand-tint, #eef4ff); color: #3f4a63; }
 .os-inbox-class.is-offer { background: #e4f6ec; color: #17653a; }
 .os-inbox-class.is-request { background: #e6effc; color: #1d4f91; }
 .os-inbox-class.is-inquiry { background: #fff4de; color: #7a5200; }
 .os-inbox-class.is-deal { background: #efe9fb; color: #4b2f8f; }
-.os-inbox-meta { display: inline-flex; align-items: center; gap: 4px; font-size: .8rem; color: #4d6a72; }
+.os-inbox-meta { display: inline-flex; align-items: center; gap: 4px; font-size: .8rem; color: #5b6475; }
 .os-inbox-meta svg { width: 16px; height: 16px; }
 .os-inbox-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .os-inbox-foot { display: grid; gap: 2px; }
@@ -393,24 +393,24 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 .os-mandate-edit[open] > summary { margin-bottom: 10px; }
 
 /* «المحادثات» — who answers each WhatsApp conversation, and the thread. */
-.os-conv-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; text-align: start; font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--brand-line, #DCE8EB); }
+.os-conv-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; text-align: start; font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--brand-line, #dce5f2); }
 .os-conv-row-main, .os-conv-row-side { display: grid; gap: 3px; min-width: 0; }
 .os-conv-row-side { justify-items: end; }
 .os-conv-row-main b { overflow-wrap: anywhere; }
 .os-conv-mode { font-size: .78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; background: #e4f6ec; color: #17653a; }
 .os-conv-mode.is-human { background: #e6effc; color: #1d4f91; }
 .os-conv-mode.is-waiting { background: #fff4de; color: #7a5200; }
-.os-conv-mode.is-opted_out { background: #f1f3f4; color: #4d5a5e; }
+.os-conv-mode.is-opted_out { background: #f1f2f4; color: #4d5a5e; }
 .os-conv-waiting { font-size: .78rem; font-weight: 700; color: #7a5200; }
 .os-conv-head { display: grid; gap: 6px; }
 .os-conv-thread { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 8px; }
-.os-conv-msg { display: grid; gap: 2px; max-width: min(88%, 560px); padding: 8px 12px; border-radius: 14px; background: var(--surface, #fff); border: 1px solid var(--brand-line, #DCE8EB); }
+.os-conv-msg { display: grid; gap: 2px; max-width: min(88%, 560px); padding: 8px 12px; border-radius: 14px; background: var(--surface, #fff); border: 1px solid var(--brand-line, #dce5f2); }
 .os-conv-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .os-conv-msg.is-customer { justify-self: start; }
 .os-conv-msg.is-assistant { justify-self: end; background: #f2f8f4; }
 .os-conv-msg.is-broker { justify-self: end; background: #eef3fc; }
-.os-conv-who { font-size: .78rem; font-weight: 700; color: #4d6a72; }
-.os-conv-event { justify-self: center; text-align: center; color: #4d6a72; font-size: .8rem; }
+.os-conv-who { font-size: .78rem; font-weight: 700; color: #5b6475; }
+.os-conv-event { justify-self: center; text-align: center; color: #5b6475; font-size: .8rem; }
 .os-conv-reply { display: grid; gap: 8px; }
 
 /* «مركز التواصل والدعم» — channel chips and support actions inside the card (real states only). */
