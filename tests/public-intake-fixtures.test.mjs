@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const source = readFileSync(new URL("../../public/js/access-gate.js", import.meta.url), "utf8");
-const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
+const source = readFileSync(new URL("../public/js/access-gate.js", import.meta.url), "utf8");
+const rules = readFileSync(new URL("../firestore.rules", import.meta.url), "utf8");
 const fixtures = JSON.parse(readFileSync(new URL("./fixtures/public-intake-cases.json", import.meta.url), "utf8"));
 
 function validFixture(f) {
