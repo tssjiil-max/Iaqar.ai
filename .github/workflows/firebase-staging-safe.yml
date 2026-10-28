@@ -1,0 +1,40 @@
+name: Safe Firebase Staging Deployment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: iaqar-staging-deployment
+  cancel-in-progress: false
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      FIREBASE_PROJECT_ID: iaqar-ai-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate basic JavaScript and fixture tests
+        run: |
+          node --check public/js/access-gate.js
+          node --check worker/src/index.js
+          node --test tests/public-intake-fixtures.test.mjs
+      - name: Block mixed staging/production traffic
+        run: node scripts/preflight-firebase-staging.mjs
+      - name: Verify deployment credentials
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_STAGING_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ]; then
+            echo "::error::FIREBASE_STAGING_SERVICE_ACCOUNT missing in staging environment"
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/staging-service-account.json"
+          chmod 600 "$RUNNER_TEMP/staging-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/staging-service-account.json" >> "$GITHUB_ENV"
+      - name: Deploy hosting and rules to staging only
+        run: |
+          npx --yes firebase-tools deploy --project iaqar-ai-staging --only hosting,firestore:rules,firestore:indexes --non-interactive
