@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const PROJECT_ID = "aqar-b5d76";
+  const PROJECT_ID = (window.firebase && window.firebase.apps && window.firebase.apps[0] && window.firebase.apps[0].options && window.firebase.apps[0].options.projectId) || "";
   const STORAGE_KEY = "iaqar.officeId";
   const DEFAULT_OFFICE_ID = "platform";
   const ROOT_COLLECTION = "offices";
