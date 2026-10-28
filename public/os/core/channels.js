@@ -67,10 +67,20 @@ function loadFacebookSdk(config) {
  * the number stays on the WhatsApp Business app on the phone. Resolves with the Worker's
  * answer ({ connected, displayPhoneNumber }) or rejects with a message for the manager.
  */
-export async function connectWhatsapp(officeId) {
+export async function prepareWhatsapp(officeId) {
   const config = await metaConfig(officeId);
   const FB = await loadFacebookSdk(config);
+  return { officeId, config, FB };
+}
+
+// Must run in the confirm button's click handler: no await before FB.login.
+export function connectWhatsapp(officeId, prepared) {
   return new Promise((resolve, reject) => {
+    if (!prepared || prepared.officeId !== officeId) {
+      reject(new Error("تعذر تجهيز ربط Meta — أعد فتح الربط."));
+      return;
+    }
+    const { config, FB } = prepared;
     let signup = null;
     let cancelled = null;
     const seen = []; // what arrived, without any value: host / type / event names only (for the error code)
@@ -86,22 +96,29 @@ export async function connectWhatsapp(officeId) {
     };
     window.addEventListener("message", onMessage);
     const finish = (work) => { window.removeEventListener("message", onMessage); work(); };
-    FB.login((response) => {
-      const code = response?.authResponse?.code || "";
-      const complete = () => {
-        waiter = null;
-        const progress = signupProgress({ loginAnswered: true, code, signup, cancelled });
-        if (progress === "closed" || progress === "cancelled") return finish(() => reject(new Error(SIGNUP_TEXT.closed)));
-        if (progress !== "ready") {
-          console.warn("[iaqar-whatsapp] signup event missing", seen);
-          return finish(() => reject(new Error(`${SIGNUP_TEXT.noData} (رمز التشخيص: ${seen.length ? seen.join(" | ") : "لا أحداث"})`)));
-        }
-        api("/meta/signup/complete", { officeId, code, wabaId: signup.wabaId, phoneNumberId: signup.phoneNumberId, signupEvent: signup.event })
-          .then((result) => finish(() => resolve(result)), (error) => finish(() => reject(error)));
-      };
-      if (!code || signup?.wabaId || cancelled) return complete();
-      const timer = setTimeout(complete, SIGNUP_EVENT_WAIT_MS);
-      waiter = () => { clearTimeout(timer); complete(); };
-    }, embeddedSignupOptions({ configId: config.configId, onboardingMode: config.onboardingMode }));
+    try {
+      FB.login((response) => {
+        const code = response?.authResponse?.code || "";
+        const complete = () => {
+          waiter = null;
+          const progress = signupProgress({ loginAnswered: true, code, signup, cancelled });
+          if (progress === "closed" || progress === "cancelled") {
+            const message = response?.error ? SIGNUP_TEXT.failed : cancelled ? SIGNUP_TEXT.closed : SIGNUP_TEXT.notCompleted;
+            return finish(() => reject(new Error(message)));
+          }
+          if (progress !== "ready") {
+            console.warn("[iaqar-whatsapp] signup event missing", seen);
+            return finish(() => reject(new Error(`${SIGNUP_TEXT.noData} (رمز التشخيص: ${seen.length ? seen.join(" | ") : "لا أحداث"})`)));
+          }
+          api("/meta/signup/complete", { officeId, code, wabaId: signup.wabaId, phoneNumberId: signup.phoneNumberId, signupEvent: signup.event })
+            .then((result) => finish(() => resolve(result)), (error) => finish(() => reject(error)));
+        };
+        if (!code || signup?.wabaId || cancelled) return complete();
+        const timer = setTimeout(complete, SIGNUP_EVENT_WAIT_MS);
+        waiter = () => { clearTimeout(timer); complete(); };
+      }, embeddedSignupOptions({ configId: config.configId, onboardingMode: config.onboardingMode }));
+    } catch (_) {
+      finish(() => reject(new Error(SIGNUP_TEXT.failed)));
+    }
   });
 }
