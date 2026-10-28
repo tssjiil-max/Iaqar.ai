@@ -9,6 +9,11 @@ on:
       - 'public/js/access-gate.js'
       - 'firestore.rules'
       - '.github/workflows/public-intake-tests.yml'
+      - '.github/workflows/firebase-staging-safe.yml'
+      - 'scripts/prepare-firebase-staging.mjs'
+      - 'scripts/preflight-firebase-staging.mjs'
+      - 'public/js/firebase-office.js'
+      - 'public/index.html'
 permissions:
   contents: read
 jobs:
@@ -25,3 +30,7 @@ jobs:
         run: |
           node --check public/js/access-gate.js
           node --check worker/src/index.js
+      - name: Verify isolated staging build
+        run: |
+          node scripts/prepare-firebase-staging.mjs
+          FIREBASE_PROJECT_ID=iaqar-ai-staging node scripts/preflight-firebase-staging.mjs
