@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Fail-closed check: staging must not access production Firebase or Worker.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 const read = p => readFileSync(new URL("../" + p, import.meta.url), "utf8");
 const html = read("public/index.html");
-const scripts = ["public/js/access-gate.js", "public/js/workflow-office.js", "public/js/firebase-office.js"];
+const scripts = readdirSync(new URL("../public/js/", import.meta.url)).filter(file => file.endsWith(".js")).map(file => "public/js/" + file);
 const problems = [];
 if (!html.includes('src="/__/firebase/init.js"') || html.includes("https://aqar-b5d76.web.app/__/firebase/init.js"))
   problems.push("index.html must initialize Firebase from current Hosting project.");
