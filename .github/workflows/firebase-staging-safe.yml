@@ -16,33 +16,46 @@ jobs:
       id-token: write
     env:
       FIREBASE_PROJECT_ID: iaqar-ai-staging
+      SOURCE_SHA: 549d6f05e614e161b6889ce1687abd8b667ee26b
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout deployment tooling
+        uses: actions/checkout@v4
+        with:
+          path: deploy-tools
+      - name: Checkout reviewed blue office release
+        uses: actions/checkout@v4
+        with:
+          ref: 549d6f05e614e161b6889ce1687abd8b667ee26b
+          path: app
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate basic JavaScript and fixture tests
+      - name: Install release dependencies
+        working-directory: app
         run: |
-          node --check public/js/access-gate.js
-          node --check worker/src/index.js
-          node --test tests/public-intake-fixtures.test.mjs
-      - name: Prepare isolated staging frontend
-        run: node scripts/prepare-firebase-staging.mjs
-      - name: Block mixed staging/production traffic
-        run: node scripts/preflight-firebase-staging.mjs
-      - name: Inspect non-secret OIDC identity claims
+          npm ci
+          npm ci --prefix worker
+      - name: Validate release source and tests
+        working-directory: app
         run: |
-          node --input-type=module <<'NODE'
-          const response = await fetch(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, {
-            headers: {Authorization: 'Bearer ' + process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}
-          });
-          if (!response.ok) throw new Error('OIDC request failed: ' + response.status);
-          const {value} = await response.json();
-          console.log('::add-mask::' + value);
-          const claims = JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString());
-          const keys = ['repository', 'repository_id', 'repository_owner_id', 'ref', 'sub', 'workflow_ref'];
-          console.log(JSON.stringify(Object.fromEntries(keys.map(key => [key, claims[key]]))));
-          NODE
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          npm test
+          npm run check
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify Firestore tenant isolation in emulator
+        working-directory: app
+        run: npm run test:rules
+      - name: Verify blue identity and office navigation
+        working-directory: app
+        run: |
+          npx playwright install --with-deps chromium
+          OUT_DIR="$RUNNER_TEMP/blue-office" node scripts/qa/office-os/office-focus.e2e.mjs
+          OUT_DIR="$RUNNER_TEMP/blue-identity" node scripts/qa/office-os/design-icons.e2e.mjs
+      - name: Prepare and verify isolated staging build
+        run: node deploy-tools/scripts/prepare-blue-staging.mjs app
       - name: Authenticate to staging with OIDC
         uses: google-github-actions/auth@v3
         with:
@@ -53,5 +66,5 @@ jobs:
           create_credentials_file: true
           export_environment_variables: true
       - name: Deploy hosting and rules to staging only
-        run: |
-          npx --yes firebase-tools deploy --project iaqar-ai-staging --only hosting,firestore:rules,firestore:indexes --non-interactive
+        working-directory: app
+        run: npx firebase-tools deploy --project iaqar-ai-staging --only hosting,firestore:rules,firestore:indexes --non-interactive
