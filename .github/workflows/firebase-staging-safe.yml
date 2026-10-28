@@ -10,6 +10,10 @@ jobs:
   stage:
     runs-on: ubuntu-latest
     environment: staging
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
     env:
       FIREBASE_PROJECT_ID: iaqar-ai-staging
     steps:
@@ -26,17 +30,14 @@ jobs:
         run: node scripts/prepare-firebase-staging.mjs
       - name: Block mixed staging/production traffic
         run: node scripts/preflight-firebase-staging.mjs
-      - name: Verify deployment credentials
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_STAGING_SERVICE_ACCOUNT }}
-        run: |
-          if [ -z "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ]; then
-            echo "::error::FIREBASE_STAGING_SERVICE_ACCOUNT missing in staging environment"
-            exit 1
-          fi
-          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/staging-service-account.json"
-          chmod 600 "$RUNNER_TEMP/staging-service-account.json"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/staging-service-account.json" >> "$GITHUB_ENV"
+      - name: Authenticate to staging with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: iaqar-ai-staging
+          workload_identity_provider: projects/1010507631812/locations/global/workloadIdentityPools/github-staging/providers/github
+          service_account: github-staging-deploy@iaqar-ai-staging.iam.gserviceaccount.com
+          create_credentials_file: true
+          export_environment_variables: true
       - name: Deploy hosting and rules to staging only
         run: |
           npx --yes firebase-tools deploy --project iaqar-ai-staging --only hosting,firestore:rules,firestore:indexes --non-interactive
