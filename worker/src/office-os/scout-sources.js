@@ -99,7 +99,7 @@ const brokerFeed = {
     for (const doc of docs) {
       // An ad an authorised assistant sent (scout-ingest.js) is one ad by definition, with the fields it gave.
       const found = doc.single === true
-        ? [{ sourceId: "broker_feed", externalId: `${doc.id}#0`, text: String(doc.text || "").slice(0, 2000), title: text(doc.title, 160), at: iso(doc.createdAt), publishedAt: iso(doc.publishedAt), structured: parseStructured(doc.structured) }]
+        ? [{ sourceId: doc.sourceType === "BROKER_RADAR" ? "broker_radar" : "broker_feed", externalId: `${doc.id}#0`, text: String(doc.text || "").slice(0, 2000), title: text(doc.title, 160), at: iso(doc.createdAt), publishedAt: iso(doc.publishedAt), structured: parseStructured(doc.structured) }]
         : itemsFromText({ sourceId: "broker_feed", docId: doc.id, body: String(doc.text || ""), at: iso(doc.createdAt) });
       // One ad the broker brought himself: kept for him whatever its level. With a link, the link is the ad's identity
       // (the same address entered again is the same ad — an update, never a second find).
@@ -250,10 +250,11 @@ export const SOURCE_ADAPTERS = Object.freeze([
 ]);
 
 const BY_ID = new Map(SOURCE_ADAPTERS.map((adapter) => [adapter.id, adapter]));
-const adapterOf = (sourceId) => { const id = String(sourceId || ""); return BY_ID.get(id.startsWith("qa_") ? "qa_fixture" : id.startsWith("web_") && id !== "web_search" ? "web_search" : id.startsWith("link_") ? "broker_feed" : id) || null; };
+const adapterOf = (sourceId) => { const id = String(sourceId || ""); return BY_ID.get(id.startsWith("qa_") ? "qa_fixture" : id.startsWith("web_") && id !== "web_search" ? "web_search" : (id.startsWith("link_") || id === "broker_radar") ? "broker_feed" : id) || null; };
 
 export function sourceLabel(sourceId, env = {}) {
   const adapter = adapterOf(sourceId);
+  if (sourceId === "broker_radar") return "رادار الوسيط";
   if (!adapter) return "مصدر";
   if (adapter.id === "partner_feed") return feedConfig(env).name;
   if (adapter.id === "qa_fixture") return `مصدر اختبار (${String(sourceId).slice(3) || "fixture"})`;

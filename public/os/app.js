@@ -1,3 +1,5 @@
+import { renderOfficeSupervision } from './views/office-supervision.js';
+import { renderRadarImport } from './views/radar-import.js';
 import { renderSmartOffice, renderDeals, renderMore } from "./views/smart-office.js";
 /**
  * Office OS entry point.
@@ -55,7 +57,7 @@ function parseHash() {
 function view() {
   const { parts, query } = parseHash();
   const [section = "office", id = "", sub = ""] = parts;
-  if (section === "office") return { name: "office", main: true, run: renderSmartOffice };
+  if (section === "office") return { name: "office", main: true, run: query.get("layout") === "supervision" ? renderOfficeSupervision : renderSmartOffice };
   if (section === "task" && id) return { name: "task", deal: true, run: (el) => renderTaskDetail(el, { taskId: id }) };
   if (section === "repo") return { name: "repo", main: true, run: (el) => renderRepository(el, { query }) };
   if (section === "quick-add") return { name: "form", run: (el) => renderQuickAdd(el) };
@@ -89,7 +91,7 @@ function view() {
   if (section === "search") return { name: "tool", run: (el) => renderSearch(el, { query: query.get("q") || "" }) };
   if (section === "audit") return { name: "tool", run: renderAudit };
   if (section === "settings") {
-    const page = { profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, channels: renderChannelSettings, agent: renderAgentSettings, scout: renderScoutSettings, notifications: renderNotificationSettings, brokers: renderSettings }[id] || renderSettingsHub;
+    const page = { radar: renderRadarImport, profile: renderOfficeProfile, link: renderLinkSettings, cooperation: renderCooperationSettings, channels: renderChannelSettings, agent: renderAgentSettings, scout: renderScoutSettings, notifications: renderNotificationSettings, brokers: renderSettings }[id] || renderSettingsHub;
     return { name: "settings", run: (el) => page(el) };
   }
   return { name: "tasks", main: true, deal: true, run: (el) => renderTasks(el, { filter: query.get("filter") || "all", step: query.get("step"), lane: query.get("lane") }) };
