@@ -1,7 +1,7 @@
 # Embedded Signup access diagnosis — 29 October 2026
 
 ## Observed facts
-- Live `https://iaqar-ai-staging.web.app/staging-release.json` returns sourceSha `549d6f05e614e161b6889ce1687abd8b667ee26b`, project `iaqar-ai-staging`.
+- Historical root-host check (`iaqar-ai-staging.web.app`, path `/staging-release.json`; not the approved user-facing channel) returns sourceSha `549d6f05e614e161b6889ce1687abd8b667ee26b`, project `iaqar-ai-staging`.
 - Live staging `/meta/config?officeId=platform` returns enabled=true, appId `976041872203912`, configId `935400705477695`, onboardingMode=coexistence, outboundMessaging=false. These are public identifiers, not evidence of permissions or eligibility.
 - Cloudflare's read-only settings API confirms those same public identifiers and the staging Firebase project. Required Meta secret binding names are present; their values were not read or validated.
 - PR #288 is requirements only. This fix is stacked on PR #289, which is based on the deployed blue-office source. Main has different frontend source.
