@@ -49,6 +49,7 @@ export function renderSettingsHub(container) {
       row("office", "بيانات المكتب", [office.officeName, office.city].filter(Boolean).join(" · ") || "الاسم والرخصة والجوال والتخصص", "profile"),
       row("link", "رابط المكتب", office.publicSlug ? `/m/${office.publicSlug}` : "الرابط القصير لعملائك ومالكي العقارات", "link"),
       row("handshake", "التعاون بين الوسطاء", "هل تستقبل طلبات تعاون من مكاتب أخرى؟", "cooperation"),
+      row("search", "رادار الوسيط", "استيراد JSON يدوي — تجربة على Staging فقط", "radar"),
       row("send", "قنوات المكتب", "واتساب وتيليجرام — حالة الاتصال واستقبال الرسائل", "channels"),
       row("robot", "مدير المكتب الذكي", "تشغيله وإيقافه، تعليمات المكتب، وآخر إجراءاته", "agent"),
       row("archive", "مكتبة المكتب", "عقود الوساطة والصفقات ومستندات المكتب", "library"),

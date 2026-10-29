@@ -70,6 +70,7 @@ export function renderSmartOffice(container) {
       ic('sparkles'), 'إضافة عرض أو طلب'));
   const work = h('div'), matches = h('div'), deals = h('div'), agent = agentCard();
   append(root,
+    section('شاشة المتابعة', link('فتح شاشة المتابعة القابلة للتغيير', 'office?layout=supervision', 'office')),
     section('المطلوب مني الآن', work, link('جميع المهام', 'tasks', 'clipboard')),
     section('فرص ومطابقات للمراجعة', matches),
     section('الصفقات الجارية', deals, link('جميع الصفقات', 'deals', 'handshake')),

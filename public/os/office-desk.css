@@ -574,3 +574,6 @@ div.os-center-row { grid-template-columns: minmax(0, 1fr); }
 [data-smart-office] .ref-time,
 [data-smart-office] .ref-agent-facts,
 [data-smart-office] .ref-agent-status{color:#607184}
+
+/* Optional supervision presentation, independent from workflow and import services. */
+.supervision-profile summary{display:flex;align-items:center;gap:16px;cursor:pointer;list-style:none}.supervision-profile summary>span:nth-child(2){flex:1}.supervision-profile summary small{font-size:var(--fs-meta)}.supervision-avatar{width:68px;height:68px;flex-shrink:0;display:grid;place-items:center}.supervision-avatar img{max-width:100%;max-height:100%;object-fit:contain}.supervision-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;position:sticky;top:0;background:var(--os-bg,#f5f9fc);padding:8px 0;z-index:4}.supervision-tabs .os-btn{display:flex;flex-direction:column;min-width:0;gap:7px;padding:10px 3px;font-size:var(--fs-meta);text-align:center;white-space:normal}.supervision-tabs .os-ico3d{width:34px;height:34px}.supervision-record{width:100%;margin-block:10px}.supervision-links{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}@media(max-width:360px){.supervision-tabs .os-btn{font-size:var(--fs-meta)}.supervision-profile .os-page-title{font-size:20px}}

@@ -36,6 +36,8 @@ import { createIngestKey, ingestScoutBatch, listIngestKeys, revokeIngestKey } fr
 import { startScoutChatLink, unlinkScoutChat } from "./scout-telegram.js";
 import { decideSessionPrice, handleSessionRequest, sessionImage, recordSessionHandoff, resolveIntervention, sendBrokerMessage, sessionLinks, submitSessionAction, viewSession } from "./session-service.js";
 
+import { importRadarExport, radarImportStatus } from './radar-import-service.js';
+
 const PUBLIC_ROUTES = Object.freeze({
   "/os/public/search/analyze": (ctx,b,meta) => analyzeGuestSearch(ctx,{officeId:b.officeId,text:typeof b.text === "string"?b.text:"",ip:meta.ip}),
   "/os/public/search": (ctx,b,meta) => guestSearch(ctx,{input:b,ip:meta.ip}),
@@ -55,6 +57,8 @@ const PUBLIC_ROUTES = Object.freeze({
 });
 
 const OFFICE_ROUTES = Object.freeze({
+  '/os/radar/status': (ctx) => radarImportStatus(ctx),
+  '/os/radar/import': (ctx,b,actor) => importRadarExport(ctx,{officeId:ctx.officeId,actor,input:b.input,includeContacts:b.includeContacts,runCycle:runOfficeCycle}),
   "/os/whatsapp-agent/status": (ctx, b, actor) => whatsappAgentStatus(ctx, { officeId: ctx.officeId, actor }),
   "/os/whatsapp-agent/settings": (ctx, b, actor) => configureWhatsAppAgent(ctx, { officeId: ctx.officeId, actor, enabled: b.enabled }),
   "/os/whatsapp-agent/run": (ctx, b, actor) => {
