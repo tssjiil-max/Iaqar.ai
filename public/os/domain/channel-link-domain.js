@@ -113,12 +113,31 @@ export function whatsappLinkView(integration = {}, config = {}, usage = {}) {
     : state !== LINK_STATE.CONNECTED ? "جاهز — يبدأ الاستقبال بعد الربط"
       : integration?.lastInboundAt || inboundToday > 0 ? "يعمل — تصل الرسائل" : "جاهز — لم تصل رسالة بعد";
   return {
-    id: "whatsapp", state, stateLabel: LINK_STATE_LABEL[state], signupEnabled, actions,
+    id: "whatsapp", rehearsalAvailable: config.rehearsalAvailable === true, readiness: whatsappReadiness(integration, config), state, stateLabel: LINK_STATE_LABEL[state], signupEnabled, actions,
     number, inboundToday, webhookReady, webhookLabel,
     lastInboundAt: integration?.lastInboundAt || "",
     onboardingMode: config.onboardingMode === "standard" ? "standard" : "coexistence",
     detail: state === LINK_STATE.ERROR ? String(integration?.lastError || "").slice(0, 160) : "",
     note: signupEnabled ? "" : "الربط الرسمي مع Meta غير مفعّل على هذه البيئة بعد. يتفعّل الزر بعد إدخال بيانات تطبيق Meta من إدارة المنصة."
+  };
+}
+
+/** Stored server evidence only: configuration and signup events never prove eligibility.
+ * This is a historical snapshot, not a live Meta check. No public input can set eligibility.
+ */
+function whatsappReadiness(integration, config) {
+  const verified = integration.status === "connected" && Boolean(integration.phoneNumberId)
+    && integration.platformType === "CLOUD_API" && integration.metaPhoneStatus === "CONNECTED"
+    && Number.isFinite(Date.parse(integration.connectedAt || ""));
+  const active = verified && integration.isOnBizApp === true;
+  return {
+    status: active ? "COEXISTENCE_ACTIVE" : !config.signupEnabled ? "CONFIGURATION_MISSING" : "UNVERIFIED",
+    label: active ? "التعايش مثبت وقت الربط — يحتاج إعادة تحقق عند تغيّر الحالة" : !config.signupEnabled ? "إعدادات التسجيل ناقصة" : "لم يتم التحقق من التعايش لدى Meta",
+    cloudApi: verified ? "VERIFIED_AT_LINK" : "UNVERIFIED",
+    source: verified ? "META_PHONE_STATE_AT_LINK" : "NO_META_EVIDENCE",
+    checkedAt: verified ? new Date(integration.connectedAt).toISOString() : "",
+    canMigrateExistingNumber: false,
+    fallback: "استخدم رقم اختبار رسميًا أو رقمًا مستقلًا؛ لا تنقل رقمك الحالي."
   };
 }
 

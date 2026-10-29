@@ -165,7 +165,9 @@ function countBefore(t, noun, dual) {
 }
 
 function priceIn(raw) {
-  const t = AR_DIGITS(raw).replace(/,/g, "");
+  const t = AR_DIGITS(raw).replace(/[,٬]/g, "")
+    .replace(/(?:\+?966|00966)?0?5\d{8}/g, " ")
+    .replace(/\d+(?:\.\d+)?\s*(?:م2|م²|متر(?:مربع)?|مربع|غرف(?:ة|ه)?|صالات|حمامات|ادوار|أدوار)(?:\s|$)/g, " ");
   const scaled = (num, unit) => {
     const n = Number(num);
     if (!(n > 0)) return 0;

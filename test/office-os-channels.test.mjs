@@ -372,3 +372,52 @@ test("embedded signup starts in coexistence unless the environment says standard
   assert.equal(embeddedSignupOptions({ configId: "9", onboardingMode: "standard" }).extras.featureType, undefined);
   assert.equal(embeddedSignupOptions({ configId: "9" }).response_type, "code");
 });
+
+// Readiness must never confuse a configured signup button with Meta evidence.
+test("coexistence readiness requires server Meta evidence, not a configured mode or legacy link", () => {
+  const config = { signupEnabled: true, webhookReady: true, onboardingMode: "coexistence" };
+  assert.equal(whatsappLinkView({}, config).readiness?.status, "UNVERIFIED");
+  assert.equal(whatsappLinkView({status:"connected",phoneNumberId:"123"}, config).readiness?.status, "UNVERIFIED");
+  assert.equal(whatsappLinkView({}, {...config,signupEnabled:false}).readiness?.status, "CONFIGURATION_MISSING");
+  const connected = {status:"connected",phoneNumberId:"123",isOnBizApp:true,platformType:"CLOUD_API",metaPhoneStatus:"CONNECTED",connectedAt:"2026-10-29T07:00:00Z"};
+  const ready = whatsappLinkView(connected,config).readiness;
+  assert.equal(ready.status,"COEXISTENCE_ACTIVE");
+  assert.equal(ready.cloudApi,"VERIFIED_AT_LINK");
+  assert.equal(ready.source,"META_PHONE_STATE_AT_LINK");
+  assert.equal(Date.parse(ready.checkedAt),1793257200000);
+  assert.equal(whatsappLinkView({...connected,isOnBizApp:false},config).readiness?.status,"UNVERIFIED");
+  assert.equal(whatsappLinkView({...connected,status:"disconnected"},config).readiness?.status,"UNVERIFIED");
+});
+
+test("readiness trusts the number mapping and never another office's integration claims", async () => {
+  h.env.META_APP_ID="test-app";h.env.META_CONFIG_ID="test-config";h.env.META_APP_SECRET="test-secret";
+  h.store.seed(`offices/${OFFICE_A}/integrations/whatsapp`,{phoneNumberId:"readiness-phone",status:"connected",isOnBizApp:true});
+  h.store.seed("whatsapp_accounts/readiness-phone",{officeId:OFFICE_A,status:"connected",isOnBizApp:true,platformType:"CLOUD_API",metaPhoneStatus:"CONNECTED",connectedAt:"2026-10-29T07:00:00Z"});
+  assert.equal(channel(await call("/os/channels/status",{officeId:OFFICE_A},OWNER_A),"whatsapp").readiness?.status,"COEXISTENCE_ACTIVE");
+  h.store.seed(`offices/${OFFICE_B}/integrations/whatsapp`,{phoneNumberId:"readiness-phone",status:"connected",isOnBizApp:true});
+  assert.equal(channel(await call("/os/channels/status",{officeId:OFFICE_B},OWNER_B),"whatsapp").readiness?.status,"UNVERIFIED");
+});
+
+test("staging inbound rehearsal is manager-only, audited, and never creates live channel data", async () => {
+  const {rehearseWhatsapp} = await import("../worker/src/office-os/channels-service.js");
+  const writes=[];
+  const ctx={env:{DEPLOYMENT_ENV:"staging",FIREBASE_PROJECT_ID:"iaqar-ai-staging"},now:()=>new Date("2026-10-29T07:00:00Z"),
+    store:{create:async(path,data)=>{writes.push({path,data});return true;}},
+    deps:{sha256Hex:async value=>(await import("node:crypto")).createHash("sha256").update(value).digest("hex"),appError:(code,status,message)=>Object.assign(new Error(message),{code,status})}};
+  await assert.rejects(()=>rehearseWhatsapp(ctx,{officeId:OFFICE_A,actor:{uid:BROKER_A2,isManager:false}}),{status:403});
+  const result=await rehearseWhatsapp(ctx,{officeId:OFFICE_A,actor:{uid:OWNER_A,isManager:true}});
+  assert.equal(result.simulated,true);
+  assert.equal(result.webhookVerified,false);
+  assert.equal(result.outboundSent,false);
+  assert.deepEqual(result.samples.map(s=>s.messageClass),["OFFER","REQUEST","OFFER","REQUEST"]);
+  assert.equal(result.samples[0].facts.price,1200000);
+  assert.equal(result.samples[0].facts.area,400);
+  assert.equal(result.samples[0].facts.rooms,5);
+  assert.equal(result.auditRecorded,true);
+  assert.equal(writes.length,1);
+  assert.deepEqual(writes[0].path.slice(0,3),["offices",OFFICE_A,"auditLogs"]);
+  assert.equal(writes[0].data.action,"WHATSAPP_REHEARSAL");
+  ctx.env.DEPLOYMENT_ENV="production";
+  await assert.rejects(()=>rehearseWhatsapp(ctx,{officeId:OFFICE_A,actor:{uid:OWNER_A,isManager:true}}),{status:403});
+  assert.equal(writes.length,1);
+});

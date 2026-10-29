@@ -22,7 +22,7 @@ import { cancelProposal, createProposals, recordHandoff } from "./proposal-servi
 import { submitReply, viewReply } from "./reply-service.js";
 import { suggestForJourney } from "./assist-service.js";
 import { arrangeRecordImages } from "./record-media-service.js";
-import { channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
+import { rehearseWhatsapp, channelsStatus, disconnectWhatsapp, startTelegramLink, unlinkTelegram } from "./channels-service.js";
 import { convertInboxMessage } from "./inbox-service.js";
 import { createOfficeTicket, supportStatus } from "./support-service.js";
 import { setMemberAccess } from "./members-service.js";
@@ -132,6 +132,7 @@ const OFFICE_ROUTES = Object.freeze({
   "/os/session/resolve": (ctx, b, actor) => resolveIntervention(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId) }),
   "/os/session/request": (ctx, b, actor) => handleSessionRequest(ctx, { actor, officeId: ctx.officeId, journeyId: text(b.journeyId), requestId: text(b.requestId), decision: text(b.decision), text: b.text, requestKey: text(b.requestKey) }),
   // Channels: every member sees the state; linking and unlinking are the manager's (checked in the service).
+  "/os/channels/whatsapp/rehearse": (ctx, b, actor) => rehearseWhatsapp(ctx, { officeId: ctx.officeId, actor }),
   "/os/channels/status": (ctx, b, actor) => channelsStatus(ctx, { officeId: ctx.officeId, actor }),
   // «بوت المكتب»: the switch is the manager's; a broker links his own alerts; any member may hand a side its link.
   "/os/bot/enable": (ctx, b, actor) => setBotEnabled(ctx, { actor, officeId: ctx.officeId, enabled: b.enabled === true }),
