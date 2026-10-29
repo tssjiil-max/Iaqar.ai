@@ -4,7 +4,8 @@ Status: PREPARED, NOT SUBMITTED. No support case ID exists.
 Date: 29 October 2026 (Saudi Arabia).
 App ID: 976041872203912
 Business Login Configuration ID: 935400705477695
-Staging URL: https://iaqar-ai-staging.web.app/?release=549d6f05#/settings/channels
+Approved staging URL: https://iaqar-ai-staging--staging-9c4b0k7h.web.app/#/settings/channels
+Historical root-host observation: iaqar-ai-staging.web.app (release 549d6f05; not the approved user-facing channel).
 
 ## Support request
 Our WhatsApp Embedded Signup opens Meta and shows: «ليست لديك صلاحية وصول. هذه الميزة غير متوفرة لك حتى الآن» (You do not have access; this feature is not available to you yet).
