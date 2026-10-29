@@ -122,3 +122,5 @@ export function connectWhatsapp(officeId, prepared) {
     }
   });
 }
+
+export function rehearseWhatsapp(officeId) { return api("/os/channels/whatsapp/rehearse", {officeId}); }

@@ -14,7 +14,7 @@ import { session } from "../core/session.js";
 import { confirmDialog, runAction, toast } from "../core/ui.js";
 import { COOPERATION_OPTIONS, loadCooperationMode, photoToDataUrl, saveBrokerPhoto, officeNameIsFree, saveCooperationMode, saveOfficeProfile, savePublicSlug } from "../core/office-profile.js";
 import { isSafePhotoDataUrl } from "../domain/avatar-domain.js";
-import { prepareWhatsapp, connectWhatsapp, disconnectWhatsapp, loadChannels, startTelegramLink, unlinkTelegram } from "../core/channels.js";
+import { rehearseWhatsapp, prepareWhatsapp, connectWhatsapp, disconnectWhatsapp, loadChannels, startTelegramLink, unlinkTelegram } from "../core/channels.js";
 import { automationLabel } from "../domain/channels-domain.js";
 import { CHANNEL_REGISTRY, SIGNUP_TEXT } from "../domain/channel-link-domain.js";
 import { botCard, brokerAlertsCard } from "./bot-settings.js";
@@ -304,6 +304,11 @@ function channelAction(id, label, { kind = "secondary", icon = "link", run }) {
 
 function whatsappCard(view, reload) {
   const meta = CHANNEL_REGISTRY.whatsapp;
+  const rehearsal = h("div", {"data-wa-rehearsal-result":""});
+  const testButton = channelAction("rehearse", "محاكاة استقبال دون إرسال", {kind:"secondary",icon:"check",run:button=>runAction(button,async()=>{
+    const result = await rehearseWhatsapp(session.officeId);
+    rehearsal.replaceChildren(feedback({class:"os-alert info",text:`محاكاة داخلية: تم تحليل ${result.samples.length} نماذج بيع وشراء وإيجار. لم تُرسل رسائل، وهذا لا يثبت استقبال Webhook أو اتصال Meta.`}));
+  })});
   const coexistence = view.onboardingMode !== "standard";
   const link = (button) => runAction(button, async () => {
     const officeId = session.officeId;
@@ -312,8 +317,8 @@ function whatsappCard(view, reload) {
     const yes = await confirmDialog({
       title: "ربط واتساب للأعمال",
       text: coexistence
-        ? "ستفتح نافذة Meta الرسمية. سجّل الدخول هناك واختر ربط «تطبيق واتساب للأعمال» الحالي، ثم امسح الرمز من جوالك. يبقى رقمك وتطبيقك كما هما — لا يُنقل الرقم ولا يُحذف التطبيق."
-        : "ستفتح نافذة Meta الرسمية لإكمال الربط. سجّل الدخول ووافق هناك.",
+        ? "ستفتح نافذة Meta الرسمية. سجّل الدخول هناك واختر ربط «تطبيق واتساب للأعمال» الحالي، ثم امسح الرمز من جوالك. اختر مسار التعايش فقط. أهلية الرقم لم تُحسم بعد؛ إذا طلبت Meta حذف حسابك أو ترحيل الرقم، توقف ولا توافق."
+        : "هذا مسار Cloud API التقليدي، وقد يؤثر على تشغيل الرقم في الجوال. لا تستخدم رقمك الحالي هنا؛ استخدم رقم اختبار أو رقمًا مستقلًا فقط.",
       confirmLabel: "فتح نافذة Meta",
       onConfirm: () => { connection = connectWhatsapp(officeId, prepared); }
     });
@@ -336,14 +341,18 @@ function whatsappCard(view, reload) {
     : channelAction(action, action === "connect" ? "ربط واتساب للأعمال" : "إعادة الربط", { kind: action === "connect" ? "primary" : "secondary", icon: "link", run: link }));
   return surface("article", { class: "os-card os-chan", "data-channel": "whatsapp" },
     channelHead(meta, view),
+    h("h3", { text: "واتساب — فحص التعايش والربط" }),
+    view.readiness ? feedback({ class: "os-alert info", "data-wa-readiness": view.readiness.status, text: view.readiness.label }) : null,
     h("dl", { class: "os-chan-facts" },
+      view.readiness ? fact("دليل Cloud API", view.readiness.cloudApi === "VERIFIED_AT_LINK" ? `تحقق لدى Meta وقت الربط: ${view.readiness.checkedAt}` : "لم يُتحقق بعد") : null,
       fact("الرقم", view.number || "—", { "data-channel-number": "" }),
       fact("استقبال الرسائل (Webhook)", view.webhookLabel, { "data-webhook-status": view.webhookReady ? "ready" : "off" }),
       view.state === "CONNECTED" ? fact("رسائل اليوم", String(view.inboundToday)) : null,
-      fact("طريقة الربط", coexistence ? "Cloud API مع بقاء الرقم على تطبيق واتساب للأعمال" : "Cloud API", { "data-onboarding": view.onboardingMode })),
+      fact("مسار الربط المطلوب", coexistence ? "التعايش عبر Meta — يتطلب التحقق من الأهلية" : "Cloud API لرقم اختبار أو رقم مستقل", { "data-onboarding": view.onboardingMode })),
+    h("p", { class: "os-sub", text: "وجود إعدادات التسجيل أو ظهور زر الربط لا يثبت أهلية الرقم. إذا تعذر التعايش، نستخدم رقم اختبار مستقلًا دون تغيير الرقم الحالي." }),
     view.detail ? feedback({ class: "os-alert bad", "data-channel-error": "", text: view.detail }) : null,
     view.note ? h("p", { class: "os-sub", "data-channel-note": "", text: view.note }) : null,
-    actions.length ? controlGroup("div", { class: "os-btn-row" }, ...actions) : null);
+    controlGroup("div", { class: "os-btn-row" }, ...actions, view.rehearsalAvailable ? testButton : null), rehearsal);
 }
 
 function telegramCard(view, reload, pending) {

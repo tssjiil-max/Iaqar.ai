@@ -1,3 +1,5 @@
+import { classifyInboundMessage } from "../../../public/os/domain/message-class-domain.js";
+import { extractFacts } from "../../../public/os/domain/visitor-domain.js";
 import { deliverGuestSearchTelegram, replyGuestSearchTelegram } from "./public-search-service.js";
 /**
  * «قنوات المكتب» — each office links its own channels; the link is stored on the server
@@ -34,6 +36,7 @@ export function telegramConfig(env = {}) {
 
 export function whatsappConfig(env = {}) {
   return {
+    rehearsalAvailable: env.DEPLOYMENT_ENV === "staging" && env.FIREBASE_PROJECT_ID === "iaqar-ai-staging",
     signupEnabled: Boolean(text(env.META_APP_ID) && text(env.META_CONFIG_ID) && text(env.META_APP_SECRET)),
     // «coexistence» keeps the number on the WhatsApp Business app; it is the default so a link never migrates a number.
     onboardingMode: text(env.META_ONBOARDING_MODE).toLowerCase() === "standard" ? "standard" : "coexistence",
@@ -66,6 +69,8 @@ async function whatsappState(ctx, officeId) {
   if (!account || !ctx.deps.officeIdsEquivalent(account.officeId, officeId)) return { status: "", phoneNumberId: "" };
   return {
     status: text(account.status), phoneNumberId,
+    isOnBizApp: account.isOnBizApp === true, platformType: text(account.platformType),
+    metaPhoneStatus: text(account.metaPhoneStatus),
     displayPhoneNumber: text(account.displayPhoneNumber || integration.displayPhoneNumber),
     lastInboundAt: integration.lastInboundAt || "", lastError: text(integration.lastError),
     connectedAt: account.connectedAt || integration.connectedAt || "", disconnectedAt: account.disconnectedAt || ""
@@ -329,4 +334,21 @@ export async function disconnectWhatsapp(ctx, { actor, officeId }) {
   await ctx.store.set(["offices", officeId, "integrations", "whatsapp"], { officeId, status: "disconnected", disconnectedAt: now, updatedAt: now });
   await writeAudit(ctx, { officeId, action: AUDIT_ACTIONS.CHANNEL_UNLINKED, actorUid: actor.uid, entityType: "channel", entityId: "whatsapp", key: now.toISOString(), details: { channel: "whatsapp" } });
   return { ok: true, state: LINK_STATE.DISCONNECTED, changed: true };
+}
+
+/** Fixed synthetic messages only. This is NOT a webhook delivery or Meta eligibility test.
+ * No channel, CRM record or queue is modified; the audit is the only write.
+ */
+export async function rehearseWhatsapp(ctx, {officeId, actor}) {
+  assertManager(ctx, actor);
+  if (ctx.env.DEPLOYMENT_ENV !== "staging" || ctx.env.FIREBASE_PROJECT_ID !== "iaqar-ai-staging") throw forbidden(ctx.deps, "المحاكاة متاحة في البيئة التجريبية فقط");
+  const messages = [
+    "للبيع فيلا في المدينة المنورة حي العزيزية مساحة 400 متر السعر 1200000 ريال 5 غرف",
+    "مطلوب شراء فيلا في المدينة المنورة حي العزيزية مساحة 400 متر الميزانية 1300000 ريال 5 غرف",
+    "للإيجار شقة في المدينة المنورة حي العزيزية مساحة 150 متر السعر 30000 ريال 3 غرف",
+    "مطلوب شقة للإيجار في المدينة المنورة حي العزيزية مساحة 150 متر الميزانية 35000 ريال 3 غرف"
+  ];
+  const samples = messages.map(text => ({messageClass: classifyInboundMessage(text).messageClass, facts: extractFacts(text)}));
+  const audit = await writeAudit(ctx, {officeId, actorUid:actor.uid, action:"WHATSAPP_REHEARSAL", entityType:"channel", entityId:"whatsapp", details:{simulated:true,sampleCount:samples.length,outboundSent:false}});
+  return {ok:true,simulated:true,webhookVerified:false,outboundSent:false,samples,auditRecorded:audit.ok === true};
 }
