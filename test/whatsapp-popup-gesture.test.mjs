@@ -25,7 +25,7 @@ window.FB = {
 };
 globalThis.fetch = async (url, options = {}) => {
   requests.push({ url, options });
-  if (url.includes('/meta/config?')) return Response.json({ enabled: true, appId: 'app', configId: 'config' });
+  if (url.includes('/meta/config?')) return Response.json({ enabled: true, appId: '123456789', configId: '987654321' });
   if (url.endsWith('/meta/signup/complete')) return Response.json({ connected: true });
   throw new Error('Unexpected network request');
 };
@@ -103,4 +103,61 @@ test('confirmation callback errors clean up the dialog and reject', async () => 
   clickConfirm();
   await assert.rejects(result, /failed/);
   assert.equal(document.querySelector('.os-dialog'), null);
+});
+
+// These regressions catch duplicate popups, leaking Meta errors, and accepting an
+// unverified completion response. Only the external SDK/network boundaries are fake.
+test('concurrent attempts cannot open a second Meta popup', async () => {
+  const prepared = await prepareWhatsapp('office-a');
+  let callback;
+  onLogin = cb => { callback = cb; };
+  insideClick = true;
+  const first = connectWhatsapp('office-a', prepared);
+  const second = connectWhatsapp('office-a', prepared);
+  insideClick = false;
+  const rejected = assert.rejects(second, { code: 'SIGNUP_IN_PROGRESS' });
+  callback({});
+  await assert.rejects(first);
+  await rejected;
+});
+
+test('Meta permission rejection preserves only numeric error diagnostics', async () => {
+  const prepared = await prepareWhatsapp('office-a');
+  onLogin = cb => cb({ error: { code: 200, error_subcode: 99, message: 'secret-code=DO_NOT_EXPOSE', access_token: 'DO_NOT_EXPOSE' } });
+  insideClick = true;
+  const attempt = connectWhatsapp('office-a', prepared);
+  insideClick = false;
+  await assert.rejects(attempt, error => {
+    assert.equal(error.code, 'APP_PERMISSION_DENIED');
+    assert.equal(error.metaCode, 200);
+    assert.equal(error.metaSubcode, 99);
+    assert.equal(JSON.stringify(error).includes('DO_NOT_EXPOSE'), false);
+    assert.equal(error.message.includes('DO_NOT_EXPOSE'), false);
+    return true;
+  });
+});
+
+test('a backend response without connected true cannot establish success', async () => {
+  const prepared = await prepareWhatsapp('office-a');
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options) => url.endsWith('/meta/signup/complete') ? Response.json({ ok: true }) : original(url, options);
+  onLogin = cb => { finishEvent(); cb({ authResponse: { code: 'code' } }); };
+  insideClick = true;
+  const attempt = connectWhatsapp('office-a', prepared);
+  insideClick = false;
+  try { await assert.rejects(attempt, { code: 'SIGNUP_NOT_CONFIRMED' }); }
+  finally { globalThis.fetch = original; }
+});
+
+test('invalid public identifiers stop before SDK login', async () => {
+  const original = globalThis.fetch;
+  for (const config of [
+    {enabled:true, configId:'123'},
+    {enabled:true, appId:'123'},
+    {enabled:true, appId:'123', configId:'not-a-meta-id'}
+  ]) {
+    globalThis.fetch = async () => Response.json(config);
+    try { await assert.rejects(prepareWhatsapp('office-a'), error => ['INVALID_APP_ID','INVALID_CONFIG_ID'].includes(error.code)); }
+    finally { globalThis.fetch = original; }
+  }
 });

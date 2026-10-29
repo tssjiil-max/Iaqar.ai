@@ -4,7 +4,7 @@ import {chromium} from 'playwright';
 import {startOfficeOsHarness,OFFICE_A} from './server.mjs';
 const out=process.env.OUT_DIR;assert.ok(out);await fs.mkdir(out,{recursive:true});
 const h=await startOfficeOsHarness();
-h.env.META_APP_ID='test-app';h.env.META_CONFIG_ID='test-config';h.env.META_APP_SECRET='test-only';
+h.env.META_APP_ID='123456';h.env.META_CONFIG_ID='987654';h.env.META_APP_SECRET='test-only';
 const browser=await chromium.launch();
 try {
  for(const width of [390,1280]) {

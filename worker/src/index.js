@@ -1,3 +1,4 @@
+import { signupConfiguration, safeMetaFailure } from "../../public/os/domain/meta-signup-diagnostics.js";
 import { MATCH_KEY_VERSION, candidateQueriesFor, guardPatchMask, matchKeyUpdate } from "./match-index.js";
 import { readWebhookBody } from "./office-os/whatsapp-agent-transport.js";
 import { whatsappAgentAvailable, ingestWhatsAppEvents, drainWhatsAppQueue } from "./office-os/whatsapp-agent-service.js";
@@ -555,10 +556,13 @@ export default {
 
       if (request.method === "GET" && url.pathname === "/meta/config") {
         const officeId = firestoreOfficeId(url.searchParams.get("officeId"));
-        const enabled = Boolean(env.META_APP_ID && env.META_CONFIG_ID && env.META_APP_SECRET);
+        const configuration = signupConfiguration({ appId: env.META_APP_ID, configId: env.META_CONFIG_ID, enabled: Boolean(env.META_APP_SECRET) });
+        const enabled = configuration.valid;
         return jsonResponse({
           ok: true,
           enabled,
+          configurationCode: configuration.code,
+          coexistenceStatus: "UNVERIFIED",
           appId: enabled ? env.META_APP_ID : "",
           configId: enabled ? env.META_CONFIG_ID : "",
           graphVersion: env.META_GRAPH_VERSION || GRAPH_VERSION,
@@ -1109,7 +1113,7 @@ export default {
       console.error("[iaqar-whatsapp] request failed", {
         requestId,
         code: error && error.code,
-        message: error && error.message
+        message: url.pathname === "/meta/signup/complete" ? "signup_request_failed" : error && error.message
       });
       return jsonResponse({
         ok: false,
@@ -2932,8 +2936,9 @@ async function completeEmbeddedSignup(request, env, requestId) {
   const tokenResponse = await fetch(tokenUrl.toString());
   const tokenPayload = await tokenResponse.json().catch(() => ({}));
   if (!tokenResponse.ok || !tokenPayload.access_token) {
-    console.error("[iaqar-whatsapp] token exchange failed", tokenPayload);
-    throw appError("meta_token_exchange_failed", 502, "تعذر إكمال الربط مع Meta");
+    const diagnostic = safeMetaFailure(tokenPayload.error);
+    console.error("[iaqar-whatsapp] token exchange failed", { code: diagnostic.code, metaCode: diagnostic.metaCode, metaSubcode: diagnostic.metaSubcode });
+    throw appError(diagnostic.code, 502, diagnostic.message);
   }
   const accessToken = tokenPayload.access_token;
 
@@ -2942,8 +2947,9 @@ async function completeEmbeddedSignup(request, env, requestId) {
     headers: { "Authorization": `Bearer ${accessToken}` }
   });
   if (!subscribeResponse.ok) {
-    const detail = await subscribeResponse.text();
-    console.error("[iaqar-whatsapp] WABA subscribe failed", detail);
+    const detail = await subscribeResponse.json().catch(() => ({}));
+    const diagnostic = safeMetaFailure(detail.error);
+    console.error("[iaqar-whatsapp] WABA subscribe failed", { code: diagnostic.code, metaCode: diagnostic.metaCode, metaSubcode: diagnostic.metaSubcode });
     throw appError("waba_subscribe_failed", 502, "تعذر الاشتراك في رسائل الحساب");
   }
 
@@ -2983,7 +2989,7 @@ async function completeEmbeddedSignup(request, env, requestId) {
   if (!phoneStateResponse.ok) {
     console.error("[iaqar-whatsapp] phone state failed", {
       status: phoneStateResponse.status,
-      error: cleanText(phoneState && phoneState.error && phoneState.error.message, 300)
+      metaCode: safeMetaFailure(phoneState.error).metaCode
     });
     throw appError("meta_phone_status_failed", 502, "تعذر تأكيد حالة رقم واتساب لدى Meta — أعد الربط");
   }

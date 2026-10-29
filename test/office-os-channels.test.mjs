@@ -288,7 +288,7 @@ test("Telegram: reconnect moves the office to a new chat; disconnect stops deliv
 });
 
 test("WhatsApp: the state comes from the server routing record, per office, and disconnect is the manager's", async () => {
-  Object.assign(h.env, { META_APP_ID: "app-1", META_CONFIG_ID: "cfg-1", META_APP_SECRET: "meta-secret-never-in-a-response", META_WEBHOOK_VERIFY_TOKEN: "verify-1" });
+  Object.assign(h.env, { META_APP_ID: "123456", META_CONFIG_ID: "987654", META_APP_SECRET: "meta-secret-never-in-a-response", META_WEBHOOK_VERIFY_TOKEN: "verify-1" });
   h.store.seed("whatsapp_accounts/pn_100", { officeId: OFFICE_A, wabaId: "waba_1", phoneNumberId: "pn_100", displayPhoneNumber: "+966 55 123 4567", status: "connected" });
   h.store.seed(`offices/${OFFICE_A}/integrations/whatsapp`, { officeId: OFFICE_A, phoneNumberId: "pn_100", displayPhoneNumber: "+966 55 123 4567", status: "connected" });
   // Office B points its own integration document at office A's number: it must not be believed.
@@ -390,7 +390,7 @@ test("coexistence readiness requires server Meta evidence, not a configured mode
 });
 
 test("readiness trusts the number mapping and never another office's integration claims", async () => {
-  h.env.META_APP_ID="test-app";h.env.META_CONFIG_ID="test-config";h.env.META_APP_SECRET="test-secret";
+  h.env.META_APP_ID="123456";h.env.META_CONFIG_ID="987654";h.env.META_APP_SECRET="test-secret";
   h.store.seed(`offices/${OFFICE_A}/integrations/whatsapp`,{phoneNumberId:"readiness-phone",status:"connected",isOnBizApp:true});
   h.store.seed("whatsapp_accounts/readiness-phone",{officeId:OFFICE_A,status:"connected",isOnBizApp:true,platformType:"CLOUD_API",metaPhoneStatus:"CONNECTED",connectedAt:"2026-10-29T07:00:00Z"});
   assert.equal(channel(await call("/os/channels/status",{officeId:OFFICE_A},OWNER_A),"whatsapp").readiness?.status,"COEXISTENCE_ACTIVE");

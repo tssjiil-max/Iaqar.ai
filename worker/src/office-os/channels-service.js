@@ -1,3 +1,4 @@
+import { signupConfiguration } from "../../../public/os/domain/meta-signup-diagnostics.js";
 import { classifyInboundMessage } from "../../../public/os/domain/message-class-domain.js";
 import { extractFacts } from "../../../public/os/domain/visitor-domain.js";
 import { deliverGuestSearchTelegram, replyGuestSearchTelegram } from "./public-search-service.js";
@@ -37,7 +38,7 @@ export function telegramConfig(env = {}) {
 export function whatsappConfig(env = {}) {
   return {
     rehearsalAvailable: env.DEPLOYMENT_ENV === "staging" && env.FIREBASE_PROJECT_ID === "iaqar-ai-staging",
-    signupEnabled: Boolean(text(env.META_APP_ID) && text(env.META_CONFIG_ID) && text(env.META_APP_SECRET)),
+    signupEnabled: signupConfiguration({ appId: env.META_APP_ID, configId: env.META_CONFIG_ID, enabled: Boolean(text(env.META_APP_SECRET)) }).valid,
     // «coexistence» keeps the number on the WhatsApp Business app; it is the default so a link never migrates a number.
     onboardingMode: text(env.META_ONBOARDING_MODE).toLowerCase() === "standard" ? "standard" : "coexistence",
     webhookReady: Boolean(text(env.META_APP_SECRET) && text(env.META_WEBHOOK_VERIFY_TOKEN))

@@ -3,6 +3,7 @@
  * (and the manager role for linking). No token or secret ever reaches the browser: the only
  * Meta values used here are the public app id and signup configuration id.
  */
+import { signupConfiguration, safeMetaFailure } from "../domain/meta-signup-diagnostics.js";
 import { api, idToken, workerBase } from "./runtime.js";
 import { embeddedSignupOptions, isMetaOrigin, SIGNUP_TEXT, signupCancelFromEvent, signupDataFromEvent, signupProgress } from "../domain/channel-link-domain.js";
 
@@ -31,9 +32,11 @@ export function disconnectWhatsapp(officeId) {
 async function metaConfig(officeId) {
   const response = await fetch(`${workerBase()}/meta/config?officeId=${encodeURIComponent(officeId)}`, { headers: { Authorization: `Bearer ${await idToken()}` } }).catch(() => null);
   const payload = response ? await response.json().catch(() => ({})) : {};
-  if (!response || !response.ok || payload.enabled !== true || !payload.appId || !payload.configId) {
+  if (!response || !response.ok) {
     throw new Error("الربط الرسمي مع Meta غير مفعّل على هذه البيئة بعد.");
   }
+  const readiness = signupConfiguration(payload);
+  if (!readiness.valid) throw Object.assign(new Error(readiness.message), { code: readiness.code });
   return payload;
 }
 
@@ -41,6 +44,7 @@ async function metaConfig(officeId) {
 // independently of the login callback, so it can arrive just after.
 const SIGNUP_EVENT_WAIT_MS = 45000; // generous: a phone can be slow to hand the result back
 let sdkPromise = null;
+let signupInProgress = false;
 
 function loadFacebookSdk(config) {
   if (sdkPromise) return sdkPromise;
@@ -80,27 +84,47 @@ export function connectWhatsapp(officeId, prepared) {
       reject(new Error("تعذر تجهيز ربط Meta — أعد فتح الربط."));
       return;
     }
+    if (signupInProgress) {
+      reject(Object.assign(new Error("توجد محاولة ربط قيد التنفيذ؛ انتظر نتيجتها."), { code: "SIGNUP_IN_PROGRESS" }));
+      return;
+    }
+    signupInProgress = true;
     const { config, FB } = prepared;
     let signup = null;
     let cancelled = null;
-    const seen = []; // what arrived, without any value: host / type / event names only (for the error code)
+    const seen = []; // fixed event categories only; never arbitrary Meta text or tokens
     let waiter = null;
     const onMessage = (event) => {
       if (!isMetaOrigin(event.origin)) return;
       let payload = event.data;
       if (typeof payload === "string") { try { payload = JSON.parse(payload); } catch (_) { return; } }
-      if (payload && seen.length < 4) seen.push(`${new URL(event.origin).hostname.replace(/\.facebook\.com$/, "")}/${String(payload.type || "?").slice(0, 24)}/${String(payload.event || "-").slice(0, 40)}`);
+      if (payload?.type !== "WA_EMBEDDED_SIGNUP") return;
+      if (seen.length < 4) seen.push(["FINISH", "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING", "FINISH_ONLY_WABA", "CANCEL", "ERROR"].includes(payload.event) ? payload.event : "OTHER");
+      if (payload.event === "ERROR") return finish(() => reject(safeMetaFailure(payload.data)));
       signup = signupDataFromEvent(payload) || signup;
       cancelled = signupCancelFromEvent(payload) || cancelled;
-      if (waiter && (signup?.wabaId || cancelled)) waiter();
+      if (typeof waiter === "function" && (signup?.wabaId || cancelled)) waiter();
     };
     window.addEventListener("message", onMessage);
-    const finish = (work) => { window.removeEventListener("message", onMessage); work(); };
+    let finished = false;
+    let timer = null;
+    const finish = (work) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      waiter = null;
+      signupInProgress = false;
+      window.removeEventListener("message", onMessage);
+      work();
+    };
     try {
       FB.login((response) => {
+        if (finished) return;
+        if (response?.error) return finish(() => reject(safeMetaFailure(response.error)));
         const code = response?.authResponse?.code || "";
         const complete = () => {
-          waiter = null;
+          if (finished || waiter === "completing") return;
+          waiter = "completing";
           const progress = signupProgress({ loginAnswered: true, code, signup, cancelled });
           if (progress === "closed" || progress === "cancelled") {
             const message = response?.error ? SIGNUP_TEXT.failed : cancelled ? SIGNUP_TEXT.closed : SIGNUP_TEXT.notCompleted;
@@ -111,10 +135,13 @@ export function connectWhatsapp(officeId, prepared) {
             return finish(() => reject(new Error(`${SIGNUP_TEXT.noData} (رمز التشخيص: ${seen.length ? seen.join(" | ") : "لا أحداث"})`)));
           }
           api("/meta/signup/complete", { officeId, code, wabaId: signup.wabaId, phoneNumberId: signup.phoneNumberId, signupEvent: signup.event })
-            .then((result) => finish(() => resolve(result)), (error) => finish(() => reject(error)));
+            .then((result) => finish(() => {
+              if (result.connected !== true) return reject(Object.assign(new Error("لم يؤكد الخادم اكتمال الربط؛ لم يُعتمد نجاح العملية."), { code: "SIGNUP_NOT_CONFIRMED" }));
+              resolve(result);
+            }), (error) => finish(() => reject(error)));
         };
         if (!code || signup?.wabaId || cancelled) return complete();
-        const timer = setTimeout(complete, SIGNUP_EVENT_WAIT_MS);
+        timer = setTimeout(complete, SIGNUP_EVENT_WAIT_MS);
         waiter = () => { clearTimeout(timer); complete(); };
       }, embeddedSignupOptions({ configId: config.configId, onboardingMode: config.onboardingMode }));
     } catch (_) {

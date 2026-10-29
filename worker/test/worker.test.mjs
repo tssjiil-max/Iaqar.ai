@@ -1283,3 +1283,17 @@ test("office library media path rejects cross-office access pattern", () => {
   const officeB = "office-b";
   assert.equal(officeAPath.includes(`/${officeB}/`), false);
 });
+
+
+test("Meta config rejects malformed public identifiers even with a secret", async () => {
+  for (const override of [{META_APP_ID:"bad"}, {META_CONFIG_ID:"bad"}, {META_APP_ID:""}, {META_CONFIG_ID:""}]) {
+    const response = await worker.fetch(new Request("https://example.test/meta/config?officeId=office-a"), {
+      ...env, META_APP_ID:"123", META_CONFIG_ID:"456", META_APP_SECRET:"NEVER_EXPOSE", ...override
+    });
+    const body = await response.json();
+    assert.equal(body.enabled, false);
+    assert.equal(body.coexistenceStatus, "UNVERIFIED");
+    assert.equal(JSON.stringify(body).includes("NEVER_EXPOSE"), false);
+    assert.match(body.configurationCode, /^INVALID_(APP|CONFIG)_ID$/);
+  }
+});
