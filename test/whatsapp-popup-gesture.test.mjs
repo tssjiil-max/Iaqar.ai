@@ -161,3 +161,25 @@ test('invalid public identifiers stop before SDK login', async () => {
     finally { globalThis.fetch = original; }
   }
 });
+
+test('top-level OAuth rejection retains numeric diagnosis and never completes signup', async () => {
+  const prepared = await prepareWhatsapp('office-a');
+  const before = requests.length;
+  onLogin = cb => cb({ error_code: '200', error_subcode: '99', error_message: 'DO_NOT_EXPOSE' });
+  insideClick = true;
+  const attempt = connectWhatsapp('office-a', prepared);
+  insideClick = false;
+  await assert.rejects(attempt, error => {
+    assert.equal(error.code, 'APP_PERMISSION_DENIED');
+    assert.equal(error.metaCode, 200);
+    assert.equal(error.metaSubcode, 99);
+    assert.equal(error.message.includes('DO_NOT_EXPOSE'), false);
+    return true;
+  });
+  assert.equal(requests.length, before);
+  onLogin = cb => cb({});
+  insideClick = true;
+  const retry = connectWhatsapp('office-a', prepared);
+  insideClick = false;
+  await assert.rejects(retry, { message: SIGNUP_TEXT.notCompleted });
+});

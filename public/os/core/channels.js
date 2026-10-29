@@ -120,7 +120,9 @@ export function connectWhatsapp(officeId, prepared) {
     try {
       FB.login((response) => {
         if (finished) return;
-        if (response?.error) return finish(() => reject(safeMetaFailure(response.error)));
+        if (response?.error || response?.error_code != null) {
+          return finish(() => reject(safeMetaFailure(response.error || response)));
+        }
         const code = response?.authResponse?.code || "";
         const complete = () => {
           if (finished || waiter === "completing") return;
