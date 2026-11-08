@@ -419,3 +419,13 @@ body>.wrap .muted,body>main>p{color:var(--muted)}
 .os-app .ref-task-card:has(.ref-status.step-0){--card-stage:#0c9e70}.os-app .ref-task-card:has(.ref-status.step-1){--card-stage:#0878eb}
 .os-app .ref-task-card:has(.ref-status.step-2){--card-stage:#b67e19}.os-app .ref-task-card:has(.ref-status.step-3){--card-stage:#6331cf}
 .os-app .ref-task-card:has(.ref-status.step-4){--card-stage:#dc1526}.os-app .ref-task-card:has(.ref-status.step-5){--card-stage:#03677a}
+
+/* Explicit legacy settings slots share office composition without replacing live controls. */
+.office-standalone [data-office-section-mounted]{padding:16px;border:1px solid var(--frame);border-radius:16px;background:linear-gradient(120deg,#fff,#f7fcff);box-shadow:var(--shadow);margin-block:14px}
+.office-standalone .os-office-section-title .os-h2{margin:0;font-size:17px;line-height:1.5;color:var(--text)}
+.office-standalone .os-office-section-body>.section-help{margin:0;font-size:13px;line-height:1.65;color:var(--muted)}
+.office-standalone #officeProfileForm .os-office-sections{align-items:start}
+.office-standalone #officeProfileForm .os-office-sections>[data-office-section]{margin:0}
+.office-standalone #officeProfileForm .office-settings-grid{grid-template-columns:minmax(0,1fr)}
+.office-standalone #officeProfileForm .office-settings-actions{margin-top:16px}
+@media(min-width:1024px){.office-standalone #officeSettings>.settings-sheet{width:min(1100px,calc(100vw - 48px));max-width:1100px}.office-standalone #officeProfileForm .os-office-sections{grid-template-columns:repeat(2,minmax(0,1fr))}}

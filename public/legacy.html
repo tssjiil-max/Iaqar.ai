@@ -6282,7 +6282,8 @@
 
       <form class="office-settings-card" id="officeProfileForm" autocomplete="off">
         <h3 class="office-settings-title">بيانات المكتب</h3>
-        <div class="office-settings-grid">
+        <div class="os-office-sections">
+        <section data-office-section data-office-icon="office"><h3>هوية المكتب والترخيص</h3><div class="office-settings-grid">
           <label class="office-field full">
             <span>اسم المكتب</span>
             <input id="officeNameInput" name="officeName" maxlength="80" minlength="4" dir="auto" required>
@@ -6297,6 +6298,8 @@
             <span>رقم رخصة فال</span>
             <input id="licenseNumberInput" name="licenseNumber" inputmode="numeric" maxlength="20" required>
           </label>
+        </div></section>
+        <section data-office-section data-office-icon="pin"><h3>التواصل ومجال العمل</h3><div class="office-settings-grid">
           <label class="office-field">
             <span>المدينة</span>
             <input id="officeCityInput" name="city" maxlength="60" required>
@@ -6315,15 +6318,15 @@
             </div>
             <small class="office-field-help">اختياري — اختر ما يناسب نشاط المكتب، ويمكن تركها فارغة.</small>
           </fieldset>
-        </div>
-        <div class="office-settings-actions">
+        </div></section></div>
+        <div class="office-settings-actions" data-office-actions>
           <button class="office-save-btn" id="saveOfficeSettingsBtn" type="submit">حفظ التعديلات</button>
           <button class="office-logout-btn" id="officeLogoutBtn" type="button">تسجيل الخروج</button>
         </div>
         <p class="office-settings-note" id="officeSettingsNote">تُحفظ البيانات لهذا المكتب فقط.</p>
       </form>
 
-      <section class="settings-section" id="officeScopeSection">
+      <section class="settings-section" id="officeScopeSection" data-office-section data-office-icon="pin">
         <h3>نطاق العمل والتعاون</h3>
         <p class="section-help">حدد نطاق خدمة المكتب وإعدادات استقبال فرص التعاون من مكاتب أخرى.</p>
         <div class="office-settings-grid">
@@ -6379,7 +6382,7 @@
         <p class="section-status" id="officeScopeStatus" role="status"></p>
       </section>
 
-      <section class="settings-section" id="officeIdentitySection">
+      <section class="settings-section" id="officeIdentitySection" data-office-section data-office-icon="photos">
         <h3>الهوية البصرية</h3>
         <p class="section-help">
           تظهر هذه الصور في بطاقة المكتب وفي رابط المكتب ومواد المشاركة ورمز QR،
@@ -6415,7 +6418,7 @@
         </div>
       </section>
 
-      <section class="settings-section" id="officeLinkSection">
+      <section class="settings-section" id="officeLinkSection" data-office-section data-office-icon="link">
         <h3>رابط المكتب</h3>
         <p class="section-help">شارك رابط المكتب القصير. واتساب يعرض بطاقة المكتب من الرابط نفسه.</p>
         <label class="office-field full">
@@ -6428,7 +6431,7 @@
         <p class="section-status" id="officeLinkStatus" role="status"></p>
       </section>
 
-      <section class="settings-section" id="officeLibrarySection">
+      <section class="settings-section" id="officeLibrarySection" data-office-section data-office-icon="clipboard">
         <h3>المكتبة</h3>
         <p class="section-help">ملفات خاصة بالمكتب — عقود ووثائق منظمة حسب النوع.</p>
         <button type="button" class="identity-btn" id="officeLibraryOpenBtn">فتح المكتبة</button>
@@ -6563,7 +6566,7 @@
         </div>
       </div>
 
-      <section class="settings-section" id="cooperationSection">
+      <section class="settings-section" id="cooperationSection" data-office-section data-office-icon="broker">
         <h3>التعاون بين المكاتب</h3>
         <p class="section-help">
           إعدادات وضوابط فقط. متابعة التعاون اليومي تتم من المهام اليومية، والسجل يحفظ التعاون المنتهي.
@@ -6668,7 +6671,7 @@
         </details>
       </section>
 
-      <section class="settings-section" id="notificationPrefsSection">
+      <section class="settings-section" id="notificationPrefsSection" data-office-section data-office-icon="bell">
         <h3>الإشعارات</h3>
         <p class="section-help">
           تُحفظ لهذا المكتب ولحسابك، ولا تصل إشعارات هذا المكتب إلى أي مكتب آخر.
@@ -6703,7 +6706,7 @@
         <p class="section-status" id="notificationPrefsStatus" role="status"></p>
       </section>
 
-      <section class="settings-section" id="pwaInstallSection">
+      <section class="settings-section" id="pwaInstallSection" data-office-section data-office-icon="gear">
         <h3>تثبيت التطبيق</h3>
         <p class="section-help">
           ثبّت المنصة كتطبيق على الجوال أو سطح المكتب للوصول السريع. على الكمبيوتر: من شريط العنوان ← تثبيت. على iPhone: مشاركة ثم «إضافة إلى الشاشة الرئيسية».
