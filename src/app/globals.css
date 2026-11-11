@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+:root {
+  --bg-deep: #163528;
+  --bg-mid: #1f4d3a;
+  --bg-soft: #e7efe9;
+  --sand: #e8dfd0;
+  --sand-deep: #c4a574;
+  --ink: #14231c;
+  --muted: #5c6b62;
+  --paper: #f7f4ee;
+  --line: rgba(20, 35, 28, 0.12);
+  --ok: #2f6b4f;
+  --warn: #9a6b2f;
+  --danger: #8a3b32;
+  --background: var(--paper);
+  --foreground: var(--ink);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  color: var(--ink);
+  font-family: var(--font-body), "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1200px 600px at 100% -10%, rgba(196, 165, 116, 0.28), transparent 55%),
+    radial-gradient(900px 500px at -10% 0%, rgba(31, 77, 58, 0.16), transparent 50%),
+    linear-gradient(180deg, #f3efe6 0%, var(--paper) 45%, #eef3ef 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image:
+    linear-gradient(rgba(20, 35, 28, 0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 35, 28, 0.35) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(circle at 50% 20%, black, transparent 75%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-soft {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-line {
+  0%,
+  100% {
+    transform: scaleX(0.7);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+.anim-rise {
+  animation: rise-in 0.7s ease both;
+}
+
+.anim-rise-delay {
+  animation: rise-in 0.8s ease 0.12s both;
+}
+
+.anim-fade {
+  animation: fade-soft 0.6s ease both;
+}
+
+.anim-line {
+  transform-origin: center;
+  animation: pulse-line 2.8s ease-in-out infinite;
+}
+
+@media print {
+  body::before {
+    display: none;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  main {
+    background: white !important;
+  }
+}
+
+.print-only {
+  display: none;
+}
+
+.field {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.55rem 0.75rem;
+  outline: none;
+}
+
+.field:focus {
+  border-color: rgba(31, 77, 58, 0.45);
+  box-shadow: 0 0 0 3px rgba(31, 77, 58, 0.12);
+}
