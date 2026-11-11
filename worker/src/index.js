@@ -1,3 +1,5 @@
+import { createAdminHandlers } from "./admin-platform.js";
+
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const DEFAULT_PROJECT_ID = "aqar-b5d76";
@@ -252,6 +254,30 @@ export default {
         return await decideBrokerApplication(request, env, requestId);
       }
 
+      if (request.method === "GET" && url.pathname === "/admin/overview") {
+        return await getAdminHandlers().handleAdminOverview(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/offices") {
+        return await getAdminHandlers().handleAdminOffices(request, url, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/office") {
+        return await getAdminHandlers().handleAdminOfficeDetail(request, url, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/office/action") {
+        return await getAdminHandlers().handleAdminOfficeAction(request, env, requestId);
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/audit-log") {
+        return await getAdminHandlers().handleAdminAuditLog(request, url, env, requestId);
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/backfill") {
+        return await getAdminHandlers().handleAdminBackfill(request, env, requestId);
+      }
+
       if (request.method === "GET" && url.pathname === "/fcm/config") {
         const vapidConfigured = Boolean(env.FCM_WEB_PUSH_VAPID_KEY);
         const serverReady = hasFirebaseSecrets(env);
@@ -431,6 +457,43 @@ async function handleBrokerApplication(request, env, requestId) {
   const accessToken = await getGoogleAccessToken(env);
   const applicationId = `broker_${Date.now()}_${crypto.randomUUID().slice(0, 10)}`;
   const now = new Date();
+  const suggestedOfficeId = normalizeOfficeId(officeName) || `office-${applicationId.replace(/^broker_/, "").slice(0, 16)}`;
+  const existingOfficeDoc = await getFirestoreDocument({
+    projectId, segments: ["offices", suggestedOfficeId], accessToken, allowMissing: true
+  });
+  if (existingOfficeDoc) {
+    const existingOffice = firestoreFieldsToJs(existingOfficeDoc.fields || {});
+    if (normalizeApprovalStatus(existingOffice) === "approved") {
+      throw appError("office_name_taken", 409, "اسم المكتب مستخدم مسبقًا");
+    }
+  }
+  await setFirestoreDocument({
+    projectId,
+    segments: ["offices", suggestedOfficeId],
+    accessToken,
+    fields: compactFields({
+      officeId: firestoreString(suggestedOfficeId),
+      officeName: firestoreString(officeName),
+      officeNameKey: firestoreString(normalizeOfficeId(officeName) || suggestedOfficeId),
+      brokerName: firestoreString(brokerName),
+      licenseeName: firestoreString(brokerName),
+      phone: firestoreString(phone),
+      email: firestoreString(email),
+      falLicenseNumber: firestoreString(falLicense),
+      licenseNumber: firestoreString(falLicense),
+      city: firestoreString(DEFAULT_CITY),
+      specialties: { arrayValue: { values: [] } },
+      ownerUid: firestoreString(identity.sub),
+      approvalStatus: firestoreString("pending"),
+      accountStatus: firestoreString("active"),
+      licenseStatus: firestoreString("unknown"),
+      subscriptionStatus: firestoreString("none"),
+      applicationId: firestoreString(applicationId),
+      registrationSubmittedAt: firestoreTimestamp(now),
+      createdAt: firestoreTimestamp(now),
+      updatedAt: firestoreTimestamp(now)
+    })
+  });
   await setFirestoreDocument({
     projectId,
     segments: ["brokerApplications", applicationId],
@@ -441,6 +504,7 @@ async function handleBrokerApplication(request, env, requestId) {
       email: firestoreString(email),
       falLicense: firestoreString(falLicense),
       officeName: firestoreString(officeName),
+      officeId: firestoreString(suggestedOfficeId),
       status: firestoreString("pending"),
       source: firestoreString("platform_broker_registration"),
       applicantUid: firestoreString(identity.sub),
@@ -499,6 +563,14 @@ async function listBrokerApplications(request, env, requestId) {
   return jsonResponse({ ok: true, applications, requestId });
 }
 
+function normalizeApprovalStatus(data) {
+  const s = String((data && data.approvalStatus) || "").trim();
+  if (["pending", "approved", "rejected"].includes(s)) return s;
+  if (data && data.ownerUid && data.approvedAt) return "approved";
+  if (data && data.ownerUid) return "approved";
+  return "pending";
+}
+
 async function decideBrokerApplication(request, env, requestId) {
   assertFirebaseSecrets(env);
   const admin = await requirePlatformIdentity(request, env, true);
@@ -509,9 +581,6 @@ async function decideBrokerApplication(request, env, requestId) {
   if (!applicationId || !["approve", "reject"].includes(action)) {
     throw appError("decision_invalid", 400, "قرار الطلب غير صالح");
   }
-  if (action === "approve" && (!officeId || officeId === "platform")) {
-    throw appError("office_id_invalid", 400, "رمز المكتب غير صالح");
-  }
   const projectId = env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
   const accessToken = await getGoogleAccessToken(env);
   const applicationDoc = await getFirestoreDocument({
@@ -520,6 +589,11 @@ async function decideBrokerApplication(request, env, requestId) {
   const application = firestoreFieldsToJs(applicationDoc.fields || {});
   if (application.status !== "pending") throw appError("already_decided", 409, "تم اتخاذ قرار سابق على الطلب");
   const now = new Date();
+  const targetOfficeId = normalizeOfficeId(officeId || application.officeId || "");
+  if (action === "approve" && (!targetOfficeId || targetOfficeId === "platform")) {
+    throw appError("office_id_invalid", 400, "رمز المكتب غير صالح");
+  }
+  const adminHandlers = getAdminHandlers();
   if (action === "approve") {
     const normalizedPhone = normalizeLoginPhone(application.phone);
     if (!normalizedPhone) throw appError("phone_invalid", 400, "رقم جوال الوسيط غير صالح");
@@ -529,41 +603,59 @@ async function decideBrokerApplication(request, env, requestId) {
       const existingLogin = firestoreFieldsToJs(loginDirectory.fields || {});
       if (existingLogin.uid !== application.applicantUid) throw appError("phone_already_used", 409, "رقم الجوال مرتبط بحساب آخر");
     }
-    const existing = await getFirestoreDocument({ projectId, segments: ["offices", officeId], accessToken, allowMissing: true });
-    if (existing) throw appError("office_exists", 409, "رمز المكتب مستخدم");
+    const existing = await getFirestoreDocument({ projectId, segments: ["offices", targetOfficeId], accessToken, allowMissing: true });
+    const existingOffice = existing ? firestoreFieldsToJs(existing.fields || {}) : null;
+    if (existingOffice && normalizeApprovalStatus(existingOffice) === "approved") {
+      throw appError("office_exists", 409, "رمز المكتب مستخدم");
+    }
+    const approveFields = compactFields({
+      officeId: firestoreString(targetOfficeId),
+      officeName: firestoreString(application.officeName),
+      officeNameKey: firestoreString(normalizeOfficeId(application.officeName) || targetOfficeId),
+      brokerName: firestoreString(application.brokerName),
+      licenseeName: firestoreString(application.brokerName),
+      phone: firestoreString(application.phone),
+      email: firestoreString(String(application.email || "").trim().toLowerCase()),
+      falLicenseNumber: firestoreString(application.falLicense),
+      licenseNumber: firestoreString(application.falLicense),
+      city: firestoreString(DEFAULT_CITY),
+      specialties: { arrayValue: { values: [] } },
+      ownerUid: firestoreString(application.applicantUid),
+      approvalStatus: firestoreString("approved"),
+      accountStatus: firestoreString("active"),
+      licenseStatus: firestoreString("unknown"),
+      subscriptionStatus: firestoreString("trial"),
+      approvedAt: firestoreTimestamp(now),
+      approvedBy: firestoreString(admin.sub),
+      approvedByUid: firestoreString(admin.sub),
+      subscriptionStartedAt: firestoreTimestamp(now),
+      updatedAt: firestoreTimestamp(now)
+    });
+    if (!existingOffice || !existingOffice.createdAt) {
+      approveFields.createdAt = firestoreTimestamp(now);
+    }
+    if (!existingOffice || !existingOffice.registrationSubmittedAt) {
+      approveFields.registrationSubmittedAt = firestoreTimestamp(application.createdAt ? new Date(application.createdAt) : now);
+    }
     await setFirestoreDocument({
-      projectId, segments: ["offices", officeId], accessToken,
-      fields: {
-        officeId: firestoreString(officeId),
-        officeName: firestoreString(application.officeName),
-        officeNameKey: firestoreString(normalizeOfficeId(application.officeName) || officeId),
-        brokerName: firestoreString(application.brokerName),
-        phone: firestoreString(application.phone),
-        licenseNumber: firestoreString(application.falLicense),
-        city: firestoreString("المدينة المنورة"),
-        specialties: { arrayValue: { values: [] } },
-        ownerUid: firestoreString(application.applicantUid),
-        approvalStatus: firestoreString("approved"),
-        approvedAt: firestoreTimestamp(now),
-        approvedByUid: firestoreString(admin.sub)
-      }
+      projectId, segments: ["offices", targetOfficeId], accessToken, fields: approveFields
     });
     await setFirestoreDocument({
-      projectId, segments: ["publicOffices", officeId], accessToken,
+      projectId, segments: ["publicOffices", targetOfficeId], accessToken,
       fields: {
-        officeId: firestoreString(officeId),
+        officeId: firestoreString(targetOfficeId),
         officeName: firestoreString(application.officeName),
         brokerName: firestoreString(application.brokerName),
         phone: firestoreString(application.phone),
         licenseNumber: firestoreString(application.falLicense),
-        city: firestoreString("المدينة المنورة"),
+        city: firestoreString(DEFAULT_CITY),
         specialties: { arrayValue: { values: [] } },
         coverUrl: firestoreString(""),
         updatedAt: firestoreTimestamp(now)
       }
     });
     await setFirestoreDocument({
-      projectId, segments: ["offices", officeId, "members", application.applicantUid], accessToken,
+      projectId, segments: ["offices", targetOfficeId, "members", application.applicantUid], accessToken,
       fields: {
         uid: firestoreString(application.applicantUid),
         role: firestoreString("owner"),
@@ -575,24 +667,64 @@ async function decideBrokerApplication(request, env, requestId) {
       projectId, segments: ["loginDirectory", phoneHash], accessToken,
       fields: {
         uid: firestoreString(application.applicantUid),
-        officeId: firestoreString(officeId),
+        officeId: firestoreString(targetOfficeId),
         email: firestoreString(String(application.email || "").trim().toLowerCase()),
         phone: firestoreString(normalizedPhone),
         active: firestoreBoolean(true),
         updatedAt: firestoreTimestamp(now)
       }
     });
+    await adminHandlers.writeAdminAudit({
+      projectId,
+      accessToken,
+      entry: {
+        officeId: targetOfficeId,
+        action: "office_approved",
+        performedBy: admin.sub,
+        reason: "",
+        before: existingOffice || null,
+        after: adminHandlers.normalizeOfficeRecord(
+          firestoreFieldsToJs((await getFirestoreDocument({ projectId, segments: ["offices", targetOfficeId], accessToken })).fields || {}),
+          targetOfficeId
+        )
+      }
+    });
+  } else if (action === "reject") {
+    if (targetOfficeId) {
+      await setFirestoreDocument({
+        projectId, segments: ["offices", targetOfficeId], accessToken,
+        fields: compactFields({
+          approvalStatus: firestoreString("rejected"),
+          rejectedAt: firestoreTimestamp(now),
+          rejectedBy: firestoreString(admin.sub),
+          rejectionReason: firestoreOptionalString(cleanText(body.reason, 500)),
+          updatedAt: firestoreTimestamp(now)
+        })
+      });
+      await adminHandlers.writeAdminAudit({
+        projectId,
+        accessToken,
+        entry: {
+          officeId: targetOfficeId,
+          action: "office_rejected",
+          performedBy: admin.sub,
+          reason: cleanText(body.reason, 500),
+          before: null,
+          after: null
+        }
+      });
+    }
   }
   await setFirestoreDocument({
     projectId, segments: ["brokerApplications", applicationId], accessToken,
     fields: {
       status: firestoreString(action === "approve" ? "approved" : "rejected"),
-      officeId: firestoreOptionalString(action === "approve" ? officeId : ""),
+      officeId: firestoreOptionalString(action === "approve" ? targetOfficeId : targetOfficeId || ""),
       decidedAt: firestoreTimestamp(now),
       decidedByUid: firestoreString(admin.sub)
     }
   });
-  return jsonResponse({ ok: true, applicationId, status: action === "approve" ? "approved" : "rejected", officeId, requestId });
+  return jsonResponse({ ok: true, applicationId, status: action === "approve" ? "approved" : "rejected", officeId: targetOfficeId, requestId });
 }
 
 function isLoginDirectoryActive(directory) {
@@ -672,6 +804,18 @@ async function handlePhoneLogin(request, env, requestId) {
     privateKeyId: env.FIREBASE_PRIVATE_KEY_ID,
     uid: directory.uid, officeId: directory.officeId
   });
+  try {
+    await getAdminHandlers().recordOfficeActivity({
+      projectId,
+      officeId: normalizeOfficeId(directory.officeId),
+      accessToken,
+      type: "login",
+      actorUid: directory.uid,
+      source: "phone_login"
+    });
+  } catch (activityError) {
+    console.warn("[iaqar-login] activity record failed", activityError && activityError.message);
+  }
   return jsonResponse({ ok: true, customToken, officeId: normalizeOfficeId(directory.officeId), requestId });
 }
 
@@ -851,6 +995,20 @@ async function handlePublicIntakeMatching(request, env, requestId) {
 
   if (matches.length > 0) {
     await sendOfficeMatchNotifications({ projectId, officeId, matches, parsed, accessToken });
+  }
+  try {
+    const adminHandlers = getAdminHandlers();
+    const submissionType = parsed.kind === "owner_offer" ? "public_owner_submission" : "public_client_submission";
+    await adminHandlers.recordOfficeActivity({
+      projectId, officeId, accessToken, type: submissionType, source: intake.source || "public_intake",
+      metadata: { intakeId }
+    });
+    await adminHandlers.recordOfficeActivity({
+      projectId, officeId, accessToken, type: "opportunity_created", source: "public_intake",
+      metadata: { opportunityId, intakeId }
+    });
+  } catch (activityError) {
+    console.warn("[iaqar-public-intake] activity record failed", activityError && activityError.message);
   }
   return jsonResponse({
     ok: true, duplicate: false, officeId, intakeId, recordId, opportunityId,
@@ -2007,6 +2165,12 @@ async function handleWorkflowAction(request,env,requestId) {
     if(next==="viewing") fields.viewingAt=firestoreTimestamp(nextFollowUpAt);
     await setFirestoreDocument({projectId,segments:["offices",officeId,"matches",recordId],accessToken,fields});
     await addWorkflowTimeline({projectId,officeId,recordType:"match",recordId,eventType:current===next?"follow_up":"status_changed",stage:next,note:note||`انتقلت المطابقة إلى ${MATCH_STATUS_LABELS[next]}`,identity,accessToken,createdAt:now});
+    try {
+      await getAdminHandlers().recordOfficeActivity({
+        projectId, officeId, accessToken, type: "match_reviewed", actorUid: identity.uid, source: "workflow",
+        metadata: { matchId: recordId, action }
+      });
+    } catch (_) {}
     let dealId=m.dealId||"";
     if(next==="negotiation"&&!dealId){
       dealId=await createDealFromMatch({projectId,officeId,matchId:recordId,matchData:{...m,status:next,closingReadinessScore:readiness.score},identity,accessToken,now,commissionExpected:Number(body.commissionExpected||0),startStage:"negotiation"});
@@ -2075,6 +2239,12 @@ async function handleWorkflowAction(request,env,requestId) {
     if(!DEAL_STAGE_ORDER.includes(requested))throw appError("deal_stage_invalid",400,"مرحلة الصفقة غير صحيحة");
     if(requested==="closed"){
       const closed=await finalizeDealAndCloseSiblings({projectId,officeId,dealId:recordId,dealData:d,identity,accessToken,now,note,commissionActual:Number(body.commissionActual||0)});
+      try {
+        await getAdminHandlers().recordOfficeActivity({
+          projectId, officeId, accessToken, type: "operation_completed", actorUid: identity.uid, source: "workflow",
+          metadata: { dealId: recordId, action }
+        });
+      } catch (_) {}
       return jsonResponse({ok:true,status:"closed",workflowStage:"closed",stageLabel:DEAL_STAGE_LABELS.closed,nextAction:DEAL_NEXT_ACTION_LABELS.closed,closedSiblings:closed.closedSiblings,requestId});
     }
     const health=calculateDealHealth({stage:requested,status:"open",updatedAt:now,nextFollowUpAt});
@@ -2632,6 +2802,36 @@ function jsonResponse(body, status = 200) {
     status,
     headers: { ...corsHeaders(), "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
   });
+}
+
+let _adminHandlers = null;
+function getAdminHandlers() {
+  if (!_adminHandlers) {
+    _adminHandlers = createAdminHandlers({
+      assertFirebaseSecrets,
+      requirePlatformIdentity,
+      getGoogleAccessToken,
+      getFirestoreDocument,
+      setFirestoreDocument,
+      listCollectionDocuments,
+      firestoreDocumentUrl,
+      firestoreFieldsToJs,
+      firestoreString,
+      firestoreOptionalString,
+      firestoreBoolean,
+      firestoreInteger,
+      firestoreTimestamp,
+      compactFields,
+      normalizeOfficeId,
+      cleanText,
+      appError,
+      jsonResponse,
+      sha256Hex,
+      normalizeLoginPhone,
+      DEFAULT_PROJECT_ID
+    });
+  }
+  return _adminHandlers;
 }
 
 export { normalizeLoginPhone, legacyLocalLoginPhone, resolveLoginDirectory, isLoginDirectoryActive, firebaseServiceAccount, createServiceAccountJwt, buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, parseFcmFailure };
