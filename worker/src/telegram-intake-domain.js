@@ -18,10 +18,10 @@ function text(value) {
 
 export function telegramUpdateKind(update = {}) {
   const message = update.message || update.channel_post || update.edited_message || {};
-  if (text(message.text) || text(message.caption)) return TELEGRAM_INTAKE_KIND.TEXT;
   if (Array.isArray(message.photo) && message.photo.length) return TELEGRAM_INTAKE_KIND.PHOTO;
   if (message.voice?.file_id || message.audio?.file_id) return TELEGRAM_INTAKE_KIND.VOICE;
   if (message.document?.file_id) return TELEGRAM_INTAKE_KIND.DOCUMENT;
+  if (text(message.text) || text(message.caption)) return TELEGRAM_INTAKE_KIND.TEXT;
   return TELEGRAM_INTAKE_KIND.UNSUPPORTED;
 }
 
