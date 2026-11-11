@@ -1,0 +1,30 @@
+[gd_scene load_steps=4 format=3 uid="uid://chaser_scene"]
+
+[ext_resource type="Script" path="res://scripts/chasers/BaseChaser.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/art/HomeOwnerSprite.gd" id="2"]
+
+[sub_resource type="RectangleShape2D" id="1_body"]
+size = Vector2(36, 58)
+
+[node name="Chaser" type="CharacterBody2D"]
+visible = false
+collision_layer = 8
+collision_mask = 3
+script = ExtResource("1")
+quote = "يا ولد!"
+
+[node name="Sprite" type="Node2D" parent="."]
+script = ExtResource("2")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -29)
+shape = SubResource("1_body")
+
+[node name="QuoteLabel" type="Label" parent="."]
+offset_left = -60.0
+offset_top = -90.0
+offset_right = 60.0
+offset_bottom = -60.0
+theme_override_font_sizes/font_size = 20
+text = "يا ولد!"
+horizontal_alignment = 1

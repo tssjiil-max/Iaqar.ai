@@ -1,0 +1,46 @@
+[gd_scene load_steps=6 format=3 uid="uid://player_scene"]
+
+[ext_resource type="Script" path="res://scripts/player/PlayerController.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/art/OsamaSpriteSheet.gd" id="2"]
+[ext_resource type="Texture2D" path="res://assets/characters/osama_child.png" id="3"]
+
+[sub_resource type="RectangleShape2D" id="1_body"]
+size = Vector2(34, 56)
+
+[sub_resource type="RectangleShape2D" id="1_hit"]
+size = Vector2(40, 40)
+
+[node name="Player" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 25
+script = ExtResource("1")
+
+[node name="Sprite" type="Sprite2D" parent="."]
+position = Vector2(0, -72)
+scale = Vector2(0.11, 0.11)
+texture = ExtResource("3")
+script = ExtResource("2")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -28)
+shape = SubResource("1_body")
+
+[node name="PunchArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 25
+monitoring = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PunchArea"]
+position = Vector2(42, -28)
+shape = SubResource("1_hit")
+
+[node name="KickArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 25
+monitoring = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="KickArea"]
+position = Vector2(54, -20)
+shape = SubResource("1_hit")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
