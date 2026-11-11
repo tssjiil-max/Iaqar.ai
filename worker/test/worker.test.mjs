@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, isLoginDirectoryActive, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory } from "../src/index.js";
+import worker, { buildNotificationLink, buildFcmTarget, buildFcmHttpMessage, createServiceAccountJwt, firebaseServiceAccount, isLoginDirectoryActive, legacyLocalLoginPhone, normalizeLoginPhone, parseFcmFailure, resolveLoginDirectory, normalizeOpportunitySource, getOpportunityLifecycleStatus, normalizeSaudiPhoneForWhatsApp, buildOpportunitySummary, buildOpportunityWhatsAppMessage, resolveSelectOption, parseVoiceOpportunityFields } from "../src/index.js";
 
 const env = { FIREBASE_PROJECT_ID: "aqar-b5d76", META_TRIAL_OFFICE_ID: "office-alqiq" };
 
@@ -509,4 +509,55 @@ test("stage 3 FCM config requires both VAPID and Firebase server credentials", a
   assert.equal(body.vapidConfigured, true);
   assert.equal(body.serverReady, true);
   assert.equal(body.enabled, true);
+});
+
+test("opportunity lifecycle normalizes legacy sources safely", () => {
+  assert.equal(normalizeOpportunitySource("office_public_link"), "office_link");
+  assert.equal(normalizeOpportunitySource("whatsapp_cloud_api"), "whatsapp");
+  assert.equal(normalizeOpportunitySource("manual"), "manual");
+});
+
+test("legacy opportunities receive safe default lifecycle status", () => {
+  assert.equal(getOpportunityLifecycleStatus({}), "NEW");
+  assert.equal(getOpportunityLifecycleStatus({ workflowStage: "negotiation" }), "NEGOTIATION");
+  assert.equal(getOpportunityLifecycleStatus({ lifecycleStatus: "ARCHIVED" }), "ARCHIVED");
+});
+
+test("whatsapp phone normalization rejects invalid numbers", () => {
+  assert.equal(normalizeSaudiPhoneForWhatsApp("0501234567"), "966501234567");
+  assert.equal(normalizeSaudiPhoneForWhatsApp("+966501234567"), "966501234567");
+  assert.equal(normalizeSaudiPhoneForWhatsApp("00966501234567"), "966501234567");
+  assert.equal(normalizeSaudiPhoneForWhatsApp("12345"), "");
+});
+
+test("buyer and owner whatsapp messages differ", () => {
+  const buyer = buildOpportunityWhatsAppMessage({ contactType: "buyer", propertyType: "شقة", district: "عروة" }, "first_contact", { brokerName: "أحمد", officeName: "مكتب" });
+  const owner = buildOpportunityWhatsAppMessage({ contactType: "owner", propertyType: "أرض سكنية", district: "الوبرة", area: 600 }, "first_contact", { brokerName: "أحمد", officeName: "مكتب" });
+  assert.match(buyer, /طلبك العقاري/);
+  assert.match(owner, /عرضكم العقاري/);
+  assert.doesNotMatch(buyer, /عرضكم/);
+});
+
+test("voice parsing maps select options without polluting district", () => {
+  const districts = ["عروة", "الوبرة", "العريض"];
+  const parsedA = parseVoiceOpportunityFields("أبغى شقة في عروة شراء", { propertyTypes: ["شقة", "فيلا", "أرض"], districts });
+  assert.equal(parsedA.propertyType, "شقة");
+  assert.equal(parsedA.district, "عروة");
+  const parsedB = parseVoiceOpportunityFields("أرض في الوبرة مساحتها 600", { propertyTypes: ["شقة", "أرض سكنية"], districts });
+  assert.equal(parsedB.district, "الوبرة");
+  assert.equal(parsedB.area, 600);
+  assert.notEqual(parsedB.district, "الوبرة مساحتها 600");
+});
+
+test("voice select resolver does not guess unavailable options", () => {
+  const resolved = resolveSelectOption("قصر", ["شقة", "فيلا", "أرض"]);
+  assert.equal(resolved.matched, false);
+  assert.equal(resolved.value, "");
+});
+
+test("opportunity summary omits empty values", () => {
+  const summary = buildOpportunitySummary({ propertyType: "شقة", district: "العريض", priceMax: 750000, transactionType: "sale" });
+  assert.match(summary, /شقة/);
+  assert.match(summary, /العريض/);
+  assert.doesNotMatch(summary, /undefined|null|NaN/);
 });
