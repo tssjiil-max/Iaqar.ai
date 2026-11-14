@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { assessListing, draftMissingInfoMessage } from './readiness.mjs';
+const complete = { propertyType:'land', operation:'sale', city:'المدينة المنورة', district:'شوران', price:950000, area:500, source:'radar', updatedAt:'2026-11-14T10:00:00Z', approvalStatus:'approved', availabilityStatus:'available' };
+test('complete approved listing is fully scored',()=>{ const r=assessListing(complete);assert.equal(r.score,100);assert.equal(r.canPublish,true); });
+test('missing price lowers score and produces a reason',()=>{const r=assessListing({...complete,price:null});assert.ok(r.score<100);assert.ok(r.missing.includes('price'));assert.equal(r.canPublish,false);});
+test('expired listing is not publishable despite complete data',()=>{const r=assessListing({...complete,availabilityStatus:'expired'});assert.equal(r.score,100);assert.equal(r.canPublish,false);});
+test('unapproved radar import stays outside publishable office inventory',()=>{const r=assessListing({...complete,approvalStatus:'pending'});assert.equal(r.canPublish,false);});
+test('zero or invalid values count as missing',()=>{const r=assessListing({...complete,area:0,price:-1});assert.ok(r.missing.includes('area'));assert.ok(r.missing.includes('price'));});
+test('draft does not disclose contact information or send anything',()=>{const text=draftMissingInfoMessage({...complete,price:null,phone:'0551234567'});assert.ok(text.includes('السعر'));assert.ok(!text.includes('0551234567'));});
